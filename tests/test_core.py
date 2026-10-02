@@ -37,11 +37,21 @@ def test_load_config(config):
 
 
 def test_load_questions(sets):
-    assert len(sets) == 2
-    assert sets[0].set_id == "warmup"
+    assert len(sets) == 1
+    assert sets[0].set_id == "type_test"
     types = {q.type for s in sets for q in s.questions}
-    assert "multiple_choice" in types
-    assert "hands_on" in types
+    for needed in (
+        "multiple_choice",
+        "select_all",
+        "put_in_order",
+        "match_up",
+        "short_answer",
+        "numeric",
+        "fill_blank",
+        "flag",
+        "hands_on",
+    ):
+        assert needed in types
 
 
 def test_bad_question_file(tmp_path):
@@ -154,8 +164,8 @@ def test_answer_advances(config, sets):
     session.on_baton_reading(0, source="fake")
     q = session.current_question()
     assert q is not None
-    # Warmup w1 answer is index 1
-    result = session.submit_answer(1)
+    # First question is multiple_choice; "Right" is index 3
+    result = session.submit_answer(3)
     assert result is not None
     assert result.correct
     assert session.progress.total_score > 0

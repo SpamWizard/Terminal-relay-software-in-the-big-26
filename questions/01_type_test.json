@@ -1,0 +1,82 @@
+{
+  "set_id": "type_test",
+  "title": "Type smoke test (easy)",
+  "questions": [
+    {
+      "id": "mc1",
+      "type": "multiple_choice",
+      "prompt": "Pick the right answer.",
+      "points": 5,
+      "choices": ["Wrong", "Wrong", "Wrong", "Right"],
+      "answer": 3
+    },
+    {
+      "id": "sa1",
+      "type": "select_all",
+      "prompt": "Select ALL that say Right (leave Wrong unchecked).",
+      "points": 5,
+      "partial_credit": true,
+      "choices": ["Right", "Wrong", "Right", "Wrong"],
+      "answer": [0, 2]
+    },
+    {
+      "id": "ord1",
+      "type": "put_in_order",
+      "prompt": "Put these in order: First → Second → Third",
+      "points": 5,
+      "items": ["Second", "Third", "First"],
+      "answer": [2, 0, 1]
+    },
+    {
+      "id": "match1",
+      "type": "match_up",
+      "prompt": "Match each left item to the same word on the right.",
+      "points": 5,
+      "left": ["Alpha", "Beta", "Gamma"],
+      "right": ["Alpha", "Beta", "Gamma"],
+      "answer": { "0": 0, "1": 1, "2": 2 }
+    },
+    {
+      "id": "short1",
+      "type": "short_answer",
+      "prompt": "Type the word: yes",
+      "points": 5,
+      "accepted": ["yes"],
+      "case_sensitive": false,
+      "strip_whitespace": true
+    },
+    {
+      "id": "num1",
+      "type": "numeric",
+      "prompt": "What is 2 + 2?",
+      "points": 5,
+      "answer": 4,
+      "tolerance": 0
+    },
+    {
+      "id": "blank1",
+      "type": "fill_blank",
+      "prompt": "The blank is blue: The sky is ___.",
+      "points": 5,
+      "accepted": ["blue"],
+      "case_sensitive": false
+    },
+    {
+      "id": "flag1",
+      "type": "flag",
+      "prompt": "Enter the flag exactly: FLAG{easy}",
+      "points": 5,
+      "accepted": ["FLAG{easy}"],
+      "case_sensitive": true
+    },
+    {
+      "id": "hands1",
+      "type": "hands_on",
+      "prompt": "Hands-on stub: enter FLAG{hands} (containers come later).",
+      "points": 5,
+      "image": "localhost/baton-demo:latest",
+      "ports": [18080],
+      "success": { "type": "flag", "accepted": ["FLAG{hands}"] }
+    }
+  ]
+}

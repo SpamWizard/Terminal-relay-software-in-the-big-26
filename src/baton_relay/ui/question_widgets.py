@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QButtonGroup,
     QComboBox,
     QHBoxLayout,
@@ -168,38 +170,49 @@ def _select_all(q: SelectAll) -> tuple[QWidget, Callable[[], Any]]:
     return root, collect
 
 
+class OrderListWidget(QListWidget):
+    """Drag-and-drop reorder; Up/Down keys move the selected row."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("orderList")
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDropIndicatorShown(True)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.setMinimumHeight(220)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down) and self.currentRow() >= 0:
+            delta = -1 if event.key() == Qt.Key.Key_Up else 1
+            row = self.currentRow()
+            new_row = row + delta
+            if 0 <= new_row < self.count():
+                item = self.takeItem(row)
+                self.insertItem(new_row, item)
+                self.setCurrentRow(new_row)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
 def _order(q: PutInOrder) -> tuple[QWidget, Callable[[], Any]]:
     root = QWidget()
     layout = QVBoxLayout(root)
-    layout.addWidget(QLabel("Use Up/Down to arrange (first = top):"))
-    lst = QListWidget()
-    # Store original index in UserRole
+    hint = QLabel("Drag rows to reorder, or select one and press ↑ / ↓  (top = first)")
+    hint.setObjectName("muted")
+    hint.setWordWrap(True)
+    layout.addWidget(hint)
+    lst = OrderListWidget()
     for i, item in enumerate(q.items or []):
-        li = QListWidgetItem(item)
+        li = QListWidgetItem(f"  ≡  {item}")
         li.setData(Qt.ItemDataRole.UserRole, i)
         lst.addItem(li)
+    if lst.count():
+        lst.setCurrentRow(0)
     layout.addWidget(lst)
-    row = QHBoxLayout()
-    up = QPushButton("Up")
-    down = QPushButton("Down")
-
-    def move(delta: int) -> None:
-        row_i = lst.currentRow()
-        if row_i < 0:
-            return
-        new_i = row_i + delta
-        if new_i < 0 or new_i >= lst.count():
-            return
-        item = lst.takeItem(row_i)
-        lst.insertItem(new_i, item)
-        lst.setCurrentRow(new_i)
-
-    up.clicked.connect(lambda: move(-1))
-    down.clicked.connect(lambda: move(1))
-    row.addWidget(up)
-    row.addWidget(down)
-    row.addStretch(1)
-    layout.addLayout(row)
 
     def collect() -> list[int]:
         return [lst.item(i).data(Qt.ItemDataRole.UserRole) for i in range(lst.count())]

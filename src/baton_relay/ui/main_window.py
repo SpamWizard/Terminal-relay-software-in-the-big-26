@@ -24,6 +24,7 @@ from baton_relay.input.fake import FakeBatonSource
 from baton_relay.questions.base import QuestionSet
 from baton_relay.results.log import EventLog, new_run_dir
 from baton_relay.state.machine import GameSession, GameSnapshot, RelayState
+from baton_relay.ui.correct_burst import CorrectBurst
 from baton_relay.ui.question_widgets import QuestionHost
 from baton_relay.ui.theme import build_stylesheet
 
@@ -280,10 +281,14 @@ class GameScreen(QWidget):
         root.addWidget(self.stage, 1)
 
         self.switch_overlay = SwitchOverlay(self.stage)
+        self.correct_burst = CorrectBurst(self.stage)
 
     def _fit_switch_overlay(self) -> None:
         self.switch_overlay.setGeometry(self.stage.rect())
         self.switch_overlay.raise_()
+        self.correct_burst.setGeometry(self.stage.rect())
+        if self.correct_burst.isVisible():
+            self.correct_burst.raise_()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -291,6 +296,17 @@ class GameScreen(QWidget):
 
     def bind_submit(self, handler: Callable) -> None:
         self.question_host.set_submit_handler(handler)
+
+    def play_correct(self, points_text: str = "") -> None:
+        ui = self.config.ui
+        self.correct_burst.setGeometry(self.stage.rect())
+        self.correct_burst.raise_()
+        self.correct_burst.play(
+            points_text,
+            fade_in_ms=ui.correct_fade_in_ms,
+            hold_ms=ui.correct_hold_ms,
+            fade_out_ms=ui.correct_fade_out_ms,
+        )
 
     def render(self, snap: GameSnapshot, question_changed: bool, question) -> None:
         self.team_label.setText(snap.team_name or "TEAM")
@@ -415,6 +431,8 @@ class MainWindow(QMainWindow):
         else:
             self.game_screen.hint.setText("Serial device mode (connect RP2040)  ·  F11 fullscreen")
 
+        self._pending_after_correct = False
+        self.game_screen.correct_burst.finished.connect(self._after_correct_burst)
         self.startup.reset()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
@@ -546,10 +564,22 @@ class MainWindow(QMainWindow):
         if not self.session:
             return
         result = self.session.submit_answer(answer)
-        if result:
-            self.game_screen.question_host.show_feedback(
-                f"{result.feedback}  (+{result.points:g}/{result.max_points:g})"
-            )
+        if not result:
+            return
+        self.game_screen.question_host.show_feedback(
+            f"{result.feedback}  (+{result.points:g}/{result.max_points:g})"
+        )
+        if result.correct:
+            self._pending_after_correct = True
+            self.game_screen.play_correct(f"+{result.points:g} pts")
+        else:
+            self._pending_after_correct = False
+            self._render(force_question=True)
+
+    def _after_correct_burst(self) -> None:
+        if not self._pending_after_correct:
+            return
+        self._pending_after_correct = False
         self._render(force_question=True)
 
     def _render(self, force_question: bool = False) -> None:

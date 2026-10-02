@@ -173,4 +173,48 @@ def build_stylesheet(theme: ThemeConfig) -> str:
     QProgressBar::chunk {{
         background-color: {accent};
     }}
+    QFrame#correctToast {{
+        background-color: rgba(13, 18, 28, 235);
+        border: 2px solid {accent};
+        border-radius: 8px;
+        min-width: 320px;
+    }}
+    QLabel#correctTitle {{
+        color: {accent};
+        background: transparent;
+        font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+        font-size: 56px;
+        font-weight: 800;
+        letter-spacing: 8px;
+    }}
+    QLabel#correctSub {{
+        color: {fg};
+        background: transparent;
+        font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+        font-size: 20px;
+        font-weight: 600;
+    }}
+    QListWidget#orderList {{
+        background-color: #121826;
+        border: 1px solid #1f2a3d;
+        color: {fg};
+        font-size: 18px;
+        padding: 8px;
+        outline: none;
+    }}
+    QListWidget#orderList::item {{
+        padding: 14px 16px;
+        margin: 4px 2px;
+        border: 1px solid #1f2a3d;
+        border-radius: 4px;
+        background: #0d121c;
+    }}
+    QListWidget#orderList::item:selected {{
+        border-color: {accent};
+        background: #182033;
+        color: {fg};
+    }}
+    QListWidget#orderList::item:hover {{
+        border-color: {accent};
+    }}
     """

@@ -84,6 +84,13 @@ class ThemeConfig:
 
 
 @dataclass(frozen=True)
+class UiConfig:
+    correct_hold_ms: int
+    correct_fade_in_ms: int
+    correct_fade_out_ms: int
+
+
+@dataclass(frozen=True)
 class AppConfig:
     team_size: int
     rotation: tuple[int, ...]
@@ -97,6 +104,7 @@ class AppConfig:
     containers: ContainersConfig
     paths: PathsConfig
     theme: ThemeConfig
+    ui: UiConfig
     config_path: Path
     root_dir: Path
 
@@ -340,6 +348,25 @@ def load_config(path: Path) -> AppConfig:
         foreground=_as_str(theme_raw.get("foreground", "#e6edf3"), "[theme].foreground"),
     )
 
+    ui_raw = raw.get("ui", {})
+    if not isinstance(ui_raw, dict):
+        raise ConfigError("[ui]: expected table")
+    hold_ms = _as_int(ui_raw.get("correct_hold_ms", 480), "[ui].correct_hold_ms")
+    fade_in_ms = _as_int(ui_raw.get("correct_fade_in_ms", 160), "[ui].correct_fade_in_ms")
+    fade_out_ms = _as_int(ui_raw.get("correct_fade_out_ms", 200), "[ui].correct_fade_out_ms")
+    for label, value in (
+        ("[ui].correct_hold_ms", hold_ms),
+        ("[ui].correct_fade_in_ms", fade_in_ms),
+        ("[ui].correct_fade_out_ms", fade_out_ms),
+    ):
+        if value < 0:
+            raise ConfigError(f"{label}: must be >= 0, got {value}")
+    ui = UiConfig(
+        correct_hold_ms=hold_ms,
+        correct_fade_in_ms=fade_in_ms,
+        correct_fade_out_ms=fade_out_ms,
+    )
+
     return AppConfig(
         team_size=size,
         rotation=rotation,
@@ -353,6 +380,7 @@ def load_config(path: Path) -> AppConfig:
         containers=containers,
         paths=paths,
         theme=theme,
+        ui=ui,
         config_path=path,
         root_dir=root_dir,
     )

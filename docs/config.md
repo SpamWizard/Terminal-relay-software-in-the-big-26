@@ -16,5 +16,6 @@ Config file: TOML at `config/config.toml` (override with `--config`).
 | `[containers]` | runtime/limits (Linux later) |
 | `[paths]` | results_dir, checkpoint_path |
 | `[theme]` | neon terminal colors |
+| `[ui]` | correct toast: `correct_fade_in_ms`, `correct_hold_ms`, `correct_fade_out_ms` |
 
 Team names are **not** in config — entered on the startup screen.

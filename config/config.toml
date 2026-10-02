@@ -56,8 +56,7 @@ redo_multiplier = 0.5
 [questions]
 # Played in order. Each file is one set.
 files = [
-    "questions/01_warmup.json",
-    "questions/02_trivia.json",
+    "questions/01_type_test.json",
 ]
 redo_missed_at_set_end = true
 
@@ -88,3 +87,9 @@ name = "neon_terminal"
 accent = "#00f5d4"
 background = "#0a0e14"
 foreground = "#e6edf3"
+
+[ui]
+# Correct-answer toast timing (milliseconds)
+correct_fade_in_ms = 160
+correct_hold_ms = 480
+correct_fade_out_ms = 200
