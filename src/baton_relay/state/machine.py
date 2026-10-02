@@ -72,6 +72,7 @@ class GameSession:
         self.current_person_index: int | None = None
         self.leg_remaining = float(config.timers.leg_seconds)
         self.game_remaining = float(config.timers.game_seconds)
+        self.timers_started = False
         self.progress = Progress()
         self.last_message = "SWITCH — plug in to begin."
         self.wrong_baton = False
@@ -237,6 +238,9 @@ class GameSession:
         self.current_person_index = person_index
         if not resume:
             self.leg_remaining = float(self.config.timers.leg_seconds)
+        if not self.timers_started:
+            self.timers_started = True
+            self._event("timers_started", source=source)
         self.state = RelayState.ACTIVE
         person = self.config.people[person_index]
         self.last_message = f"Person {person.label} active."
@@ -269,6 +273,11 @@ class GameSession:
 
     def tick(self, dt: float) -> None:
         if dt <= 0 or self.state == RelayState.PAUSED_SCORE:
+            return
+
+        # Timers stay frozen until the first correct baton is accepted.
+        if not self.timers_started:
+            self._emit()
             return
 
         # Game timer runs in active/frozen/waiting (paused only while app down — handled by checkpoint)

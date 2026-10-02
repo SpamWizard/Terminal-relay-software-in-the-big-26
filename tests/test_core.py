@@ -125,6 +125,21 @@ def test_state_machine_baton_flow(config, sets):
     assert session.state == RelayState.ACTIVE
 
 
+def test_timers_wait_for_first_baton(config, sets):
+    session = GameSession(config, sets, team_name="Test")
+    game_before = session.game_remaining
+    leg_before = session.leg_remaining
+    session.tick(5.0)
+    assert session.game_remaining == game_before
+    assert session.leg_remaining == leg_before
+    assert not session.timers_started
+    session.on_baton_reading(0, source="fake")
+    assert session.timers_started
+    session.tick(1.0)
+    assert session.game_remaining == pytest.approx(game_before - 1.0)
+    assert session.leg_remaining == pytest.approx(leg_before - 1.0)
+
+
 def test_leg_timer_forces_swap(config, sets):
     session = GameSession(config, sets, team_name="Test")
     session.on_baton_reading(0, source="fake")
