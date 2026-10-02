@@ -1,0 +1,33 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Runtime data (keep directory via .gitkeep)
+results/*
+!results/.gitkeep
+data/checkpoints/*
+!data/checkpoints/.gitkeep
+
+# Local secrets / machine-specific
+config/config.local.toml
+.env

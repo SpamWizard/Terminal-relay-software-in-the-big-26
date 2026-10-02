@@ -1,0 +1,437 @@
+"""Main window and screen flow."""
+
+from __future__ import annotations
+
+from typing import Callable
+
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QKeyEvent, QPainter, QColor, QPen
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+from baton_relay.config import AppConfig
+from baton_relay.input.base import BatonReading, ReadingKind
+from baton_relay.input.fake import FakeBatonSource
+from baton_relay.questions.base import QuestionSet
+from baton_relay.results.log import EventLog, new_run_dir
+from baton_relay.state.machine import GameSession, GameSnapshot, RelayState
+from baton_relay.ui.question_widgets import QuestionHost
+from baton_relay.ui.theme import build_stylesheet
+
+
+def _fmt_time(seconds: float) -> str:
+    s = max(0, int(seconds))
+    m, sec = divmod(s, 60)
+    h, m = divmod(m, 60)
+    if h:
+        return f"{h:d}:{m:02d}:{sec:02d}"
+    return f"{m:02d}:{sec:02d}"
+
+
+class ScanlineOverlay(QWidget):
+    """Subtle CRT-style scanlines over the window content."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        pen = QPen(QColor(0, 0, 0, 35))
+        pen.setWidth(1)
+        painter.setPen(pen)
+        for y in range(0, self.height(), 3):
+            painter.drawLine(0, y, self.width(), y)
+
+
+class StartupScreen(QWidget):
+    started = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.addStretch(1)
+
+        brand = QLabel("BATON//RELAY")
+        brand.setObjectName("brand")
+        brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(brand)
+
+        sub = QLabel("SAINTCON team quiz relay")
+        sub.setObjectName("muted")
+        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(sub)
+
+        layout.addSpacing(24)
+
+        panel = QFrame()
+        panel.setObjectName("panel")
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.addWidget(QLabel("TEAM NAME"))
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("Enter team name…")
+        self.name_edit.returnPressed.connect(self._go)
+        panel_layout.addWidget(self.name_edit)
+        self.start_btn = QPushButton("BEGIN RELAY")
+        self.start_btn.setObjectName("primary")
+        self.start_btn.clicked.connect(self._go)
+        panel_layout.addWidget(self.start_btn)
+        hint = QLabel("Resume unfinished games lands in a later phase.")
+        hint.setObjectName("muted")
+        panel_layout.addWidget(hint)
+        layout.addWidget(panel, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        layout.addStretch(2)
+
+    def _go(self) -> None:
+        name = self.name_edit.text().strip()
+        if not name:
+            self.name_edit.setPlaceholderText("Team name required")
+            return
+        self.started.emit(name)
+
+    def reset(self) -> None:
+        self.name_edit.clear()
+        self.name_edit.setFocus()
+
+
+class ScoreScreen(QWidget):
+    next_team = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.addStretch(1)
+        self.title = QLabel("SCORE")
+        self.title.setObjectName("brand")
+        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.title)
+        self.team = QLabel("")
+        self.team.setObjectName("headline")
+        self.team.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.team)
+        self.score = QLabel("0")
+        self.score.setObjectName("timerBig")
+        self.score.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.score)
+        self.detail = QLabel("")
+        self.detail.setObjectName("muted")
+        self.detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.detail)
+        layout.addSpacing(20)
+        btn = QPushButton("NEXT TEAM")
+        btn.setObjectName("primary")
+        btn.clicked.connect(self.next_team.emit)
+        layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addStretch(2)
+
+    def show_score(self, team: str, points: float, message: str) -> None:
+        self.team.setText(team)
+        self.score.setText(f"{points:.1f}" if points % 1 else f"{int(points)}")
+        self.detail.setText(message)
+
+
+class GameScreen(QWidget):
+    def __init__(self, config: AppConfig, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.config = config
+        root = QVBoxLayout(self)
+
+        header = QHBoxLayout()
+        self.team_label = QLabel("TEAM")
+        self.team_label.setObjectName("headline")
+        header.addWidget(self.team_label, 2)
+        self.score_label = QLabel("SCORE 0")
+        header.addWidget(self.score_label, 1)
+        self.game_timer = QLabel("00:00")
+        self.game_timer.setObjectName("muted")
+        header.addWidget(self.game_timer, 1, Qt.AlignmentFlag.AlignRight)
+        root.addLayout(header)
+
+        body = QHBoxLayout()
+
+        left = QFrame()
+        left.setObjectName("panel")
+        left_l = QVBoxLayout(left)
+        left_l.addWidget(QLabel("NEXT / LEG"))
+        self.next_big = QLabel("—")
+        self.next_big.setObjectName("timerBig")
+        self.next_big.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        left_l.addWidget(self.next_big)
+        self.leg_timer = QLabel("00:00")
+        self.leg_timer.setObjectName("headline")
+        self.leg_timer.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        left_l.addWidget(self.leg_timer)
+        self.state_label = QLabel("WAITING")
+        self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        left_l.addWidget(self.state_label)
+        self.message = QLabel("")
+        self.message.setWordWrap(True)
+        self.message.setObjectName("muted")
+        left_l.addWidget(self.message)
+        left_l.addStretch(1)
+        body.addWidget(left, 1)
+
+        right = QFrame()
+        right.setObjectName("panel")
+        right_l = QVBoxLayout(right)
+        self.question_host = QuestionHost()
+        right_l.addWidget(self.question_host)
+        body.addWidget(right, 2)
+
+        root.addLayout(body, 1)
+
+        footer = QHBoxLayout()
+        self.device_status = QLabel("DEVICE —")
+        self.device_status.setObjectName("muted")
+        footer.addWidget(self.device_status)
+        footer.addStretch(1)
+        self.hint = QLabel("Fake: 1-6 insert · P pull · U unknown")
+        self.hint.setObjectName("muted")
+        footer.addWidget(self.hint)
+        root.addLayout(footer)
+
+    def bind_submit(self, handler: Callable) -> None:
+        self.question_host.set_submit_handler(handler)
+
+    def render(self, snap: GameSnapshot, question_changed: bool, question) -> None:
+        self.team_label.setText(snap.team_name or "TEAM")
+        score = snap.progress.total_score
+        self.score_label.setText(f"SCORE {score:.1f}" if score % 1 else f"SCORE {int(score)}")
+        self.game_timer.setText(f"GAME {_fmt_time(snap.game_remaining)}")
+        self.leg_timer.setText(_fmt_time(snap.leg_remaining))
+
+        expected = self.config.people[snap.expected_person_index]
+        self.next_big.setText(expected.label)
+        self.next_big.setStyleSheet(f"color: {expected.color};")
+
+        state_names = {
+            RelayState.WAITING_FOR_BATON: "WAITING FOR BATON",
+            RelayState.ACTIVE: "ACTIVE",
+            RelayState.FROZEN: "FROZEN",
+            RelayState.DISCONNECTED: "DISCONNECTED",
+            RelayState.PAUSED_SCORE: "SCORE",
+        }
+        self.state_label.setText(state_names.get(snap.state, snap.state.name))
+        if snap.wrong_baton or snap.state == RelayState.DISCONNECTED:
+            self.state_label.setObjectName("warn")
+        else:
+            self.state_label.setObjectName("")
+        self.state_label.style().unpolish(self.state_label)
+        self.state_label.style().polish(self.state_label)
+
+        self.message.setText(snap.last_message)
+        self.device_status.setText(f"DEVICE {snap.device_status}")
+
+        locked = snap.state != RelayState.ACTIVE
+        self.question_host.set_locked(locked)
+        if question_changed:
+            self.question_host.show_question(question)
+
+
+class MainWindow(QMainWindow):
+    def __init__(
+        self,
+        config: AppConfig,
+        sets: list[QuestionSet],
+        *,
+        fake_device: bool = True,
+    ) -> None:
+        super().__init__()
+        self.config = config
+        self.sets = sets
+        self.fake_device = fake_device
+        self.session: GameSession | None = None
+        self.event_log: EventLog | None = None
+        self.run_dir = None
+        self._last_qid: str | None = None
+        self._fake: FakeBatonSource | None = None
+
+        self.setWindowTitle("BATON//RELAY")
+        self.resize(1100, 720)
+        self.setStyleSheet(build_stylesheet(config.theme))
+
+        self.stack = QStackedWidget()
+        self.setCentralWidget(self.stack)
+
+        self.startup = StartupScreen()
+        self.startup.started.connect(self._start_game)
+        self.game_screen = GameScreen(config)
+        self.game_screen.bind_submit(self._on_submit)
+        self.score_screen = ScoreScreen()
+        self.score_screen.next_team.connect(self._next_team)
+
+        self.stack.addWidget(self.startup)
+        self.stack.addWidget(self.game_screen)
+        self.stack.addWidget(self.score_screen)
+
+        self._scanlines = ScanlineOverlay(self)
+        self._scanlines.resize(self.size())
+        self._scanlines.raise_()
+
+        self._timer = QTimer(self)
+        self._timer.setInterval(100)
+        self._timer.timeout.connect(self._on_tick)
+
+        if fake_device:
+            self._fake = FakeBatonSource(config)
+            self._fake.start(self._on_reading)
+            self.game_screen.hint.setText(
+                "Fake: 1-6 insert · P pull · U unknown  (Ctrl+key while answering)"
+            )
+        else:
+            self.game_screen.hint.setText("Serial device mode (connect RP2040)")
+
+        self.startup.reset()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._scanlines.resize(self.size())
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        if self._fake and self.stack.currentWidget() is self.game_screen:
+            # When answering, require Ctrl so digits don't steal from text fields.
+            locked = not self.session or self.session.questions_locked()
+            ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+            key = event.key()
+            text = event.text()
+
+            if key == Qt.Key.Key_Backspace and (locked or ctrl):
+                self._fake.handle_key("BACKSPACE")
+                return
+            if ctrl and key in (
+                Qt.Key.Key_1,
+                Qt.Key.Key_2,
+                Qt.Key.Key_3,
+                Qt.Key.Key_4,
+                Qt.Key.Key_5,
+                Qt.Key.Key_6,
+                Qt.Key.Key_0,
+                Qt.Key.Key_U,
+                Qt.Key.Key_P,
+            ):
+                mapping = {
+                    Qt.Key.Key_1: "1",
+                    Qt.Key.Key_2: "2",
+                    Qt.Key.Key_3: "3",
+                    Qt.Key.Key_4: "4",
+                    Qt.Key.Key_5: "5",
+                    Qt.Key.Key_6: "6",
+                    Qt.Key.Key_0: "0",
+                    Qt.Key.Key_U: "U",
+                    Qt.Key.Key_P: "P",
+                }
+                self._fake.handle_key(mapping[key])
+                return
+            if locked and text:
+                self._fake.handle_key(text)
+                return
+        super().keyPressEvent(event)
+
+    def _on_reading(self, reading: BatonReading) -> None:
+        if not self.session:
+            return
+        if reading.kind == ReadingKind.EMPTY:
+            self.session.on_baton_reading(None, source=reading.source)
+        elif reading.kind == ReadingKind.UNKNOWN:
+            self.session.last_message = f"Unknown baton reading {reading.pins}"
+            self.session.wrong_baton = True
+            if self.event_log:
+                self.event_log.emit(
+                    "baton_unknown", pins=list(reading.pins), source=reading.source
+                )
+            self._render()
+        else:
+            self.session.on_baton_reading(reading.person_index, source=reading.source)
+
+    def _start_game(self, team_name: str) -> None:
+        self.run_dir = new_run_dir(self.config.paths.results_dir, team_name)
+        self.event_log = EventLog(self.run_dir / "events.jsonl")
+
+        def on_event(name: str, payload: dict) -> None:
+            assert self.event_log is not None
+            self.event_log.emit(name, team=team_name, **payload)
+
+        self.session = GameSession(
+            self.config,
+            self.sets,
+            team_name=team_name,
+            on_event=on_event,
+        )
+        self.session.add_listener(lambda snap: self._on_snapshot(snap))
+        self.session.set_device_status("FAKE" if self.fake_device else "waiting")
+        self._last_qid = None
+        self.event_log.emit("game_started", team=team_name)
+        self.stack.setCurrentWidget(self.game_screen)
+        self._timer.start()
+        self._render(force_question=True)
+        self.game_screen.setFocus()
+
+    def _on_snapshot(self, snap: GameSnapshot) -> None:
+        if snap.state == RelayState.PAUSED_SCORE:
+            self._timer.stop()
+            if self.session and self.event_log and self.run_dir:
+                self.event_log.write_summary(
+                    self.run_dir / "summary.json",
+                    {
+                        "team": snap.team_name,
+                        "score": snap.progress.total_score,
+                        "answered": {
+                            k: {
+                                "points": v.points,
+                                "correct": v.correct,
+                            }
+                            for k, v in snap.progress.answered.items()
+                        },
+                    },
+                )
+            self.score_screen.show_score(
+                snap.team_name,
+                snap.progress.total_score,
+                snap.last_message,
+            )
+            self.stack.setCurrentWidget(self.score_screen)
+        else:
+            self._render()
+
+    def _on_tick(self) -> None:
+        if self.session:
+            self.session.tick(0.1)
+
+    def _on_submit(self, answer) -> None:
+        if not self.session:
+            return
+        result = self.session.submit_answer(answer)
+        if result:
+            self.game_screen.question_host.show_feedback(
+                f"{result.feedback}  (+{result.points:g}/{result.max_points:g})"
+            )
+        self._render(force_question=True)
+
+    def _render(self, force_question: bool = False) -> None:
+        if not self.session:
+            return
+        snap = self.session.snapshot()
+        q = self.session.current_question()
+        qid = q.id if q else None
+        changed = force_question or qid != self._last_qid
+        self._last_qid = qid
+        self.game_screen.render(snap, changed, q)
+
+    def _next_team(self) -> None:
+        self.session = None
+        self.event_log = None
+        self.run_dir = None
+        self._last_qid = None
+        self.startup.reset()
+        self.stack.setCurrentWidget(self.startup)

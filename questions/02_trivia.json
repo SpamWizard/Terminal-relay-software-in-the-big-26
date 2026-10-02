@@ -1,0 +1,53 @@
+{
+  "set_id": "trivia",
+  "title": "Trivia & Flags",
+  "questions": [
+    {
+      "id": "t1",
+      "type": "put_in_order",
+      "prompt": "Order these phases of a typical engagement (first → last):",
+      "points": 20,
+      "items": [
+        "Reconnaissance",
+        "Exploitation",
+        "Reporting",
+        "Scanning"
+      ],
+      "answer": [0, 3, 1, 2]
+    },
+    {
+      "id": "t2",
+      "type": "match_up",
+      "prompt": "Match the protocol to its default port:",
+      "points": 20,
+      "left": ["SSH", "HTTP", "DNS", "SMTP"],
+      "right": ["22", "80", "53", "25"],
+      "answer": {"0": 0, "1": 1, "2": 2, "3": 3}
+    },
+    {
+      "id": "t3",
+      "type": "fill_blank",
+      "prompt": "SQL injection often exploits unsanitized ___ in queries.",
+      "points": 10,
+      "accepted": ["input", "user input", "inputs"],
+      "case_sensitive": false
+    },
+    {
+      "id": "t4",
+      "type": "flag",
+      "prompt": "Enter the practice flag (hint: FLAG{relay_demo}).",
+      "points": 25,
+      "accepted": ["FLAG{relay_demo}"],
+      "case_sensitive": true
+    },
+    {
+      "id": "t5",
+      "type": "hands_on",
+      "prompt": "Hands-on challenge placeholder (containers land in a later phase).",
+      "points": 50,
+      "image": "localhost/baton-demo:latest",
+      "ports": [18080],
+      "success": { "type": "flag", "accepted": ["FLAG{container_later}"] }
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+# BATON//RELAY — sample organizer config
+# Copy or edit in place. Team names are entered at the startup screen, not here.
+
+[team]
+size = 4
+# Rotation order is person index 0..size-1 (wraps). Default: sequential.
+rotation = [0, 1, 2, 3]
+
+[[team.people]]
+id = "p1"
+label = "1"
+color = "#00f5d4"
+# Baton: which two pins (1-5) are tied to GND. Must be a known pair.
+baton_pins = [1, 2]
+
+[[team.people]]
+id = "p2"
+label = "2"
+color = "#fee440"
+baton_pins = [1, 3]
+
+[[team.people]]
+id = "p3"
+label = "3"
+color = "#f15bb5"
+baton_pins = [1, 4]
+
+[[team.people]]
+id = "p4"
+label = "4"
+color = "#00bbf9"
+baton_pins = [1, 5]
+
+# Spare batons (not assigned to a team seat) can still be remapped later:
+# 2+3, 2+4, 2+5, 3+4, 3+5, 4+5
+
+[timers]
+leg_seconds = 180
+game_seconds = 2700
+# If true, leg timer keeps ticking while frozen (baton out).
+leg_runs_while_frozen = true
+debounce_ms = 80
+
+[serial]
+# port = "COM3"          # Windows example
+# port = "/dev/ttyACM0"  # Linux example
+port = "auto"
+baud = 115200
+heartbeat_timeout_ms = 1500
+
+[scoring]
+partial_credit = true
+wrong_answer_penalty = 0
+redo_multiplier = 0.5
+
+[questions]
+# Played in order. Each file is one set.
+files = [
+    "questions/01_warmup.json",
+    "questions/02_trivia.json",
+]
+redo_missed_at_set_end = true
+
+[controller]
+enabled = true
+inactivity_lock_seconds = 30
+# Unlock chord and bindings documented in docs/controller.md (phase 4).
+unlock_hold_ms = 1000
+
+[organizer]
+# Generate with: python -c "from baton_relay.security import hash_password; print(hash_password('change-me'))"
+# Placeholder hash is for password "change-me" (dev only).
+password_hash = "argon2$dev$change-me"
+
+[containers]
+runtime = "podman"  # podman | docker — Linux only
+network_mode = "none"
+memory_limit = "256m"
+cpu_limit = 0.5
+default_timeout_seconds = 600
+
+[paths]
+results_dir = "results"
+checkpoint_path = "data/checkpoints/current.json"
+
+[theme]
+name = "neon_terminal"
+accent = "#00f5d4"
+background = "#0a0e14"
+foreground = "#e6edf3"

@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "baton-relay"
+version = "0.1.0"
+description = "BATON//RELAY — SAINTCON team quiz-and-hacking relay"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "SAINTCON" }]
+dependencies = [
+    "PySide6>=6.6",
+    "pyserial>=3.5",
+    "pygame>=2.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-qt>=4.4",
+]
+containers = [
+    "docker>=7.0",
+]
+
+[project.scripts]
+relay = "baton_relay.cli:main"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/baton_relay", "config", "questions", "docs", "tests", "README.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
