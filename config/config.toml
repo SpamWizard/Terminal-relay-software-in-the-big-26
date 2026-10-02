@@ -1,4 +1,4 @@
-# BATON//RELAY — sample organizer config
+# Terminal Relay — sample organizer config
 # Copy or edit in place. Team names are entered at the startup screen, not here.
 
 [team]
@@ -35,8 +35,8 @@ baton_pins = [1, 5]
 # 2+3, 2+4, 2+5, 3+4, 3+5, 4+5
 
 [timers]
-leg_seconds = 180
-game_seconds = 2700
+leg_seconds = 15
+game_seconds = 200
 # If true, leg timer keeps ticking while frozen (baton out).
 leg_runs_while_frozen = true
 debounce_ms = 80

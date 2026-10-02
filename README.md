@@ -1,6 +1,6 @@
-# BATON//RELAY
+# Terminal Relay
 
-Python desktop app for SAINTCON: team quiz-and-hacking relay with physical baton (RP2040) identity, timed rotation, and extensible question types.
+Desktop relay app with physical baton (RP2040) identity, timed rotation, extensible question types, and optional hands-on container challenges.
 
 ## Quick start (MVP / fake-device mode)
 
@@ -13,6 +13,8 @@ relay run --fake-device
 # or: python -m baton_relay --fake-device
 ```
 
+Opens fullscreen. **F11** toggles windowed; **Esc** leaves fullscreen.
+
 Fake baton keys (when the game window has focus):
 
 | Key | Action |
@@ -20,7 +22,8 @@ Fake baton keys (when the game window has focus):
 | `1`–`6` | Insert baton for person 1–6 |
 | `0` / `U` | Unknown / bad reading |
 | `P` / `Backspace` | Pull baton out (freeze) |
-| `Esc` | Quit (dev) |
+
+While answering, hold **Ctrl** with those keys so they don’t conflict with typing.
 
 ## Reset for next team
 
@@ -32,7 +35,7 @@ Archives the current run, clears resumable state, stops challenge containers (wh
 
 ## Layout
 
-- `src/baton_relay/` — application
+- `src/baton_relay/` — application package
 - `config/config.toml` — runtime config
 - `questions/` — question set JSON files
 - `docs/` — format references (growing with features)

@@ -33,7 +33,7 @@ def cmd_reset(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="relay",
-        description="BATON//RELAY — SAINTCON team quiz-and-hacking relay",
+        description="Terminal Relay — timed team relay with baton identity",
     )
     parser.add_argument(
         "--config",

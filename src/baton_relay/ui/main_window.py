@@ -60,33 +60,31 @@ class StartupScreen(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(48, 48, 48, 48)
         layout.addStretch(1)
 
-        brand = QLabel("BATON//RELAY")
+        brand = QLabel("TERMINAL RELAY")
         brand.setObjectName("brand")
         brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(brand)
 
-        sub = QLabel("SAINTCON team quiz relay")
-        sub.setObjectName("muted")
-        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(sub)
-
-        layout.addSpacing(24)
+        layout.addSpacing(32)
 
         panel = QFrame()
-        panel.setObjectName("panel")
+        panel.setObjectName("startupPanel")
         panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(32, 28, 32, 28)
+        panel_layout.setSpacing(16)
         panel_layout.addWidget(QLabel("TEAM NAME"))
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("Enter team name…")
         self.name_edit.returnPressed.connect(self._go)
         panel_layout.addWidget(self.name_edit)
-        self.start_btn = QPushButton("BEGIN RELAY")
+        self.start_btn = QPushButton("START")
         self.start_btn.setObjectName("primary")
         self.start_btn.clicked.connect(self._go)
         panel_layout.addWidget(self.start_btn)
-        hint = QLabel("Resume unfinished games lands in a later phase.")
+        hint = QLabel("F11 toggles fullscreen · Esc exits fullscreen")
         hint.setObjectName("muted")
         panel_layout.addWidget(hint)
         layout.addWidget(panel, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -111,6 +109,7 @@ class ScoreScreen(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(48, 48, 48, 48)
         layout.addStretch(1)
         self.title = QLabel("SCORE")
         self.title.setObjectName("brand")
@@ -128,7 +127,7 @@ class ScoreScreen(QWidget):
         self.detail.setObjectName("muted")
         self.detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.detail)
-        layout.addSpacing(20)
+        layout.addSpacing(28)
         btn = QPushButton("NEXT TEAM")
         btn.setObjectName("primary")
         btn.clicked.connect(self.next_team.emit)
@@ -141,20 +140,91 @@ class ScoreScreen(QWidget):
         self.detail.setText(message)
 
 
+class SwitchOverlay(QFrame):
+    """Full-screen takeover when a baton swap / plug-in is required."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("switchOverlay")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(48, 48, 48, 48)
+        outer.addStretch(1)
+
+        self.box = QFrame()
+        self.box.setObjectName("switchBox")
+        box_l = QVBoxLayout(self.box)
+        box_l.setContentsMargins(64, 48, 64, 48)
+        box_l.setSpacing(16)
+
+        self.title = QLabel("SWITCH")
+        self.title.setObjectName("switchTitle")
+        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        box_l.addWidget(self.title)
+
+        self.person = QLabel("—")
+        self.person.setObjectName("switchPerson")
+        self.person.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        box_l.addWidget(self.person)
+
+        self.subtitle = QLabel("")
+        self.subtitle.setObjectName("switchSub")
+        self.subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.subtitle.setWordWrap(True)
+        box_l.addWidget(self.subtitle)
+
+        outer.addWidget(self.box, alignment=Qt.AlignmentFlag.AlignCenter)
+        outer.addStretch(1)
+        self.hide()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        # Scale the switch card with the display
+        w = max(520, int(self.width() * 0.55))
+        h = max(360, int(self.height() * 0.55))
+        self.box.setMinimumSize(w, h)
+        self.box.setMaximumWidth(int(self.width() * 0.85))
+
+    def show_switch(self, person_label: str, color: str, *, mode: str, detail: str = "") -> None:
+        if mode == "switch":
+            self.title.setText("SWITCH")
+            self.subtitle.setText(detail or f"Person {person_label} — plug in now")
+        elif mode == "resume":
+            self.title.setText("BATON OUT")
+            self.subtitle.setText(detail or f"Person {person_label} — plug back in to continue")
+        elif mode == "wrong":
+            self.title.setText("WRONG")
+            self.subtitle.setText(detail or f"Need person {person_label}")
+        else:
+            self.title.setText("WAIT")
+            self.subtitle.setText(detail or f"Person {person_label}")
+        self.person.setText(person_label)
+        self.person.setStyleSheet(f"color: {color};")
+        self.show()
+        self.raise_()
+
+    def clear(self) -> None:
+        self.hide()
+
+
 class GameScreen(QWidget):
     def __init__(self, config: AppConfig, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.config = config
         root = QVBoxLayout(self)
+        root.setContentsMargins(28, 24, 28, 20)
+        root.setSpacing(16)
 
         header = QHBoxLayout()
         self.team_label = QLabel("TEAM")
         self.team_label.setObjectName("headline")
         header.addWidget(self.team_label, 2)
         self.score_label = QLabel("SCORE 0")
+        self.score_label.setObjectName("headline")
         header.addWidget(self.score_label, 1)
         self.game_timer = QLabel("00:00")
-        self.game_timer.setObjectName("muted")
+        self.game_timer.setObjectName("headline")
         header.addWidget(self.game_timer, 1, Qt.AlignmentFlag.AlignRight)
         root.addLayout(header)
 
@@ -201,6 +271,12 @@ class GameScreen(QWidget):
         footer.addWidget(self.hint)
         root.addLayout(footer)
 
+        self.switch_overlay = SwitchOverlay(self)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self.switch_overlay.setGeometry(self.rect())
+
     def bind_submit(self, handler: Callable) -> None:
         self.question_host.set_submit_handler(handler)
 
@@ -216,7 +292,7 @@ class GameScreen(QWidget):
         self.next_big.setStyleSheet(f"color: {expected.color};")
 
         state_names = {
-            RelayState.WAITING_FOR_BATON: "WAITING FOR BATON",
+            RelayState.WAITING_FOR_BATON: "WAITING",
             RelayState.ACTIVE: "ACTIVE",
             RelayState.FROZEN: "FROZEN",
             RelayState.DISCONNECTED: "DISCONNECTED",
@@ -238,6 +314,41 @@ class GameScreen(QWidget):
         if question_changed:
             self.question_host.show_question(question)
 
+        # Big takeover when someone must plug in
+        if snap.state == RelayState.WAITING_FOR_BATON:
+            mode = "wrong" if snap.wrong_baton else "switch"
+            self.switch_overlay.show_switch(
+                expected.label,
+                expected.color,
+                mode=mode,
+                detail=snap.last_message,
+            )
+            self.switch_overlay.setGeometry(self.rect())
+        elif snap.state == RelayState.FROZEN:
+            # Same person resumes after a pull-out
+            person = (
+                self.config.people[snap.current_person_index]
+                if snap.current_person_index is not None
+                else expected
+            )
+            self.switch_overlay.show_switch(
+                person.label,
+                person.color,
+                mode="resume",
+                detail=snap.last_message,
+            )
+            self.switch_overlay.setGeometry(self.rect())
+        elif snap.state == RelayState.DISCONNECTED:
+            self.switch_overlay.show_switch(
+                expected.label,
+                expected.color,
+                mode="wait",
+                detail=snap.last_message or "Device disconnected",
+            )
+            self.switch_overlay.setGeometry(self.rect())
+        else:
+            self.switch_overlay.clear()
+
 
 class MainWindow(QMainWindow):
     def __init__(
@@ -257,8 +368,9 @@ class MainWindow(QMainWindow):
         self._last_qid: str | None = None
         self._fake: FakeBatonSource | None = None
 
-        self.setWindowTitle("BATON//RELAY")
-        self.resize(1100, 720)
+        self.setWindowTitle("Terminal Relay")
+        self.resize(1280, 800)
+        self.setMinimumSize(1024, 640)
         self.setStyleSheet(build_stylesheet(config.theme))
 
         self.stack = QStackedWidget()
@@ -287,23 +399,34 @@ class MainWindow(QMainWindow):
             self._fake = FakeBatonSource(config)
             self._fake.start(self._on_reading)
             self.game_screen.hint.setText(
-                "Fake: 1-6 insert · P pull · U unknown  (Ctrl+key while answering)"
+                "Fake: 1-6 insert · P pull · U unknown  (Ctrl+key while answering)  ·  F11 fullscreen"
             )
         else:
-            self.game_screen.hint.setText("Serial device mode (connect RP2040)")
+            self.game_screen.hint.setText("Serial device mode (connect RP2040)  ·  F11 fullscreen")
 
         self.startup.reset()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
-        self._scanlines.resize(self.size())
+        self._scanlines.setGeometry(self.rect())
+        self._scanlines.raise_()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        key = event.key()
+        if key == Qt.Key.Key_F11:
+            if self.isFullScreen():
+                self.showNormal()
+            else:
+                self.showFullScreen()
+            return
+        if key == Qt.Key.Key_Escape and self.isFullScreen():
+            self.showNormal()
+            return
+
         if self._fake and self.stack.currentWidget() is self.game_screen:
             # When answering, require Ctrl so digits don't steal from text fields.
             locked = not self.session or self.session.questions_locked()
             ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
-            key = event.key()
             text = event.text()
 
             if key == Qt.Key.Key_Backspace and (locked or ctrl):

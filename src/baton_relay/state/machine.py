@@ -73,7 +73,7 @@ class GameSession:
         self.leg_remaining = float(config.timers.leg_seconds)
         self.game_remaining = float(config.timers.game_seconds)
         self.progress = Progress()
-        self.last_message = "Insert baton to begin."
+        self.last_message = "SWITCH — plug in to begin."
         self.wrong_baton = False
         self.device_status = "unknown"
         self._pre_disconnect_state: RelayState | None = None
@@ -149,9 +149,9 @@ class GameSession:
         if person_index is None:
             self.wrong_baton = False
             if self.state == RelayState.ACTIVE:
-                self._freeze("Baton removed.", source=source)
+                self._freeze("Baton removed — plug back in.", source=source)
             elif self.state == RelayState.WAITING_FOR_BATON:
-                self.last_message = f"Waiting for person {self.expected_person.label}."
+                self.last_message = f"SWITCH — person {self.expected_person.label}."
                 self._emit()
             return
 
@@ -182,7 +182,7 @@ class GameSession:
                 person = self.config.people[person_index]
                 self.wrong_baton = True
                 self.last_message = (
-                    f"Wrong baton ({person.label}). "
+                    f"Wrong person ({person.label}). "
                     f"Need person {self.expected_person.label}."
                 )
                 self._event(
@@ -222,7 +222,7 @@ class GameSession:
         # Return to waiting/frozen; require baton again
         self.state = RelayState.WAITING_FOR_BATON
         self.current_person_index = None
-        self.last_message = f"Reconnected. Waiting for person {self.expected_person.label}."
+        self.last_message = f"Reconnected. SWITCH — person {self.expected_person.label}."
         self.device_status = "connected"
         self._pre_disconnect_state = None
         self._event("device_reconnected")
@@ -260,7 +260,7 @@ class GameSession:
         self.current_person_index = None
         self.leg_remaining = float(self.config.timers.leg_seconds)
         self.state = RelayState.WAITING_FOR_BATON
-        self.last_message = f"Swap! Waiting for person {self.expected_person.label}."
+        self.last_message = f"SWITCH — person {self.expected_person.label} next."
         self.wrong_baton = False
         self._event("leg_swap", expected=self.expected_person_index)
         self._emit()

@@ -33,7 +33,7 @@ def run_app(*, config_path: Path, fake_device: bool = False) -> int:
     from baton_relay.ui.main_window import MainWindow
 
     app = QApplication(sys.argv)
-    app.setApplicationName("BATON//RELAY")
+    app.setApplicationName("Terminal Relay")
     window = MainWindow(config, sets, fake_device=fake_device)
-    window.show()
+    window.showFullScreen()
     return app.exec()
