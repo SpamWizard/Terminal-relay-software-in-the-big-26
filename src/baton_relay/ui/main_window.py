@@ -228,6 +228,12 @@ class GameScreen(QWidget):
         header.addWidget(self.game_timer, 1, Qt.AlignmentFlag.AlignRight)
         root.addLayout(header)
 
+        # Stage holds gameplay + SWITCH overlay; header stays above so timers remain visible.
+        self.stage = QWidget()
+        stage_l = QVBoxLayout(self.stage)
+        stage_l.setContentsMargins(0, 0, 0, 0)
+        stage_l.setSpacing(16)
+
         body = QHBoxLayout()
 
         left = QFrame()
@@ -259,7 +265,7 @@ class GameScreen(QWidget):
         right_l.addWidget(self.question_host)
         body.addWidget(right, 2)
 
-        root.addLayout(body, 1)
+        stage_l.addLayout(body, 1)
 
         footer = QHBoxLayout()
         self.device_status = QLabel("DEVICE —")
@@ -269,13 +275,19 @@ class GameScreen(QWidget):
         self.hint = QLabel("Fake: 1-6 insert · P pull · U unknown")
         self.hint.setObjectName("muted")
         footer.addWidget(self.hint)
-        root.addLayout(footer)
+        stage_l.addLayout(footer)
 
-        self.switch_overlay = SwitchOverlay(self)
+        root.addWidget(self.stage, 1)
+
+        self.switch_overlay = SwitchOverlay(self.stage)
+
+    def _fit_switch_overlay(self) -> None:
+        self.switch_overlay.setGeometry(self.stage.rect())
+        self.switch_overlay.raise_()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
-        self.switch_overlay.setGeometry(self.rect())
+        self._fit_switch_overlay()
 
     def bind_submit(self, handler: Callable) -> None:
         self.question_host.set_submit_handler(handler)
@@ -314,7 +326,7 @@ class GameScreen(QWidget):
         if question_changed:
             self.question_host.show_question(question)
 
-        # Big takeover when someone must plug in
+        # Big takeover when someone must plug in (header stays visible for game timer)
         if snap.state == RelayState.WAITING_FOR_BATON:
             mode = "wrong" if snap.wrong_baton else "switch"
             self.switch_overlay.show_switch(
@@ -323,9 +335,8 @@ class GameScreen(QWidget):
                 mode=mode,
                 detail=snap.last_message,
             )
-            self.switch_overlay.setGeometry(self.rect())
+            self._fit_switch_overlay()
         elif snap.state == RelayState.FROZEN:
-            # Same person resumes after a pull-out
             person = (
                 self.config.people[snap.current_person_index]
                 if snap.current_person_index is not None
@@ -337,7 +348,7 @@ class GameScreen(QWidget):
                 mode="resume",
                 detail=snap.last_message,
             )
-            self.switch_overlay.setGeometry(self.rect())
+            self._fit_switch_overlay()
         elif snap.state == RelayState.DISCONNECTED:
             self.switch_overlay.show_switch(
                 expected.label,
@@ -345,7 +356,7 @@ class GameScreen(QWidget):
                 mode="wait",
                 detail=snap.last_message or "Device disconnected",
             )
-            self.switch_overlay.setGeometry(self.rect())
+            self._fit_switch_overlay()
         else:
             self.switch_overlay.clear()
 

@@ -7,7 +7,6 @@ from typing import Any, Callable
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
@@ -15,7 +14,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
-    QRadioButton,
     QVBoxLayout,
     QWidget,
 )
@@ -86,7 +84,7 @@ class QuestionHost(QWidget):
         if question is None:
             self.prompt.setText("No more questions.")
             return
-        self.prompt.setText(f"[{question.type}]  {question.prompt}")
+        self.prompt.setText(question.prompt)
         body, collect = build_answer_widget(question)
         self._body = body
         self._collect = collect
@@ -127,10 +125,16 @@ def build_answer_widget(question: Question) -> tuple[QWidget, Callable[[], Any]]
 def _mc(q: MultipleChoice) -> tuple[QWidget, Callable[[], Any]]:
     root = QWidget()
     layout = QVBoxLayout(root)
+    layout.setSpacing(10)
     group = QButtonGroup(root)
-    buttons: list[QRadioButton] = []
+    group.setExclusive(True)
+    buttons: list[QPushButton] = []
     for i, choice in enumerate(q.choices or []):
-        btn = QRadioButton(f"{chr(65 + i)}.  {choice}")
+        btn = QPushButton(f"{chr(65 + i)}.  {choice}")
+        btn.setObjectName("choice")
+        btn.setCheckable(True)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setMinimumHeight(48)
         group.addButton(btn, i)
         buttons.append(btn)
         layout.addWidget(btn)
@@ -147,14 +151,19 @@ def _mc(q: MultipleChoice) -> tuple[QWidget, Callable[[], Any]]:
 def _select_all(q: SelectAll) -> tuple[QWidget, Callable[[], Any]]:
     root = QWidget()
     layout = QVBoxLayout(root)
-    boxes: list[QCheckBox] = []
+    layout.setSpacing(10)
+    buttons: list[QPushButton] = []
     for i, choice in enumerate(q.choices or []):
-        box = QCheckBox(f"{chr(65 + i)}.  {choice}")
-        boxes.append(box)
-        layout.addWidget(box)
+        btn = QPushButton(f"{chr(65 + i)}.  {choice}")
+        btn.setObjectName("choice")
+        btn.setCheckable(True)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setMinimumHeight(48)
+        buttons.append(btn)
+        layout.addWidget(btn)
 
     def collect() -> list[int]:
-        return [i for i, b in enumerate(boxes) if b.isChecked()]
+        return [i for i, b in enumerate(buttons) if b.isChecked()]
 
     return root, collect
 

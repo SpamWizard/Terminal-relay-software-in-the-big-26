@@ -81,6 +81,31 @@ def build_stylesheet(theme: ThemeConfig) -> str:
     QPushButton#primary:hover {{
         background-color: #7af8e4;
     }}
+    QPushButton#choice {{
+        background-color: #121826;
+        border: 1px solid #1f2a3d;
+        color: {fg};
+        text-align: left;
+        padding: 14px 18px;
+        font-size: 18px;
+        font-weight: 500;
+    }}
+    QPushButton#choice:hover {{
+        border-color: {accent};
+        color: {fg};
+        background-color: #182033;
+    }}
+    QPushButton#choice:checked {{
+        background-color: {accent};
+        border-color: {accent};
+        color: {bg};
+        font-weight: 700;
+    }}
+    QPushButton#choice:disabled {{
+        border-color: #334155;
+        color: #475569;
+        background-color: #0d121c;
+    }}
     QFrame#panel {{
         background-color: #0d121c;
         border: 1px solid #1f2a3d;
