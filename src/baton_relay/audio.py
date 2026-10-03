@@ -1,4 +1,4 @@
-"""Switch-alert audio — short loud chime, not a harsh beep."""
+"""Switch-alert audio — quick soft blip."""
 
 from __future__ import annotations
 
@@ -18,15 +18,14 @@ def _ensure_chime() -> Path:
     if _CACHE is not None and _CACHE.is_file():
         return _CACHE
 
-    path = Path(tempfile.gettempdir()) / "terminal_relay_switch_chime.wav"
+    # Versioned filename so older cached chimes are not reused
+    path = Path(tempfile.gettempdir()) / "terminal_relay_switch_chime_v2.wav"
     sample_rate = 44100
-    # Two rising tones + soft decay — attention-getting, not screechy
+    # One soft mid tone + a quieter higher tick — ~180ms total
     segments = [
-        (523.25, 0.12),  # C5
-        (0.0, 0.04),
-        (783.99, 0.16),  # G5
-        (0.0, 0.03),
-        (1046.50, 0.22),  # C6
+        (440.0, 0.09),   # A4
+        (0.0, 0.02),
+        (659.25, 0.07),  # E5, short
     ]
     frames = bytearray()
     for freq, dur in segments:
@@ -36,13 +35,13 @@ def _ensure_chime() -> Path:
             if freq <= 0:
                 sample = 0.0
             else:
-                # Envelope: quick attack, short sustain, decay
-                env = min(1.0, i / (sample_rate * 0.01))
-                env *= max(0.0, 1.0 - (i / max(1, n - 1)) ** 1.4)
-                # Soft square-ish mix (fundamental + quiet odd harmonic)
+                # Fast attack, smooth exponential-ish decay (no harsh edge)
+                attack = min(1.0, i / (sample_rate * 0.008))
+                decay = math.exp(-3.2 * i / max(1, n - 1))
+                env = attack * decay
+                # Pure sine only — harmonics sound more annoying
                 wave_ = math.sin(2 * math.pi * freq * t)
-                wave_ += 0.25 * math.sin(2 * math.pi * freq * 2 * t)
-                sample = 0.72 * env * wave_
+                sample = 0.55 * env * wave_
             frames += struct.pack("<h", int(max(-1.0, min(1.0, sample)) * 32767))
 
     with wave.open(str(path), "w") as wf:
@@ -62,7 +61,6 @@ def play_switch_chime(*, volume: float = 0.9) -> None:
         import pygame
 
         if not _mixer_ready:
-            # Dedicated frequency / buffer for low latency on Windows + Linux
             pygame.mixer.init(frequency=44100, size=-16, channels=1, buffer=512)
             _mixer_ready = True
         if _sound is None:
@@ -71,5 +69,4 @@ def play_switch_chime(*, volume: float = 0.9) -> None:
         _sound.set_volume(vol)
         _sound.play()
     except Exception:
-        # Never break the game for audio issues
         pass
