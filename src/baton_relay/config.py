@@ -88,6 +88,8 @@ class UiConfig:
     correct_hold_ms: int
     correct_fade_in_ms: int
     correct_fade_out_ms: int
+    switch_sound: bool
+    switch_sound_volume: float
 
 
 @dataclass(frozen=True)
@@ -436,6 +438,10 @@ def load_config(path: Path) -> AppConfig:
     hold_ms = _as_int(ui_raw.get("correct_hold_ms", 480), "[ui].correct_hold_ms")
     fade_in_ms = _as_int(ui_raw.get("correct_fade_in_ms", 160), "[ui].correct_fade_in_ms")
     fade_out_ms = _as_int(ui_raw.get("correct_fade_out_ms", 200), "[ui].correct_fade_out_ms")
+    switch_sound = _as_bool(ui_raw.get("switch_sound", True), "[ui].switch_sound")
+    switch_vol = _as_number_expr(
+        ui_raw.get("switch_sound_volume", 0.9), "[ui].switch_sound_volume"
+    )
     for label, value in (
         ("[ui].correct_hold_ms", hold_ms),
         ("[ui].correct_fade_in_ms", fade_in_ms),
@@ -443,10 +449,16 @@ def load_config(path: Path) -> AppConfig:
     ):
         if value < 0:
             raise ConfigError(f"{label}: must be >= 0, got {value}")
+    if not 0.0 <= switch_vol <= 1.0:
+        raise ConfigError(
+            f"[ui].switch_sound_volume: must be 0.0–1.0, got {switch_vol}"
+        )
     ui = UiConfig(
         correct_hold_ms=hold_ms,
         correct_fade_in_ms=fade_in_ms,
         correct_fade_out_ms=fade_out_ms,
+        switch_sound=switch_sound,
+        switch_sound_volume=switch_vol,
     )
 
     return AppConfig(

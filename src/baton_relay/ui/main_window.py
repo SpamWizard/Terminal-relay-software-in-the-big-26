@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from baton_relay.audio import play_switch_chime
 from baton_relay.config import AppConfig
 from baton_relay.input.base import BatonReading, ReadingKind
 from baton_relay.input.fake import FakeBatonSource
@@ -226,6 +227,7 @@ class GameScreen(QWidget):
         self.config = config
         self.setObjectName("gameScreen")
         self._person_accent = config.theme.accent
+        self._prev_switch_key: tuple[str, int] | None = None
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 20)
         root.setSpacing(16)
@@ -389,6 +391,14 @@ class GameScreen(QWidget):
         # Big takeover when someone must plug in (header stays visible for game timer)
         if snap.state == RelayState.WAITING_FOR_BATON:
             mode = "wrong" if snap.wrong_baton else "switch"
+            switch_key = ("waiting", snap.expected_person_index)
+            if (
+                mode == "switch"
+                and switch_key != self._prev_switch_key
+                and self.config.ui.switch_sound
+            ):
+                play_switch_chime(volume=self.config.ui.switch_sound_volume)
+            self._prev_switch_key = switch_key
             self.switch_overlay.show_switch(
                 expected.label,
                 expected.color,
@@ -397,6 +407,7 @@ class GameScreen(QWidget):
             )
             self._fit_switch_overlay()
         elif snap.state == RelayState.FROZEN:
+            self._prev_switch_key = None
             person = (
                 self.config.people[snap.current_person_index]
                 if snap.current_person_index is not None
@@ -410,6 +421,7 @@ class GameScreen(QWidget):
             )
             self._fit_switch_overlay()
         elif snap.state == RelayState.DISCONNECTED:
+            self._prev_switch_key = None
             self.switch_overlay.show_switch(
                 expected.label,
                 expected.color,
@@ -418,6 +430,7 @@ class GameScreen(QWidget):
             )
             self._fit_switch_overlay()
         else:
+            self._prev_switch_key = None
             self.switch_overlay.clear()
 
 

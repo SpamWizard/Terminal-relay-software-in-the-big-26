@@ -17,7 +17,7 @@ Config file: TOML at `config/config.toml` (override with `--config`).
 | `[paths]` | results_dir, checkpoint_path |
 | `[theme]` | `name` selects a preset; optional accent/background/foreground overrides |
 | `[themes.<name>]` | Named color presets (neon_terminal, amber_grid, violet_pulse, ice, crimson, …) |
-| `[ui]` | correct toast: `correct_fade_in_ms`, `correct_hold_ms`, `correct_fade_out_ms` |
+| `[ui]` | correct toast timings; `switch_sound` / `switch_sound_volume` (0–1) for change alert |
 
 Person `color` values tint the whole game UI (background wash, borders, accents) for whoever is up.
 

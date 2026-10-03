@@ -121,3 +121,6 @@ foreground = "#ffe6ec"
 correct_fade_in_ms = 160
 correct_hold_ms = 480
 correct_fade_out_ms = 200
+# Loud-but-not-harsh chime when a person switch is required
+switch_sound = true
+switch_sound_volume = 0.9
