@@ -26,7 +26,7 @@ from baton_relay.results.log import EventLog, new_run_dir
 from baton_relay.state.machine import GameSession, GameSnapshot, RelayState
 from baton_relay.ui.correct_burst import CorrectBurst
 from baton_relay.ui.question_widgets import QuestionHost
-from baton_relay.ui.theme import build_stylesheet
+from baton_relay.ui.theme import build_stylesheet, display_color, game_screen_wash, soften
 
 
 def _fmt_time(seconds: float) -> str:
@@ -39,7 +39,7 @@ def _fmt_time(seconds: float) -> str:
 
 
 class ScanlineOverlay(QWidget):
-    """Subtle CRT-style scanlines over the window content."""
+    """Very light CRT-style scanlines (kept subtle so panels stay clean)."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -48,10 +48,10 @@ class ScanlineOverlay(QWidget):
 
     def paintEvent(self, event) -> None:  # noqa: N802
         painter = QPainter(self)
-        pen = QPen(QColor(0, 0, 0, 35))
+        pen = QPen(QColor(0, 0, 0, 14))
         pen.setWidth(1)
         painter.setPen(pen)
-        for y in range(0, self.height(), 3):
+        for y in range(0, self.height(), 4):
             painter.drawLine(0, y, self.width(), y)
 
 
@@ -73,10 +73,13 @@ class StartupScreen(QWidget):
 
         panel = QFrame()
         panel.setObjectName("startupPanel")
+        panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         panel_layout = QVBoxLayout(panel)
         panel_layout.setContentsMargins(32, 28, 32, 28)
         panel_layout.setSpacing(16)
-        panel_layout.addWidget(QLabel("TEAM NAME"))
+        title = QLabel("TEAM NAME")
+        title.setObjectName("muted")
+        panel_layout.addWidget(title)
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("Enter team name…")
         self.name_edit.returnPressed.connect(self._go)
@@ -144,8 +147,9 @@ class ScoreScreen(QWidget):
 class SwitchOverlay(QFrame):
     """Full-screen takeover when a baton swap / plug-in is required."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, theme, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.theme = theme
         self.setObjectName("switchOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
@@ -201,7 +205,14 @@ class SwitchOverlay(QFrame):
             self.title.setText("WAIT")
             self.subtitle.setText(detail or f"Person {person_label}")
         self.person.setText(person_label)
-        self.person.setStyleSheet(f"color: {color};")
+        show = display_color(color, self.theme)
+        border = soften(color, self.theme, amount=0.25)
+        self.person.setStyleSheet(f"color: {show}; background: transparent;")
+        self.title.setStyleSheet(f"color: {border}; background: transparent;")
+        self.box.setStyleSheet(
+            f"QFrame#switchBox {{ border: 3px solid {border}; "
+            f"background-color: rgba(10, 14, 20, 236); border-radius: 10px; }}"
+        )
         self.show()
         self.raise_()
 
@@ -213,6 +224,8 @@ class GameScreen(QWidget):
     def __init__(self, config: AppConfig, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.config = config
+        self.setObjectName("gameScreen")
+        self._person_accent = config.theme.accent
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 20)
         root.setSpacing(16)
@@ -280,7 +293,7 @@ class GameScreen(QWidget):
 
         root.addWidget(self.stage, 1)
 
-        self.switch_overlay = SwitchOverlay(self.stage)
+        self.switch_overlay = SwitchOverlay(config.theme, self.stage)
         self.correct_burst = CorrectBurst(self.stage)
 
     def _fit_switch_overlay(self) -> None:
@@ -308,7 +321,25 @@ class GameScreen(QWidget):
             fade_out_ms=ui.correct_fade_out_ms,
         )
 
-    def render(self, snap: GameSnapshot, question_changed: bool, question) -> None:
+    def apply_person_color(self, color: str, window: QMainWindow | None = None) -> None:
+        """Drive accents + background wash from the current / expected person."""
+        if color == self._person_accent:
+            return
+        self._person_accent = color
+        theme = self.config.theme
+        soft = soften(color, theme, amount=0.15)
+        self.setStyleSheet(game_screen_wash(theme, color))
+        if window is not None:
+            window.setStyleSheet(build_stylesheet(theme, accent=soft))
+
+    def render(
+        self,
+        snap: GameSnapshot,
+        question_changed: bool,
+        question,
+        *,
+        window: QMainWindow | None = None,
+    ) -> None:
         self.team_label.setText(snap.team_name or "TEAM")
         score = snap.progress.total_score
         self.score_label.setText(f"SCORE {score:.1f}" if score % 1 else f"SCORE {int(score)}")
@@ -316,8 +347,21 @@ class GameScreen(QWidget):
         self.leg_timer.setText(_fmt_time(snap.leg_remaining))
 
         expected = self.config.people[snap.expected_person_index]
+        # Active person owns the color while answering; otherwise expected next
+        if snap.state == RelayState.ACTIVE and snap.current_person_index is not None:
+            accent_person = self.config.people[snap.current_person_index]
+        elif snap.state == RelayState.FROZEN and snap.current_person_index is not None:
+            accent_person = self.config.people[snap.current_person_index]
+        else:
+            accent_person = expected
+        self.apply_person_color(accent_person.color, window=window)
+
         self.next_big.setText(expected.label)
-        self.next_big.setStyleSheet(f"color: {expected.color};")
+        show = display_color(accent_person.color, self.config.theme)
+        self.next_big.setStyleSheet(f"color: {show}; background: transparent;")
+        self.leg_timer.setStyleSheet(f"color: {show}; background: transparent;")
+        self.game_timer.setStyleSheet(f"color: {show}; background: transparent;")
+        self.score_label.setStyleSheet(f"color: {show}; background: transparent;")
 
         state_names = {
             RelayState.WAITING_FOR_BATON: "WAITING",
@@ -590,12 +634,14 @@ class MainWindow(QMainWindow):
         qid = q.id if q else None
         changed = force_question or qid != self._last_qid
         self._last_qid = qid
-        self.game_screen.render(snap, changed, q)
+        self.game_screen.render(snap, changed, q, window=self)
 
     def _next_team(self) -> None:
         self.session = None
         self.event_log = None
         self.run_dir = None
         self._last_qid = None
+        self.game_screen._person_accent = ""  # force palette refresh next game
+        self.setStyleSheet(build_stylesheet(self.config.theme))
         self.startup.reset()
         self.stack.setCurrentWidget(self.startup)

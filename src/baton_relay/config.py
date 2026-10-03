@@ -140,6 +140,58 @@ def _as_float(value: Any, path: str) -> float:
     return float(value)
 
 
+def _as_number_expr(value: Any, path: str) -> float:
+    """Accept a number or a simple arithmetic string like '4*60' or '40 * 60'."""
+    if isinstance(value, bool):
+        raise ConfigError(f"{path}: expected number or expression string, got {value!r}")
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        expr = value.strip()
+        if not expr:
+            raise ConfigError(f"{path}: empty expression")
+        try:
+            return float(_eval_arith(expr))
+        except ConfigError:
+            raise
+        except Exception as exc:
+            raise ConfigError(f"{path}: invalid expression {value!r}: {exc}") from exc
+    raise ConfigError(f"{path}: expected number or expression string, got {value!r}")
+
+
+def _eval_arith(expr: str) -> float:
+    """Safely evaluate + - * / // % ** and parentheses over numbers only."""
+    import ast
+    import operator as op
+
+    ops = {
+        ast.Add: op.add,
+        ast.Sub: op.sub,
+        ast.Mult: op.mul,
+        ast.Div: op.truediv,
+        ast.FloorDiv: op.floordiv,
+        ast.Mod: op.mod,
+        ast.Pow: op.pow,
+        ast.UAdd: op.pos,
+        ast.USub: op.neg,
+    }
+
+    def _eval(node: ast.AST) -> float:
+        if isinstance(node, ast.Expression):
+            return _eval(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return float(node.value)
+        # Python 3.11 still may see BinOp etc.
+        if isinstance(node, ast.BinOp) and type(node.op) in ops:
+            return float(ops[type(node.op)](_eval(node.left), _eval(node.right)))
+        if isinstance(node, ast.UnaryOp) and type(node.op) in ops:
+            return float(ops[type(node.op)](_eval(node.operand)))
+        raise ConfigError(f"unsupported expression node: {type(node).__name__}")
+
+    tree = ast.parse(expr, mode="eval")
+    return _eval(tree)
+
+
 def _as_bool(value: Any, path: str) -> bool:
     if not isinstance(value, bool):
         raise ConfigError(f"{path}: expected boolean, got {value!r}")
@@ -222,8 +274,10 @@ def load_config(path: Path) -> AppConfig:
     if not isinstance(timers_raw, dict):
         raise ConfigError("[timers]: expected table")
     timers = TimersConfig(
-        leg_seconds=_as_float(_require(timers_raw, "leg_seconds", "[timers]"), "[timers].leg_seconds"),
-        game_seconds=_as_float(
+        leg_seconds=_as_number_expr(
+            _require(timers_raw, "leg_seconds", "[timers]"), "[timers].leg_seconds"
+        ),
+        game_seconds=_as_number_expr(
             _require(timers_raw, "game_seconds", "[timers]"), "[timers].game_seconds"
         ),
         leg_runs_while_frozen=_as_bool(
@@ -341,11 +395,39 @@ def load_config(path: Path) -> AppConfig:
     theme_raw = raw.get("theme", {})
     if not isinstance(theme_raw, dict):
         raise ConfigError("[theme]: expected table")
+    theme_name = _as_str(theme_raw.get("name", "neon_terminal"), "[theme].name")
+
+    # Optional named presets under [themes.<name>]
+    themes_raw = raw.get("themes", {})
+    if themes_raw is not None and not isinstance(themes_raw, dict):
+        raise ConfigError("[themes]: expected table of named themes")
+    preset: dict[str, Any] = {}
+    if isinstance(themes_raw, dict) and theme_name in themes_raw:
+        candidate = themes_raw[theme_name]
+        if not isinstance(candidate, dict):
+            raise ConfigError(f"[themes.{theme_name}]: expected table")
+        preset = candidate
+    elif isinstance(themes_raw, dict) and themes_raw and theme_name not in themes_raw:
+        available = ", ".join(sorted(themes_raw))
+        raise ConfigError(
+            f"[theme].name: unknown theme {theme_name!r} (available: {available})"
+        )
+
+    # Prefer preset colors; allow [theme] overrides for accent/background/foreground
     theme = ThemeConfig(
-        name=_as_str(theme_raw.get("name", "neon_terminal"), "[theme].name"),
-        accent=_as_str(theme_raw.get("accent", "#00f5d4"), "[theme].accent"),
-        background=_as_str(theme_raw.get("background", "#0a0e14"), "[theme].background"),
-        foreground=_as_str(theme_raw.get("foreground", "#e6edf3"), "[theme].foreground"),
+        name=theme_name,
+        accent=_as_str(
+            theme_raw.get("accent", preset.get("accent", "#00f5d4")),
+            "[theme].accent",
+        ),
+        background=_as_str(
+            theme_raw.get("background", preset.get("background", "#0a0e14")),
+            "[theme].background",
+        ),
+        foreground=_as_str(
+            theme_raw.get("foreground", preset.get("foreground", "#e6edf3")),
+            "[theme].foreground",
+        ),
     )
 
     ui_raw = raw.get("ui", {})

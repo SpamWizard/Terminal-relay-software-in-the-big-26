@@ -34,6 +34,19 @@ def test_load_config(config):
     assert config.team_size == 4
     assert len(config.people) == 4
     assert config.people[0].baton_pins == (1, 2)
+    assert config.timers.leg_seconds > 0
+    assert config.timers.game_seconds > 0
+    assert config.theme.name == "neon_terminal"
+
+
+def test_number_expr():
+    from baton_relay.config import ConfigError, _as_number_expr
+
+    assert _as_number_expr("4*60", "t") == 240
+    assert _as_number_expr("40 * 60", "t") == 2400
+    assert _as_number_expr(90, "t") == 90
+    with pytest.raises(ConfigError):
+        _as_number_expr("import os", "t")
 
 
 def test_load_questions(sets):

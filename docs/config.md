@@ -6,8 +6,8 @@ Config file: TOML at `config/config.toml` (override with `--config`).
 
 | Section | Purpose |
 |---------|---------|
-| `[team]` | size (3–6), rotation, `[[team.people]]` id/label/color/baton_pins |
-| `[timers]` | leg_seconds, game_seconds, leg_runs_while_frozen, debounce_ms |
+| `[team]` | size (3–6), rotation, `[[team.people]]` id/label/color/baton_pins (Okabe–Ito colorblind-safe defaults) |
+| `[timers]` | leg_seconds, game_seconds (number or `"4*60"`), leg_runs_while_frozen, debounce_ms |
 | `[serial]` | port, baud, heartbeat_timeout_ms (serial reader later) |
 | `[scoring]` | partial_credit, wrong_answer_penalty, redo_multiplier |
 | `[questions]` | files (ordered), redo_missed_at_set_end |
@@ -15,7 +15,12 @@ Config file: TOML at `config/config.toml` (override with `--config`).
 | `[organizer]` | password_hash |
 | `[containers]` | runtime/limits (Linux later) |
 | `[paths]` | results_dir, checkpoint_path |
-| `[theme]` | neon terminal colors |
+| `[theme]` | `name` selects a preset; optional accent/background/foreground overrides |
+| `[themes.<name>]` | Named color presets (neon_terminal, amber_grid, violet_pulse, ice, crimson, …) |
 | `[ui]` | correct toast: `correct_fade_in_ms`, `correct_hold_ms`, `correct_fade_out_ms` |
+
+Person `color` values tint the whole game UI (background wash, borders, accents) for whoever is up.
+
+Timer values may be plain numbers (`180`) or arithmetic strings (`"3*60"`, `"45*60"`). Restart the app after config edits.
 
 Team names are **not** in config — entered on the startup screen.
