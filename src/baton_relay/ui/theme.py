@@ -376,6 +376,27 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         font-size: 20px;
         font-weight: 600;
     }}
+    QFrame#overrideToast {{
+        background-color: rgba(40, 18, 8, 0.96);
+        border: 3px solid #ff9f1a;
+        border-radius: 8px;
+        min-width: 420px;
+    }}
+    QLabel#overrideTitle {{
+        color: #ff9f1a;
+        background: transparent;
+        font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+        font-size: 44px;
+        font-weight: 800;
+        letter-spacing: 4px;
+    }}
+    QLabel#overrideSub {{
+        color: #ffe0b0;
+        background: transparent;
+        font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+        font-size: 18px;
+        font-weight: 600;
+    }}
     QListWidget#orderList {{
         background-color: {input_bg};
         border: 1px solid {panel_border};
@@ -414,16 +435,35 @@ def display_color(color: str, theme: ThemeConfig) -> str:
 
 
 def game_screen_wash(theme: ThemeConfig, person_color: str) -> str:
-    """Subtle room tint — keep hues distinct; borders carry most of the signal."""
-    soft = soften(person_color, theme, amount=0.12)
-    bg = mix(theme.background, soft, 0.10)
-    edge = mix(theme.background, soft, 0.38)
+    """Full-screen person tint — fills the whole game view edge to edge."""
+    soft = soften(person_color, theme, amount=0.10)
+    bg = mix(theme.background, soft, 0.32)
+    edge = mix(theme.background, soft, 0.50)
+    panel = mix(mix(theme.background, "#000000", 0.22), soft, 0.14)
     return f"""
     QWidget#gameScreen {{
         background-color: {bg};
     }}
+    QWidget#gameScreen QLabel {{
+        background-color: transparent;
+    }}
     QWidget#gameScreen QFrame#panel {{
-        background-color: {mix(theme.background, "#000000", 0.18)};
+        background-color: {panel};
         border: 2px solid {edge};
     }}
     """
+
+
+def person_window_stylesheet(theme: ThemeConfig, person_color: str) -> str:
+    """Base app stylesheet + full-window person wash (covers chrome past the stage)."""
+    soft = soften(person_color, theme, amount=0.12)
+    bg = mix(theme.background, soft, 0.32)
+    base = build_stylesheet(theme, accent=soft)
+    return (
+        base
+        + f"""
+    QMainWindow, QStackedWidget {{
+        background-color: {bg};
+    }}
+    """
+    )

@@ -1,12 +1,12 @@
-"""Dense sky map painted edge-to-edge (equirectangular), not a circular dome."""
+"""Dense sky map — cached pixmap, scrolled each frame (no per-frame star redraw)."""
 
 from __future__ import annotations
 
 import math
 import random
 
-from PySide6.QtCore import QPointF, QTimer, Qt
-from PySide6.QtGui import QColor, QPainter, QPen, QRadialGradient
+from PySide6.QtCore import QPointF, QRect, QTimer, Qt
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QRadialGradient, QRegion
 from PySide6.QtWidgets import QWidget
 
 # Bright stars: name, RA (hours), Dec (deg), visual magnitude (J2000 approx)
@@ -141,8 +141,16 @@ _LINES: tuple[tuple[str, str], ...] = (
     ("Sirius", "Adhara"),
 )
 
-_FIELD_COUNT = 16000
-_TOP_EXTRA = 6000  # denser band toward the top of the screen (high Dec)
+_FIELD_COUNT = 14000
+_TOP_EXTRA = 5000
+_ROTATION_PERIOD_S = 110.0
+_HUES = (
+    (220, 230, 255),
+    (255, 245, 230),
+    (200, 215, 255),
+    (255, 220, 200),
+    (230, 238, 255),
+)
 
 
 def _build_field() -> tuple[tuple[float, float, float, int], ...]:
@@ -162,14 +170,12 @@ def _build_field() -> tuple[tuple[float, float, float, int], ...]:
             dec = max(-90.0, min(90.0, ridge + rng.gauss(0.0, 12.0)))
         else:
             ra = rng.uniform(0.0, 24.0)
-            # Bias slightly toward the upper half of the sky map
             dec = math.degrees(math.asin(2.0 * (rng.random() ** 0.75) - 1.0))
         _add(ra, dec)
 
-    # Extra pack for the top of the screen (northern Dec → top in our projection)
     for _ in range(_TOP_EXTRA):
         ra = rng.uniform(0.0, 24.0)
-        dec = 25.0 + rng.random() ** 0.55 * 65.0  # ~25° … 90°
+        dec = 25.0 + rng.random() ** 0.55 * 65.0
         _add(ra, dec)
 
     return tuple(out)
@@ -177,12 +183,16 @@ def _build_field() -> tuple[tuple[float, float, float, int], ...]:
 
 _FIELD = _build_field()
 
-# Full horizontal wrap period (seconds of wall time) — visible, not nauseating.
-_ROTATION_PERIOD_S = 110.0
+
+def _project(ra_h: float, dec_d: float, w: float, h: float) -> tuple[float, float]:
+    """Equirectangular at LST=0 — scrolling provides rotation."""
+    lon = (ra_h % 24.0) / 24.0
+    lat = (dec_d + 90.0) / 180.0
+    return lon * w, (1.0 - lat) * h
 
 
 class StarfieldOverlay(QWidget):
-    """Full-bleed rectangular sky; mouse-transparent over solid UI."""
+    """Full-bleed sky rendered once to a pixmap, then scrolled smoothly."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -190,105 +200,111 @@ class StarfieldOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self._by_name = {n: (ra, dec, mag) for n, ra, dec, mag in _STARS}
         self._t = 0.0
-        self._holes: list = []  # QRect regions where stars must not paint (solid UI)
+        self._holes: list[QRect] = []
+        self._subtle = False
+        self._scrolling = True
+        self._cache: QPixmap | None = None
+        self._cache_key: tuple[int, int, bool, float] | None = None
         self._timer = QTimer(self)
-        self._timer.setInterval(50)
+        # ~30 fps is plenty when each frame is just two blits
+        self._timer.setInterval(33)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
 
     def set_holes(self, rects: list) -> None:
-        """Screen-space rects (in this widget's coords) to keep clear of stars."""
         self._holes = list(rects)
         self.update()
 
+    def set_subtle(self, subtle: bool) -> None:
+        if subtle == self._subtle:
+            return
+        self._subtle = subtle
+        self._cache = None  # rebuild at new opacity
+        self.update()
+
+    def set_scrolling(self, enabled: bool) -> None:
+        """Freeze sky drift during the relay so panels stay still."""
+        if enabled == self._scrolling:
+            return
+        self._scrolling = enabled
+        if not enabled:
+            self.update()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._cache = None
+
     def _tick(self) -> None:
+        if not self._scrolling:
+            return
         self._t += self._timer.interval() / 1000.0
         self.update()
 
-    def _project(
-        self, ra_h: float, dec_d: float, lst_h: float, w: float, h: float
-    ) -> tuple[float, float]:
-        """Equirectangular map — fills the whole rectangle to every edge."""
-        lon = ((ra_h - lst_h) % 24.0) / 24.0
-        lat = (dec_d + 90.0) / 180.0  # -90..90 → 0..1 (south at bottom)
-        sx = lon * w
-        sy = (1.0 - lat) * h
-        return sx, sy
-
-    def paintEvent(self, event) -> None:  # noqa: N802
-        from PySide6.QtGui import QRegion
-
-        painter = QPainter(self)
-        w, h = float(self.width()), float(self.height())
+    def _ensure_cache(self) -> QPixmap | None:
+        w, h = self.width(), self.height()
         if w < 2 or h < 2:
-            return
+            return None
+        dpr = float(self.devicePixelRatioF())
+        key = (w, h, self._subtle, dpr)
+        if self._cache is not None and self._cache_key == key:
+            return self._cache
 
-        # Keep solid menus (e.g. crew entry) free of star sparkle
-        if self._holes:
-            clip = QRegion(self.rect())
-            for hole in self._holes:
-                clip = clip.subtracted(QRegion(hole))
-            painter.setClipRegion(clip)
+        pm = QPixmap(max(1, int(w * dpr)), max(1, int(h * dpr)))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.GlobalColor.transparent)
 
-        # Soft nebula only (no opaque fill — UI stays solid underneath)
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        dim = 0.35 if self._subtle else 1.0
+        fw, fh = float(w), float(h)
+
         for cx, cy, r, color in (
-            (w * 0.18, h * 0.12, min(w, h) * 0.55, QColor(55, 35, 120, 32)),
-            (w * 0.78, h * 0.18, min(w, h) * 0.60, QColor(18, 70, 140, 26)),
-            (w * 0.50, h * 0.85, min(w, h) * 0.48, QColor(90, 30, 70, 18)),
+            (fw * 0.18, fh * 0.12, min(fw, fh) * 0.55, QColor(55, 35, 120, int(32 * dim))),
+            (fw * 0.78, fh * 0.18, min(fw, fh) * 0.60, QColor(18, 70, 140, int(26 * dim))),
+            (fw * 0.50, fh * 0.85, min(fw, fh) * 0.48, QColor(90, 30, 70, int(18 * dim))),
         ):
             grad = QRadialGradient(cx, cy, r)
             grad.setColorAt(0.0, color)
             grad.setColorAt(1.0, QColor(0, 0, 0, 0))
-            painter.fillRect(self.rect(), grad)
+            painter.fillRect(0, 0, w, h, grad)
 
-        lst_h = (self._t * (24.0 / _ROTATION_PERIOD_S)) % 24.0
+        line_a = int(38 * dim)
+        if line_a > 0:
+            line_pen = QPen(QColor(150, 190, 255, line_a))
+            line_pen.setWidthF(1.0)
+            painter.setPen(line_pen)
+            for a, b in _LINES:
+                sa = self._by_name.get(a)
+                sb = self._by_name.get(b)
+                if not sa or not sb:
+                    continue
+                ax, ay = _project(sa[0], sa[1], fw, fh)
+                bx, by = _project(sb[0], sb[1], fw, fh)
+                if abs(ax - bx) > fw * 0.45:
+                    continue
+                painter.drawLine(QPointF(ax, ay), QPointF(bx, by))
 
-        # Constellation sticks (skip segments that wrap across the seam)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        line_pen = QPen(QColor(150, 190, 255, 38))
-        line_pen.setWidthF(1.0)
-        painter.setPen(line_pen)
-        for a, b in _LINES:
-            sa = self._by_name.get(a)
-            sb = self._by_name.get(b)
-            if not sa or not sb:
-                continue
-            ax, ay = self._project(sa[0], sa[1], lst_h, w, h)
-            bx, by = self._project(sb[0], sb[1], lst_h, w, h)
-            if abs(ax - bx) > w * 0.45:
-                continue
-            painter.drawLine(QPointF(ax, ay), QPointF(bx, by))
-
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         painter.setPen(Qt.PenStyle.NoPen)
-        hues = (
-            (220, 230, 255),
-            (255, 245, 230),
-            (200, 215, 255),
-            (255, 220, 200),
-            (230, 238, 255),
-        )
-        for ra, dec, mag, hue in _FIELD:
-            sx, sy = self._project(ra, dec, lst_h, w, h)
-            tw = 0.78 + 0.22 * (0.5 + 0.5 * math.sin(self._t * 0.9 + ra * 3.0 + dec))
-            alpha = int(min(220, max(16, (175 - mag * 16) * tw)))
-            r, g, b = hues[hue]
+        step = 3 if self._subtle else 1
+        for i, (ra, dec, mag, hue) in enumerate(_FIELD):
+            if i % step:
+                continue
+            sx, sy = _project(ra, dec, fw, fh)
+            alpha = int(min(200, max(14, 175 - mag * 16)) * dim)
+            if alpha < 8:
+                continue
+            r, g, b = _HUES[hue]
             painter.setBrush(QColor(r, g, b, alpha))
             if mag < 4.5:
-                size = max(1.0, 2.5 - (mag - 3.0) * 0.35)
+                size = max(1.0, 2.4 - (mag - 3.0) * 0.35)
                 painter.drawEllipse(QPointF(sx, sy), size, size)
             else:
                 painter.drawRect(int(sx), int(sy), 1, 1)
 
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setPen(Qt.PenStyle.NoPen)
         for name, ra, dec, mag in _STARS:
-            sx, sy = self._project(ra, dec, lst_h, w, h)
-            size = max(1.2, 4.8 - mag * 0.9)
-            twinkle = 0.75 + 0.25 * (
-                0.5 + 0.5 * math.sin(self._t * (1.1 + abs(mag) * 0.15) + ra)
-            )
-            alpha = int(min(255, (215 - mag * 24) * twinkle))
+            sx, sy = _project(ra, dec, fw, fh)
+            size = max(1.0, (4.8 - mag * 0.9) * (0.75 if self._subtle else 1.0))
+            alpha = int(min(240, max(20, 215 - mag * 24)) * dim)
             if mag < 0.2:
                 color = QColor(210, 230, 255, alpha)
             elif name in ("Betelgeuse", "Antares", "Aldebaran"):
@@ -297,9 +313,31 @@ class StarfieldOverlay(QWidget):
                 color = QColor(190, 210, 255, alpha)
             else:
                 color = QColor(230, 238, 255, alpha)
-            if mag < 0.8:
-                glow = QColor(color.red(), color.green(), color.blue(), max(14, alpha // 6))
+            if mag < 0.8 and not self._subtle:
+                glow = QColor(color.red(), color.green(), color.blue(), max(12, alpha // 6))
                 painter.setBrush(glow)
                 painter.drawEllipse(QPointF(sx, sy), size * 2.4, size * 2.4)
             painter.setBrush(color)
             painter.drawEllipse(QPointF(sx, sy), size, size)
+
+        painter.end()
+        self._cache = pm
+        self._cache_key = key
+        return pm
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        cache = self._ensure_cache()
+        if cache is None:
+            return
+        w, h = self.width(), self.height()
+        painter = QPainter(self)
+        if self._holes:
+            clip = QRegion(self.rect())
+            for hole in self._holes:
+                clip = clip.subtracted(QRegion(hole))
+            painter.setClipRegion(clip)
+
+        # Horizontal wrap scroll — two blits, no per-frame star math
+        offset = int((self._t / _ROTATION_PERIOD_S) * w) % max(1, w)
+        painter.drawPixmap(-offset, 0, cache)
+        painter.drawPixmap(-offset + w, 0, cache)

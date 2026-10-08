@@ -1,4 +1,4 @@
-"""Clean correct-answer toast."""
+"""Centered toasts: correct-answer burst and organizer override flash."""
 
 from __future__ import annotations
 
@@ -12,12 +12,20 @@ from PySide6.QtCore import (
 from PySide6.QtWidgets import QFrame, QGraphicsOpacityEffect, QLabel, QVBoxLayout, QWidget
 
 
-class CorrectBurst(QWidget):
-    """Soft centered toast: fade in, hold, fade out."""
+class _ToastBase(QWidget):
+    """Fade in / hold / fade out banner. Subclasses set object names."""
 
     finished = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None,
+        *,
+        card_name: str,
+        title_name: str,
+        sub_name: str,
+        default_title: str,
+    ) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -32,18 +40,18 @@ class CorrectBurst(QWidget):
         outer.addStretch(2)
 
         self.card = QFrame()
-        self.card.setObjectName("correctToast")
+        self.card.setObjectName(card_name)
         card_l = QVBoxLayout(self.card)
         card_l.setContentsMargins(56, 32, 56, 32)
         card_l.setSpacing(8)
 
-        self.label = QLabel("CORRECT")
-        self.label.setObjectName("correctTitle")
+        self.label = QLabel(default_title)
+        self.label.setObjectName(title_name)
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_l.addWidget(self.label)
 
         self.sub = QLabel("")
-        self.sub.setObjectName("correctSub")
+        self.sub.setObjectName(sub_name)
         self.sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_l.addWidget(self.sub)
 
@@ -51,13 +59,14 @@ class CorrectBurst(QWidget):
         outer.addStretch(3)
         self.hide()
 
-    def play(
+    def _play_anim(
         self,
-        points_text: str = "",
+        title: str,
+        sub: str,
         *,
-        fade_in_ms: int = 160,
-        hold_ms: int = 480,
-        fade_out_ms: int = 200,
+        fade_in_ms: int,
+        hold_ms: int,
+        fade_out_ms: int,
     ) -> None:
         if self._seq is not None:
             self._seq.stop()
@@ -66,7 +75,8 @@ class CorrectBurst(QWidget):
             except (TypeError, RuntimeError):
                 pass
 
-        self.sub.setText(points_text)
+        self.label.setText(title)
+        self.sub.setText(sub)
         if self.parentWidget() is not None:
             self.setGeometry(self.parentWidget().rect())
         self.raise_()
@@ -104,3 +114,62 @@ class CorrectBurst(QWidget):
     def _done(self) -> None:
         self.hide()
         self.finished.emit()
+
+
+class CorrectBurst(_ToastBase):
+    """Soft centered toast: fade in, hold, fade out."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(
+            parent,
+            card_name="correctToast",
+            title_name="correctTitle",
+            sub_name="correctSub",
+            default_title="CORRECT",
+        )
+
+    def play(
+        self,
+        points_text: str = "",
+        *,
+        fade_in_ms: int = 160,
+        hold_ms: int = 480,
+        fade_out_ms: int = 200,
+    ) -> None:
+        self._play_anim(
+            "CORRECT",
+            points_text,
+            fade_in_ms=fade_in_ms,
+            hold_ms=hold_ms,
+            fade_out_ms=fade_out_ms,
+        )
+
+
+class OverrideFlash(_ToastBase):
+    """Loud banner when organizer pad unlocks or fires an override."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(
+            parent,
+            card_name="overrideToast",
+            title_name="overrideTitle",
+            sub_name="overrideSub",
+            default_title="OVERRIDE",
+        )
+
+    def play(
+        self,
+        title: str,
+        sub: str = "",
+        *,
+        fade_in_ms: int = 90,
+        hold_ms: int = 900,
+        fade_out_ms: int = 220,
+    ) -> None:
+        self._play_anim(
+            title,
+            sub,
+            fade_in_ms=fade_in_ms,
+            hold_ms=hold_ms,
+            fade_out_ms=fade_out_ms,
+        )

@@ -120,6 +120,8 @@ class XboxController(QObject):
 
     action = Signal(str)  # binding action key, e.g. "skip_question"
     status_changed = Signal(str)
+    unlocked_changed = Signal(bool)
+    locked_press = Signal()  # button while locked — UI can nudge the unlock chord
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -220,6 +222,7 @@ class XboxController(QObject):
                 self._unlocked = True
                 self._idle_ms = 0.0
                 self._refresh_status()
+                self.unlocked_changed.emit(True)
         else:
             self._unlock_ms = 0.0
 
@@ -234,8 +237,13 @@ class XboxController(QObject):
             ):
                 self._unlocked = False
                 self._refresh_status()
+                self.unlocked_changed.emit(False)
 
         if not self._unlocked:
+            # Nudge when they press a bound override while still locked
+            bound = set(self._cfg.bindings.values())
+            if newly & bound:
+                self.locked_press.emit()
             return
 
         # Edge-trigger bound actions

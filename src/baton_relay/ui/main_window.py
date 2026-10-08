@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Callable
 
-from PySide6.QtCore import QRect, Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QFrame,
@@ -30,10 +30,22 @@ from baton_relay.questions.loader import load_all_question_files
 from baton_relay.results.log import EventLog, new_run_dir
 from baton_relay.state.machine import GameSession, GameSnapshot, PlayerSlot, RelayState
 from baton_relay.ui.config_dialog import ConfigDialog
-from baton_relay.ui.correct_burst import CorrectBurst
+from baton_relay.ui.correct_burst import CorrectBurst, OverrideFlash
 from baton_relay.ui.question_widgets import QuestionHost
 from baton_relay.ui.starfield import StarfieldOverlay
-from baton_relay.ui.theme import build_stylesheet, display_color, game_screen_wash, soften
+from baton_relay.ui.theme import (
+    build_stylesheet,
+    display_color,
+    game_screen_wash,
+    person_window_stylesheet,
+    soften,
+)
+
+
+def _rect_in(widget: QWidget, target: QWidget) -> QRect:
+    """Map widget geometry into target coords without requiring an ancestor link."""
+    top_left = target.mapFromGlobal(widget.mapToGlobal(QPoint(0, 0)))
+    return QRect(top_left, widget.size())
 
 
 def _fmt_time(seconds: float) -> str:
@@ -112,7 +124,6 @@ class StartupScreen(QWidget):
         self.players_host = QVBoxLayout()
         self.players_host.setSpacing(8)
         panel_layout.addLayout(self.players_host)
-        self._rebuild_player_rows()
 
         self.start_btn = QPushButton("START")
         self.start_btn.setObjectName("primary")
@@ -120,9 +131,11 @@ class StartupScreen(QWidget):
         self.start_btn.clicked.connect(self._go)
         panel_layout.addWidget(self.start_btn)
 
+        # After start_btn exists so tab-order wiring is safe
+        self._rebuild_player_rows()
+
         root.addWidget(self.panel, alignment=Qt.AlignmentFlag.AlignCenter)
         root.addStretch(2)
-        self._apply_tab_order()
 
     def apply_config(self, config: AppConfig) -> None:
         """Update seat count/colors without wiping typed team/handles."""
@@ -205,8 +218,7 @@ class StartupScreen(QWidget):
 
     def solid_panel_rect_in(self, target: QWidget) -> QRect:
         """Rect of the solid crew panel, mapped into `target` coords."""
-        top_left = self.panel.mapTo(target, self.panel.rect().topLeft())
-        return QRect(top_left, self.panel.size())
+        return _rect_in(self.panel, target)
 
 
 class ScoreScreen(QWidget):
@@ -394,9 +406,11 @@ class GameScreen(QWidget):
 
         body = QHBoxLayout()
 
-        left = QFrame()
-        left.setObjectName("panel")
-        left_l = QVBoxLayout(left)
+        self.left_panel = QFrame()
+        self.left_panel.setObjectName("panel")
+        self.left_panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.left_panel.setAutoFillBackground(True)
+        left_l = QVBoxLayout(self.left_panel)
         left_l.addWidget(QLabel("NEXT / LEG"))
         self.next_big = QLabel("—")
         self.next_big.setObjectName("timerBig")
@@ -424,32 +438,24 @@ class GameScreen(QWidget):
         self.activity_log.setMinimumHeight(120)
         self.activity_log.setUndoRedoEnabled(False)
         left_l.addWidget(self.activity_log, 1)
-        body.addWidget(left, 1)
+        body.addWidget(self.left_panel, 1)
 
-        right = QFrame()
-        right.setObjectName("panel")
-        right_l = QVBoxLayout(right)
+        self.right_panel = QFrame()
+        self.right_panel.setObjectName("panel")
+        self.right_panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.right_panel.setAutoFillBackground(True)
+        right_l = QVBoxLayout(self.right_panel)
         self.question_host = QuestionHost()
         right_l.addWidget(self.question_host)
-        body.addWidget(right, 2)
+        body.addWidget(self.right_panel, 2)
 
         stage_l.addLayout(body, 1)
 
-        footer = QHBoxLayout()
-        footer.setContentsMargins(0, 4, 0, 0)
-        self.device_status = QLabel("DEVICE —  →")
-        self.device_status.setObjectName("muted")
-        footer.addWidget(self.device_status, 0, Qt.AlignmentFlag.AlignLeft)
-        footer.addStretch(1)
-        self.hint = QLabel("←  Fake: 1–6 insert · P pull · U unknown")
-        self.hint.setObjectName("muted")
-        footer.addWidget(self.hint, 0, Qt.AlignmentFlag.AlignRight)
-        stage_l.addLayout(footer)
-
         root.addWidget(self.stage, 1)
 
-        self.switch_overlay = SwitchOverlay(config.theme, self.stage)
-        self.correct_burst = CorrectBurst(self.stage)
+        # Full-screen takeover (covers header + stage, not just the middle band)
+        self.switch_overlay = SwitchOverlay(config.theme, self)
+        self.correct_burst = CorrectBurst(self)
 
     def clear_activity(self) -> None:
         self.activity_log.clear()
@@ -460,11 +466,15 @@ class GameScreen(QWidget):
         bar.setValue(bar.maximum())
 
     def _fit_switch_overlay(self) -> None:
-        self.switch_overlay.setGeometry(self.stage.rect())
+        self.switch_overlay.setGeometry(self.rect())
         self.switch_overlay.raise_()
-        self.correct_burst.setGeometry(self.stage.rect())
+        self.correct_burst.setGeometry(self.rect())
         if self.correct_burst.isVisible():
             self.correct_burst.raise_()
+
+    def panel_rects_in(self, target: QWidget) -> list[QRect]:
+        """Opaque game boxes — stars stay in the gaps around them."""
+        return [_rect_in(self.left_panel, target), _rect_in(self.right_panel, target)]
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -475,7 +485,7 @@ class GameScreen(QWidget):
 
     def play_correct(self, points_text: str = "") -> None:
         ui = self.config.ui
-        self.correct_burst.setGeometry(self.stage.rect())
+        self.correct_burst.setGeometry(self.rect())
         self.correct_burst.raise_()
         self.correct_burst.play(
             points_text,
@@ -489,10 +499,9 @@ class GameScreen(QWidget):
             return
         self._person_accent = color
         theme = self.config.theme
-        soft = soften(color, theme, amount=0.15)
         self.setStyleSheet(game_screen_wash(theme, color))
         if window is not None:
-            window.setStyleSheet(build_stylesheet(theme, accent=soft))
+            window.setStyleSheet(person_window_stylesheet(theme, color))
 
     def render(
         self,
@@ -542,7 +551,6 @@ class GameScreen(QWidget):
         self.state_label.style().polish(self.state_label)
 
         self.message.setText(snap.last_message)
-        # Footer left text is composed by MainWindow (device + pad).
 
         locked = snap.state != RelayState.ACTIVE
         self.question_host.set_locked(locked)
@@ -649,43 +657,58 @@ class MainWindow(QMainWindow):
         self._stars.resize(self.size())
         self._stars.raise_()
 
+        # Above stars so override banners stay readable
+        self._override_flash = OverrideFlash(self)
+        self._override_flash.resize(self.size())
+        self._override_flash.raise_()
+
         self._timer = QTimer(self)
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._on_tick)
 
         self._xbox = XboxController(self)
-        self._xbox.status_changed.connect(self._on_xbox_status)
+        self._xbox.unlocked_changed.connect(self._on_xbox_unlocked)
+        self._xbox.locked_press.connect(self._on_xbox_locked_press)
         self._xbox.start(self._on_xbox_action)
         self._xbox.apply_config(config.controller)
 
         if fake_device:
             self._fake = FakeBatonSource(config)
             self._fake.start(self._on_reading)
-            self.game_screen.hint.setText(
-                "←  Fake: 1–6 insert · P pull · U unknown  (Ctrl+key while answering)"
-            )
-        else:
-            self.game_screen.hint.setText("←  Serial · connect RP2040")
 
         self._pending_after_correct = False
         self._device_label = "FAKE" if fake_device else "waiting"
         self.game_screen.correct_burst.finished.connect(self._after_correct_burst)
         self.startup.reset()
-        self._refresh_footer()
         QTimer.singleShot(0, self._update_star_holes)
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._stars.setGeometry(self.rect())
         self._stars.raise_()
+        self._override_flash.setGeometry(self.rect())
+        self._override_flash.raise_()
         self._update_star_holes()
 
+    def _flash_override(self, title: str, sub: str = "") -> None:
+        self._override_flash.setGeometry(self.rect())
+        self._override_flash.raise_()
+        self._override_flash.play(title, sub)
+
     def _update_star_holes(self) -> None:
-        """Keep the crew entry panel fully solid (no stars drawn over it)."""
-        if self.stack.currentWidget() is self.startup:
-            rect = self.startup.solid_panel_rect_in(self._stars)
-            self._stars.set_holes([rect])
+        """Stars only in the gaps — solid boxes stay clear. Quieter during play."""
+        current = self.stack.currentWidget()
+        if current is self.startup:
+            self._stars.set_scrolling(True)
+            self._stars.set_subtle(False)
+            self._stars.set_holes([self.startup.solid_panel_rect_in(self._stars)])
+        elif current is self.game_screen:
+            self._stars.set_scrolling(False)
+            self._stars.set_subtle(True)
+            self._stars.set_holes(self.game_screen.panel_rects_in(self._stars))
         else:
+            self._stars.set_scrolling(True)
+            self._stars.set_subtle(False)
             self._stars.set_holes([])
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
@@ -740,18 +763,8 @@ class MainWindow(QMainWindow):
     def _open_config(self) -> None:
         dlg = ConfigDialog(self.config, self)
         dlg.setStyleSheet(build_stylesheet(self.config.theme))
-        dlg.xbox_enabled_changed.connect(self._live_set_xbox_enabled)
         if dlg.exec() and dlg.result_config is not None:
             self._apply_config(dlg.result_config)
-
-    def _live_set_xbox_enabled(self, enabled: bool) -> None:
-        """Hot-toggle pad on/off from the config dialog (no restart, no Save required)."""
-        from dataclasses import replace
-
-        ctrl = replace(self.config.controller, enabled=enabled)
-        self.config = self.config.with_updates(controller=ctrl)
-        self._xbox.apply_config(ctrl)
-        self._refresh_footer()
 
     def _apply_config(self, config: AppConfig) -> None:
         self.config = config
@@ -766,45 +779,66 @@ class MainWindow(QMainWindow):
         self.game_screen._person_accent = ""
         if self._fake is not None:
             self._fake.config = config
-        # Live-apply Xbox enable/bindings — no app restart
         self._xbox.apply_config(config.controller)
         if self.session is not None:
             self.session.config = config
-        self._refresh_footer()
+        self._update_star_holes()
 
-    def _on_xbox_status(self, _status: str) -> None:
-        self._refresh_footer()
+    def _unlock_chord_text(self) -> str:
+        return "+".join(self.config.controller.unlock_buttons)
 
-    def _refresh_footer(self) -> None:
-        left = f"DEVICE {self._device_label}"
-        if self.config.controller.enabled:
-            left += f"  ·  PAD {self._xbox.status_label}"
+    def _on_xbox_unlocked(self, unlocked: bool) -> None:
+        if not self.config.controller.enabled:
+            return
+        if unlocked:
+            self._flash_override("CONTROLLER UNLOCKED", "Pad overrides are live")
+            if self.stack.currentWidget() is self.game_screen:
+                self.game_screen.append_activity(
+                    f"{datetime.now().strftime('%H:%M:%S')}  PAD unlocked"
+                )
         else:
-            left += "  ·  PAD OFF"
-        self.game_screen.device_status.setText(f"{left}  →")
+            self._flash_override(
+                "CONTROLLER LOCKED",
+                f"Hold {self._unlock_chord_text()} to unlock",
+            )
+
+    def _on_xbox_locked_press(self) -> None:
+        if not self.config.controller.enabled:
+            return
+        self._flash_override(
+            "HOLD TO UNLOCK",
+            f"Hold {self._unlock_chord_text()} — then press override",
+        )
 
     def _on_xbox_action(self, action: str) -> None:
         if not self.config.controller.enabled:
             return
+        ts = datetime.now().strftime("%H:%M:%S")
         if action == "skip_question" and self.session:
             self.session.skip_question(organizer=True)
+            self._flash_override("OVERRIDE · SKIP", "Question skipped")
+            self.game_screen.append_activity(f"{ts}  OVERRIDE skip")
             self._render(force_question=True)
         elif action == "force_leg_swap" and self.session:
             if self.session.state != RelayState.PAUSED_SCORE:
                 self.session.advance_rotation()
+                self._flash_override("OVERRIDE · SWAP", "Forced leg change")
+                self.game_screen.append_activity(f"{ts}  OVERRIDE leg swap")
                 self._render()
         elif action == "confirm":
-            # Trigger the same path as clicking SUBMIT when answering
             if (
                 self.session
                 and self.session.state == RelayState.ACTIVE
                 and not self.session.questions_locked()
             ):
+                self._flash_override("OVERRIDE · CONFIRM", "Submit")
                 self.game_screen.question_host._submit()
         elif action == "cancel":
-            pass
+            self._flash_override("OVERRIDE · CANCEL", "No action bound")
         elif action == "pause_overlay" and self.session:
             self.session.last_message = "Controller pause — continue playing."
+            self._flash_override("OVERRIDE · PAUSE", "Message ping")
+            self.game_screen.append_activity(f"{ts}  OVERRIDE pause ping")
             self._render()
 
     def _on_reading(self, reading: BatonReading) -> None:
@@ -844,7 +878,6 @@ class MainWindow(QMainWindow):
         self._device_label = "FAKE" if self.fake_device else "waiting"
         self.session.set_device_status(self._device_label)
         self._last_qid = None
-        self._refresh_footer()
         roster_payload = [
             {
                 "player_number": s.player_number,
@@ -981,7 +1014,7 @@ class MainWindow(QMainWindow):
             window=self,
             resume_bonus_cfg=self.config.timers.resume_bonus_seconds,
         )
-        self._refresh_footer()
+        self._update_star_holes()
 
     def _next_team(self) -> None:
         self.session = None

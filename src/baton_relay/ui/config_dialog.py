@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QKeyEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -133,13 +133,9 @@ class BindButton(QPushButton):
 class ConfigDialog(QDialog):
     """Edit config.toml through form controls — no nested scrollers."""
 
-    # Fired immediately when the Xbox on/off control is flipped (before Save).
-    xbox_enabled_changed = Signal(bool)
-
     def __init__(self, config: AppConfig, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._config = config
-        self._initial_xbox_enabled = config.controller.enabled
         self.result_config: AppConfig | None = None
         self.setWindowTitle("Config")
         self.resize(820, 620)
@@ -330,9 +326,7 @@ class ConfigDialog(QDialog):
         body_l.addWidget(bind_box)
         layout.addWidget(self._xbox_body)
 
-        hint = QLabel(
-            "Toggle applies immediately. Save writes it to config. Esc cancels a listening bind."
-        )
+        hint = QLabel("Save writes controller settings to config. Esc cancels a listening bind.")
         hint.setObjectName("muted")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -348,7 +342,6 @@ class ConfigDialog(QDialog):
     def _on_xbox_toggled(self, enabled: bool) -> None:
         self.ctrl_enabled.setText("CONTROLLER  ON" if enabled else "CONTROLLER  OFF")
         self._xbox_body.setEnabled(enabled)
-        self.xbox_enabled_changed.emit(enabled)
 
     def _refresh_pad_status(self) -> None:
         if controller_connected():
@@ -614,12 +607,6 @@ class ConfigDialog(QDialog):
             QMessageBox.critical(self, "Config error", str(exc))
             return
         self.accept()
-
-    def reject(self) -> None:
-        # Undo any live enable flips if the dialog is cancelled.
-        if self.ctrl_enabled.isChecked() != self._initial_xbox_enabled:
-            self.xbox_enabled_changed.emit(self._initial_xbox_enabled)
-        super().reject()
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._pad_timer.stop()
