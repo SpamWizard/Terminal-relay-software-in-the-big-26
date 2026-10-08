@@ -244,3 +244,44 @@ def test_save_config_roundtrip(config, tmp_path):
     )
     save_config(disabled, dest)
     assert load_config(dest).controller.enabled is False
+
+
+def test_team_name_collision_and_resume(config, sets, tmp_path):
+    from baton_relay.results.checkpoint import load_checkpoint, save_checkpoint
+    from baton_relay.results.log import (
+        find_resumable_run,
+        new_run_dir,
+        team_name_taken,
+    )
+
+    assert not team_name_taken(tmp_path, "Orbit")
+    run = new_run_dir(tmp_path, "Orbit")
+    session = GameSession(
+        config, sets, team_name="Orbit", player_names=["Ada", "Ben", "Cy", "Dee"]
+    )
+    session.on_baton_reading(0, source="fake")
+    session.submit_answer(3)
+    save_checkpoint(run / "checkpoint.json", session)
+    (run / "events.jsonl").write_text(
+        '{"event":"game_started","team":"Orbit"}\n', encoding="utf-8"
+    )
+
+    assert team_name_taken(tmp_path, "Orbit")
+    assert team_name_taken(tmp_path, "orbit")
+    resumable = find_resumable_run(tmp_path, "Orbit")
+    assert resumable is not None
+    assert resumable.run_dir == run
+
+    restored = load_checkpoint(run / "checkpoint.json", config, sets)
+    assert restored.team_name == "Orbit"
+    assert restored.roster[0].name == "Ada"
+    assert restored.progress.total_score > 0
+    assert restored.state == RelayState.FROZEN  # mid-leg requires baton again
+
+
+def test_player_display_skips_numeric_duplicate(config, sets):
+    session = GameSession(
+        config, sets, team_name="T", player_names=["1", "Ben", "Cy", "Dee"]
+    )
+    assert session.player_display(0) == "#1"
+    assert session.player_display(1) == "#2 Ben"

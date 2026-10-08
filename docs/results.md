@@ -5,8 +5,13 @@ Each team run creates:
 ```
 results/<team_slug>/<UTC_timestamp>/
   events.jsonl
-  summary.json
+  checkpoint.json   # while in progress (removed when the run finishes)
+  summary.json      # written at end
 ```
+
+Team names must be unique. Re-entering a name that already has results shows a
+**WOAH** dialog — unfinished runs with a checkpoint can **Resume**; finished
+(or non-resumable) names must be changed (no automatic `#1` / `#2` suffixes).
 
 ## events.jsonl
 

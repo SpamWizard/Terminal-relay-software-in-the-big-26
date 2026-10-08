@@ -8,7 +8,8 @@ from PySide6.QtCore import QObject, QTimer, Signal
 
 from baton_relay.config import XBOX_BUTTONS, ControllerConfig
 
-# Common SDL / XInput-style face + shoulder mapping
+# XInput face/shoulder + SDL GameController D-pad indices (Series X reports
+# hats=0 and uses buttons 11–14 for the D-pad).
 _BUTTON_INDEX: dict[int, str] = {
     0: "A",
     1: "B",
@@ -20,6 +21,10 @@ _BUTTON_INDEX: dict[int, str] = {
     7: "Start",
     8: "LS",
     9: "RS",
+    11: "DPadUp",
+    12: "DPadDown",
+    13: "DPadLeft",
+    14: "DPadRight",
 }
 
 _HAT_MAP: dict[tuple[int, int], str] = {
@@ -28,6 +33,9 @@ _HAT_MAP: dict[tuple[int, int], str] = {
     (-1, 0): "DPadLeft",
     (1, 0): "DPadRight",
 }
+
+# Keep Joystick objects alive — pygame deactivates them if GC'd between polls.
+_JOYSTICKS: list = []
 
 ActionCallback = Callable[[str], None]
 
@@ -45,78 +53,100 @@ def _ensure_pygame() -> bool:
         return False
 
 
-def poll_pressed_buttons() -> set[str]:
-    """Return currently held logical Xbox button names across all joysticks."""
-    pressed: set[str] = set()
+def _refresh_joysticks() -> list:
+    """Return live joystick instances, recreating the cache when count changes."""
+    global _JOYSTICKS
     if not _ensure_pygame():
-        return pressed
+        _JOYSTICKS = []
+        return _JOYSTICKS
     import pygame
 
     pygame.event.pump()
     count = pygame.joystick.get_count()
-    for i in range(count):
-        try:
-            joy = pygame.joystick.Joystick(i)
-            if not joy.get_init():
-                joy.init()
-        except Exception:
-            continue
-        for bi in range(joy.get_numbuttons()):
+    if len(_JOYSTICKS) != count:
+        _JOYSTICKS = []
+        for i in range(count):
             try:
-                if joy.get_button(bi):
-                    name = _BUTTON_INDEX.get(bi)
+                joy = pygame.joystick.Joystick(i)
+                if not joy.get_init():
+                    joy.init()
+                _JOYSTICKS.append(joy)
+            except Exception:
+                pass
+    else:
+        for joy in _JOYSTICKS:
+            try:
+                if not joy.get_init():
+                    joy.init()
+            except Exception:
+                pass
+    return _JOYSTICKS
+
+
+def _trigger_pressed(value: float) -> bool:
+    """Triggers may be 0→1 or −1→1; both read near +1 when fully held."""
+    return value >= 0.5
+
+
+def poll_pressed_buttons() -> set[str]:
+    """Return currently held logical Xbox button names across all joysticks."""
+    pressed: set[str] = set()
+    for joy in _refresh_joysticks():
+        try:
+            for bi in range(joy.get_numbuttons()):
+                try:
+                    if joy.get_button(bi):
+                        name = _BUTTON_INDEX.get(bi)
+                        if name:
+                            pressed.add(name)
+                except Exception:
+                    pass
+            if joy.get_numhats() > 0:
+                try:
+                    hat = joy.get_hat(0)
+                    name = _HAT_MAP.get(hat)
                     if name:
                         pressed.add(name)
-            except Exception:
-                pass
-        if joy.get_numhats() > 0:
-            try:
-                hat = joy.get_hat(0)
-                name = _HAT_MAP.get(hat)
-                if name:
-                    pressed.add(name)
-            except Exception:
-                pass
-        # Triggers as digital presses
-        for axis_i, label in ((4, "LT"), (5, "RT"), (2, "LT"), (5, "RT")):
-            if axis_i >= joy.get_numaxes():
-                continue
-            try:
-                if joy.get_axis(axis_i) > 0.55:
-                    pressed.add(label)
-            except Exception:
-                pass
+                except Exception:
+                    pass
+            naxes = joy.get_numaxes()
+            # Prefer dedicated trigger axes when present (Xbox-style 4/5).
+            trigger_axes: list[tuple[int, str]] = []
+            if naxes >= 6:
+                trigger_axes = [(4, "LT"), (5, "RT")]
+            elif naxes >= 5:
+                trigger_axes = [(4, "LT"), (2, "RT")]
+            else:
+                trigger_axes = [(2, "LT"), (5, "RT")]
+            for axis_i, label in trigger_axes:
+                if axis_i >= naxes:
+                    continue
+                try:
+                    if _trigger_pressed(float(joy.get_axis(axis_i))):
+                        pressed.add(label)
+                except Exception:
+                    pass
+        except Exception:
+            continue
     return pressed
 
 
 def controller_connected() -> bool:
-    if not _ensure_pygame():
-        return False
-    import pygame
-
-    pygame.event.pump()
-    return pygame.joystick.get_count() > 0
+    return len(_refresh_joysticks()) > 0
 
 
 def first_controller_name() -> str:
-    if not _ensure_pygame():
-        return ""
-    import pygame
-
-    pygame.event.pump()
-    if pygame.joystick.get_count() <= 0:
+    joys = _refresh_joysticks()
+    if not joys:
         return ""
     try:
-        joy = pygame.joystick.Joystick(0)
-        if not joy.get_init():
-            joy.init()
-        return joy.get_name() or "Controller"
+        return joys[0].get_name() or "Controller"
     except Exception:
         return "Controller"
 
 
 class XboxController(QObject):
-    """Polls the pad and emits named actions when enabled + unlocked."""
+    """Polls the pad and emits named actions when enabled."""
 
     action = Signal(str)  # binding action key, e.g. "skip_question"
     status_changed = Signal(str)
@@ -165,7 +195,8 @@ class XboxController(QObject):
         if not self._cfg.enabled:
             self.stop()
             return
-        _ensure_pygame()
+        _refresh_joysticks()
+        # Locked until organizer holds the unlock chord.
         self._unlocked = False
         self._unlock_ms = 0.0
         self._idle_ms = 0.0
@@ -195,9 +226,9 @@ class XboxController(QObject):
         name = first_controller_name() or self._cfg.device_name
         short = name if len(name) < 22 else name[:20] + "…"
         if self._unlocked:
-            self._set_status(f"UNLOCKED · {short}")
+            self._set_status(f"OVERRIDE · {short}")
         else:
-            chord = "+".join(self._cfg.unlock_buttons)
+            chord = "+".join(self._cfg.unlock_buttons) or "chord"
             self._set_status(f"LOCKED · hold {chord}")
 
     def _tick(self) -> None:
@@ -209,12 +240,13 @@ class XboxController(QObject):
         self._prev = set(pressed)
 
         if not controller_connected():
-            self._unlocked = False
+            if self._unlocked:
+                self._unlocked = False
+                self.unlocked_changed.emit(False)
             self._unlock_ms = 0.0
             self._refresh_status()
             return
 
-        # Unlock chord hold
         chord = set(self._cfg.unlock_buttons)
         if chord and chord.issubset(pressed):
             self._unlock_ms += dt
@@ -240,13 +272,12 @@ class XboxController(QObject):
                 self.unlocked_changed.emit(False)
 
         if not self._unlocked:
-            # Nudge when they press a bound override while still locked
             bound = set(self._cfg.bindings.values())
+            # Nudge only on bound overrides — not unlock-chord chatter
             if newly & bound:
                 self.locked_press.emit()
             return
 
-        # Edge-trigger bound actions
         for action, button in self._cfg.bindings.items():
             if button in newly and button in XBOX_BUTTONS:
                 if self._on_action:

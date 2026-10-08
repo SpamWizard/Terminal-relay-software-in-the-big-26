@@ -27,12 +27,23 @@ from baton_relay.input.fake import FakeBatonSource
 from baton_relay.input.xbox import XboxController
 from baton_relay.questions.base import QuestionSet
 from baton_relay.questions.loader import load_all_question_files
-from baton_relay.results.log import EventLog, new_run_dir
+from baton_relay.results.checkpoint import (
+    checkpoint_path_for,
+    load_checkpoint,
+    save_checkpoint,
+)
+from baton_relay.results.log import (
+    EventLog,
+    find_resumable_run,
+    new_run_dir,
+    team_name_taken,
+)
 from baton_relay.state.machine import GameSession, GameSnapshot, PlayerSlot, RelayState
 from baton_relay.ui.config_dialog import ConfigDialog
 from baton_relay.ui.correct_burst import CorrectBurst, OverrideFlash
 from baton_relay.ui.question_widgets import QuestionHost
 from baton_relay.ui.starfield import StarfieldOverlay
+from baton_relay.ui.team_name_dialog import TeamNameConflictDialog
 from baton_relay.ui.theme import (
     build_stylesheet,
     display_color,
@@ -57,10 +68,16 @@ def _fmt_time(seconds: float) -> str:
     return f"{m:02d}:{sec:02d}"
 
 
+def _player_label(slot: PlayerSlot) -> str:
+    if slot.name.strip() == str(slot.player_number):
+        return f"#{slot.player_number}"
+    return f"#{slot.player_number} {slot.name}"
+
+
 def _roster_text(roster: tuple[PlayerSlot, ...], *, highlight: int | None = None) -> str:
     parts: list[str] = []
     for slot in roster:
-        label = f"#{slot.player_number} {slot.name}"
+        label = _player_label(slot)
         if highlight is not None and slot.person_index == highlight:
             parts.append(f"▸ {label} ◂")
         else:
@@ -117,7 +134,7 @@ class StartupScreen(QWidget):
         self.name_edit.returnPressed.connect(self._focus_first_player)
         panel_layout.addWidget(self.name_edit)
 
-        self.crew_label = QLabel("Handles — numbered in entry order")
+        self.crew_label = QLabel("Player names — badges show entry order")
         self.crew_label.setObjectName("muted")
         panel_layout.addWidget(self.crew_label)
 
@@ -167,7 +184,7 @@ class StartupScreen(QWidget):
             )
             hl.addWidget(badge)
             edit = QLineEdit()
-            edit.setPlaceholderText(f"Handle #{i + 1}…")
+            edit.setPlaceholderText("Player name…")
             edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             if preserve_handles is not None and i < len(preserve_handles):
                 edit.setText(preserve_handles[i])
@@ -204,7 +221,7 @@ class StartupScreen(QWidget):
         for i, edit in enumerate(self._player_edits):
             handle = edit.text().strip()
             if not handle:
-                edit.setPlaceholderText(f"Handle #{i + 1} required")
+                edit.setPlaceholderText(f"Name for #{i + 1} required")
                 edit.setFocus()
                 return
             handles.append(handle)
@@ -528,7 +545,10 @@ class GameScreen(QWidget):
             accent_slot = expected
         self.apply_person_color(accent_slot.color, window=window)
 
-        self.next_big.setText(f"#{expected.player_number}\n{expected.name}")
+        if expected.name.strip() == str(expected.player_number):
+            self.next_big.setText(f"#{expected.player_number}")
+        else:
+            self.next_big.setText(f"#{expected.player_number}\n{expected.name}")
         show = display_color(accent_slot.color, self.config.theme)
         self.next_big.setStyleSheet(f"color: {show}; background: transparent;")
         self.leg_timer.setStyleSheet(f"color: {show}; background: transparent;")
@@ -557,7 +577,7 @@ class GameScreen(QWidget):
         if question_changed:
             self.question_host.show_question(question)
 
-        person_label = f"#{expected.player_number} {expected.name}"
+        person_label = _player_label(expected)
         if snap.state == RelayState.WAITING_FOR_BATON:
             mode = "wrong" if snap.wrong_baton else "switch"
             switch_key = ("waiting", snap.expected_person_index)
@@ -586,7 +606,7 @@ class GameScreen(QWidget):
                 else expected
             )
             self.switch_overlay.show_switch(
-                f"#{slot.player_number} {slot.name}",
+                _player_label(slot),
                 slot.color,
                 mode="resume",
                 detail=snap.last_message,
@@ -678,6 +698,7 @@ class MainWindow(QMainWindow):
 
         self._pending_after_correct = False
         self._device_label = "FAKE" if fake_device else "waiting"
+        self._ckpt_ticks = 0
         self.game_screen.correct_burst.finished.connect(self._after_correct_burst)
         self.startup.reset()
         QTimer.singleShot(0, self._update_star_holes)
@@ -791,23 +812,23 @@ class MainWindow(QMainWindow):
         if not self.config.controller.enabled:
             return
         if unlocked:
-            self._flash_override("CONTROLLER UNLOCKED", "Pad overrides are live")
+            self._flash_override("OVERRIDE", "Pad armed — use bound buttons")
             if self.stack.currentWidget() is self.game_screen:
                 self.game_screen.append_activity(
-                    f"{datetime.now().strftime('%H:%M:%S')}  PAD unlocked"
+                    f"{datetime.now().strftime('%H:%M:%S')}  OVERRIDE armed"
                 )
         else:
             self._flash_override(
-                "CONTROLLER LOCKED",
-                f"Hold {self._unlock_chord_text()} to unlock",
+                "OVERRIDE OFF",
+                f"Hold {self._unlock_chord_text()} to arm again",
             )
 
     def _on_xbox_locked_press(self) -> None:
         if not self.config.controller.enabled:
             return
         self._flash_override(
-            "HOLD TO UNLOCK",
-            f"Hold {self._unlock_chord_text()} — then press override",
+            "HOLD TO OVERRIDE",
+            f"Hold {self._unlock_chord_text()}, then press the action",
         )
 
     def _on_xbox_action(self, action: str) -> None:
@@ -858,14 +879,80 @@ class MainWindow(QMainWindow):
             self.session.on_baton_reading(reading.person_index, source=reading.source)
 
     def _start_game(self, team_name: str, player_names: list) -> None:
+        results_dir = self.config.paths.results_dir
+        if team_name_taken(results_dir, team_name):
+            resumable = find_resumable_run(results_dir, team_name)
+            dlg = TeamNameConflictDialog(
+                team_name, resumable=resumable, parent=self
+            )
+            dlg.setStyleSheet(build_stylesheet(self.config.theme))
+            dlg.exec()
+            if dlg.choice == TeamNameConflictDialog.RESUME and resumable is not None:
+                self._resume_game(resumable.run_dir)
+                return
+            self.startup.name_edit.setFocus()
+            self.startup.name_edit.selectAll()
+            return
+
+        self._begin_new_game(team_name, list(player_names))
+
+    def _resume_game(self, run_dir) -> None:
+        ckpt = checkpoint_path_for(run_dir)
+        if not ckpt.is_file():
+            self.startup.name_edit.setFocus()
+            self.startup.name_edit.selectAll()
+            return
+
+        self.run_dir = run_dir
+        self.event_log = EventLog(run_dir / "events.jsonl")
+        self.game_screen.clear_activity()
+
+        def on_event(name: str, payload: dict) -> None:
+            assert self.event_log is not None
+            assert self.session is not None
+            # payload may already include team — merge so we don't double-pass it
+            self.event_log.emit(
+                name, **{**payload, "team": self.session.team_name}
+            )
+            self._mirror_event(name, payload)
+            self._save_checkpoint()
+
+        session = load_checkpoint(ckpt, self.config, self.sets, on_event=on_event)
+        self.session = session
+        self.session.add_listener(lambda snap: self._on_snapshot(snap))
+        self._device_label = "FAKE" if self.fake_device else "waiting"
+        self.session.set_device_status(self._device_label)
+        self._last_qid = None
+
+        self.event_log.emit(
+            "run_resumed",
+            team=self.session.team_name,
+            local_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            score=self.session.progress.total_score,
+            game_remaining=round(self.session.game_remaining, 2),
+        )
+        self.game_screen.append_activity(
+            f"{datetime.now().strftime('%H:%M:%S')}  RESUME {self.session.team_name} — "
+            + ", ".join(_player_label(s) for s in self.session.roster)
+            + f"  ·  {self.session.progress.total_score:g} pts"
+        )
+        self._save_checkpoint()
+        self.stack.setCurrentWidget(self.game_screen)
+        self._timer.start()
+        self._render(force_question=True)
+        self.game_screen.setFocus()
+
+    def _begin_new_game(self, team_name: str, player_names: list) -> None:
         self.run_dir = new_run_dir(self.config.paths.results_dir, team_name)
         self.event_log = EventLog(self.run_dir / "events.jsonl")
         self.game_screen.clear_activity()
 
         def on_event(name: str, payload: dict) -> None:
             assert self.event_log is not None
-            self.event_log.emit(name, team=team_name, **payload)
+            # payload may already include team — merge so we don't double-pass it
+            self.event_log.emit(name, **{**payload, "team": team_name})
             self._mirror_event(name, payload)
+            self._save_checkpoint()
 
         self.session = GameSession(
             self.config,
@@ -895,17 +982,40 @@ class MainWindow(QMainWindow):
         )
         self.game_screen.append_activity(
             f"{datetime.now().strftime('%H:%M:%S')}  {team_name} — "
-            + ", ".join(f"#{s.player_number} {s.name}" for s in self.session.roster)
+            + ", ".join(_player_label(s) for s in self.session.roster)
         )
+        self._save_checkpoint()
         self.stack.setCurrentWidget(self.game_screen)
         self._timer.start()
         self._render(force_question=True)
         self.game_screen.setFocus()
 
+    def _save_checkpoint(self) -> None:
+        if not self.session or not self.run_dir:
+            return
+        if self.session.state == RelayState.PAUSED_SCORE:
+            return
+        try:
+            path = checkpoint_path_for(self.run_dir)
+            save_checkpoint(path, self.session)
+            # Mirror for reset tooling
+            mirror = self.config.paths.checkpoint_path
+            if mirror.resolve() != path.resolve():
+                save_checkpoint(mirror, self.session)
+        except OSError:
+            pass
+
+    def _who_label(self, number, name) -> str:
+        num = number if number is not None else "?"
+        handle = str(name or "").strip()
+        if handle and handle != str(num):
+            return f"#{num} {handle}"
+        return f"#{num}"
+
     def _mirror_event(self, name: str, payload: dict) -> None:
         ts = datetime.now().strftime("%H:%M:%S")
         if name == "answer":
-            who = f"#{payload.get('player_number')} {payload.get('player_name')}"
+            who = self._who_label(payload.get("player_number"), payload.get("player_name"))
             pts = payload.get("points")
             max_p = payload.get("max_points")
             qid = payload.get("question_id")
@@ -917,19 +1027,20 @@ class MainWindow(QMainWindow):
             line = f"{clock}  {who}  {mark}  {qid}  +{pts:g}/{max_p:g}"
             self.game_screen.append_activity(line)
         elif name == "baton_accepted":
-            who = f"#{payload.get('player_number')} {payload.get('player_name')}"
+            who = self._who_label(payload.get("player_number"), payload.get("player_name"))
             bonus = payload.get("resume_bonus_seconds") or 0
             verb = "resume" if payload.get("resume") else "in"
             extra = f"  (+{bonus:g}s)" if bonus else ""
             self.game_screen.append_activity(f"{ts}  {who}  {verb}{extra}")
         elif name == "frozen":
-            who = f"#{payload.get('player_number')} {payload.get('player_name')}"
+            who = self._who_label(payload.get("player_number"), payload.get("player_name"))
             self.game_screen.append_activity(f"{ts}  {who}  baton out")
         elif name == "leg_swap":
-            self.game_screen.append_activity(
-                f"{ts}  next  #{payload.get('expected_player_number')} "
-                f"{payload.get('expected_player_name')}"
+            who = self._who_label(
+                payload.get("expected_player_number"),
+                payload.get("expected_player_name"),
             )
+            self.game_screen.append_activity(f"{ts}  next  {who}")
         elif name == "leg_expired":
             self.game_screen.append_activity(f"{ts}  leg time up")
         elif name == "game_ended":
@@ -963,6 +1074,16 @@ class MainWindow(QMainWindow):
                         },
                     },
                 )
+                # Finished runs are not resumable
+                for path in (
+                    checkpoint_path_for(self.run_dir),
+                    self.config.paths.checkpoint_path,
+                ):
+                    try:
+                        if path.is_file():
+                            path.unlink()
+                    except OSError:
+                        pass
             self.score_screen.show_score(
                 snap.team_name,
                 snap.progress.total_score,
@@ -976,6 +1097,11 @@ class MainWindow(QMainWindow):
     def _on_tick(self) -> None:
         if self.session:
             self.session.tick(0.1)
+            # Persist timers ~every 2s so a crash can resume mid-leg
+            self._ckpt_ticks += 1
+            if self._ckpt_ticks >= 20:
+                self._ckpt_ticks = 0
+                self._save_checkpoint()
 
     def _on_submit(self, answer) -> None:
         if not self.session:

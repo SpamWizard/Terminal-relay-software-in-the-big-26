@@ -121,6 +121,9 @@ class GameSession:
 
     def player_display(self, person_index: int) -> str:
         slot = self.roster[person_index]
+        # Avoid "#1 1" when the handle is just the seat number
+        if slot.name.strip() == str(slot.player_number):
+            return f"#{slot.player_number}"
         return f"#{slot.player_number} {slot.name}"
 
     def snapshot(self) -> GameSnapshot:

@@ -25,4 +25,4 @@ Person `color` values tint the whole game UI (background wash, borders, accents)
 
 Timer values may be plain numbers (`180`) or arithmetic strings (`"3*60"`, `"45*60"`).
 
-Team name and player names are **not** in config — entered on the launch screen. Player numbers are assigned in entry order (`#1`, `#2`, …).
+Team name and player names are **not** in config — entered on the launch screen. Player numbers are assigned in entry order (`#1`, `#2`, …). Reusing a team name pops a WOAH dialog (resume unfinished, or change the name — no auto `#1`/`#2` suffixes).
