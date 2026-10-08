@@ -1,9 +1,9 @@
-"""TOML config loading and validation."""
+"""TOML config loading, validation, and in-app save."""
 
 from __future__ import annotations
 
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +11,33 @@ from typing import Any
 VALID_BATON_PAIRS: frozenset[tuple[int, int]] = frozenset(
     (a, b) for a in range(1, 6) for b in range(a + 1, 6)
 )
+
+XBOX_BUTTONS: tuple[str, ...] = (
+    "A",
+    "B",
+    "X",
+    "Y",
+    "LB",
+    "RB",
+    "LT",
+    "RT",
+    "Back",
+    "Start",
+    "LS",
+    "RS",
+    "DPadUp",
+    "DPadDown",
+    "DPadLeft",
+    "DPadRight",
+)
+
+DEFAULT_CONTROLLER_BINDINGS: dict[str, str] = {
+    "skip_question": "X",
+    "force_leg_swap": "Y",
+    "pause_overlay": "Start",
+    "confirm": "A",
+    "cancel": "B",
+}
 
 
 class ConfigError(Exception):
@@ -31,6 +58,7 @@ class TimersConfig:
     game_seconds: float
     leg_runs_while_frozen: bool
     debounce_ms: int
+    resume_bonus_seconds: float
 
 
 @dataclass(frozen=True)
@@ -58,6 +86,9 @@ class ControllerConfig:
     enabled: bool
     inactivity_lock_seconds: float
     unlock_hold_ms: int
+    device_name: str
+    unlock_buttons: tuple[str, ...]
+    bindings: dict[str, str]
 
 
 @dataclass(frozen=True)
@@ -106,6 +137,7 @@ class AppConfig:
     containers: ContainersConfig
     paths: PathsConfig
     theme: ThemeConfig
+    themes: dict[str, ThemeConfig]
     ui: UiConfig
     config_path: Path
     root_dir: Path
@@ -122,6 +154,9 @@ class AppConfig:
             if p.id == person_id:
                 return i
         return None
+
+    def with_updates(self, **kwargs: Any) -> AppConfig:
+        return replace(self, **kwargs)
 
 
 def _require(section: dict[str, Any], key: str, path: str) -> Any:
@@ -275,6 +310,14 @@ def load_config(path: Path) -> AppConfig:
     timers_raw = raw.get("timers", {})
     if not isinstance(timers_raw, dict):
         raise ConfigError("[timers]: expected table")
+    resume_bonus = _as_number_expr(
+        timers_raw.get("resume_bonus_seconds", 10),
+        "[timers].resume_bonus_seconds",
+    )
+    if resume_bonus < 0:
+        raise ConfigError(
+            f"[timers].resume_bonus_seconds: must be >= 0, got {resume_bonus}"
+        )
     timers = TimersConfig(
         leg_seconds=_as_number_expr(
             _require(timers_raw, "leg_seconds", "[timers]"), "[timers].leg_seconds"
@@ -287,6 +330,7 @@ def load_config(path: Path) -> AppConfig:
             "[timers].leg_runs_while_frozen",
         ),
         debounce_ms=_as_int(timers_raw.get("debounce_ms", 80), "[timers].debounce_ms"),
+        resume_bonus_seconds=resume_bonus,
     )
 
     serial_raw = raw.get("serial", {})
@@ -340,6 +384,32 @@ def load_config(path: Path) -> AppConfig:
     controller_raw = raw.get("controller", {})
     if not isinstance(controller_raw, dict):
         raise ConfigError("[controller]: expected table")
+    unlock_raw = controller_raw.get("unlock_buttons", ["LB", "RB"])
+    if not isinstance(unlock_raw, list) or not unlock_raw:
+        raise ConfigError("[controller].unlock_buttons: expected non-empty list")
+    unlock_buttons: list[str] = []
+    for i, btn in enumerate(unlock_raw):
+        name = _as_str(btn, f"[controller].unlock_buttons[{i}]")
+        if name not in XBOX_BUTTONS:
+            raise ConfigError(
+                f"[controller].unlock_buttons[{i}]: unknown button {name!r} "
+                f"(valid: {', '.join(XBOX_BUTTONS)})"
+            )
+        unlock_buttons.append(name)
+    bindings_raw = controller_raw.get("bindings", {})
+    if bindings_raw is None:
+        bindings_raw = {}
+    if not isinstance(bindings_raw, dict):
+        raise ConfigError("[controller.bindings]: expected table")
+    bindings = dict(DEFAULT_CONTROLLER_BINDINGS)
+    for key, value in bindings_raw.items():
+        action = _as_str(key, "[controller.bindings] key")
+        button = _as_str(value, f"[controller.bindings].{action}")
+        if button not in XBOX_BUTTONS:
+            raise ConfigError(
+                f"[controller.bindings].{action}: unknown button {button!r}"
+            )
+        bindings[action] = button
     controller = ControllerConfig(
         enabled=_as_bool(controller_raw.get("enabled", True), "[controller].enabled"),
         inactivity_lock_seconds=_as_float(
@@ -350,6 +420,12 @@ def load_config(path: Path) -> AppConfig:
             controller_raw.get("unlock_hold_ms", 1000),
             "[controller].unlock_hold_ms",
         ),
+        device_name=_as_str(
+            controller_raw.get("device_name", "Xbox Controller"),
+            "[controller].device_name",
+        ),
+        unlock_buttons=tuple(unlock_buttons),
+        bindings=bindings,
     )
 
     organizer_raw = raw.get("organizer", {})
@@ -397,20 +473,36 @@ def load_config(path: Path) -> AppConfig:
     theme_raw = raw.get("theme", {})
     if not isinstance(theme_raw, dict):
         raise ConfigError("[theme]: expected table")
-    theme_name = _as_str(theme_raw.get("name", "neon_terminal"), "[theme].name")
+    theme_name = _as_str(theme_raw.get("name", "deep_space"), "[theme].name")
 
     # Optional named presets under [themes.<name>]
     themes_raw = raw.get("themes", {})
     if themes_raw is not None and not isinstance(themes_raw, dict):
         raise ConfigError("[themes]: expected table of named themes")
-    preset: dict[str, Any] = {}
-    if isinstance(themes_raw, dict) and theme_name in themes_raw:
-        candidate = themes_raw[theme_name]
-        if not isinstance(candidate, dict):
-            raise ConfigError(f"[themes.{theme_name}]: expected table")
-        preset = candidate
-    elif isinstance(themes_raw, dict) and themes_raw and theme_name not in themes_raw:
-        available = ", ".join(sorted(themes_raw))
+    theme_presets: dict[str, ThemeConfig] = {}
+    if isinstance(themes_raw, dict):
+        for preset_name, candidate in themes_raw.items():
+            if not isinstance(candidate, dict):
+                raise ConfigError(f"[themes.{preset_name}]: expected table")
+            theme_presets[str(preset_name)] = ThemeConfig(
+                name=str(preset_name),
+                accent=_as_str(
+                    candidate.get("accent", "#7dd3fc"),
+                    f"[themes.{preset_name}].accent",
+                ),
+                background=_as_str(
+                    candidate.get("background", "#050816"),
+                    f"[themes.{preset_name}].background",
+                ),
+                foreground=_as_str(
+                    candidate.get("foreground", "#e8f1ff"),
+                    f"[themes.{preset_name}].foreground",
+                ),
+            )
+
+    preset_theme = theme_presets.get(theme_name)
+    if theme_presets and preset_theme is None:
+        available = ", ".join(sorted(theme_presets))
         raise ConfigError(
             f"[theme].name: unknown theme {theme_name!r} (available: {available})"
         )
@@ -419,15 +511,24 @@ def load_config(path: Path) -> AppConfig:
     theme = ThemeConfig(
         name=theme_name,
         accent=_as_str(
-            theme_raw.get("accent", preset.get("accent", "#00f5d4")),
+            theme_raw.get(
+                "accent",
+                preset_theme.accent if preset_theme else "#7dd3fc",
+            ),
             "[theme].accent",
         ),
         background=_as_str(
-            theme_raw.get("background", preset.get("background", "#0a0e14")),
+            theme_raw.get(
+                "background",
+                preset_theme.background if preset_theme else "#050816",
+            ),
             "[theme].background",
         ),
         foreground=_as_str(
-            theme_raw.get("foreground", preset.get("foreground", "#e6edf3")),
+            theme_raw.get(
+                "foreground",
+                preset_theme.foreground if preset_theme else "#e8f1ff",
+            ),
             "[theme].foreground",
         ),
     )
@@ -474,7 +575,148 @@ def load_config(path: Path) -> AppConfig:
         containers=containers,
         paths=paths,
         theme=theme,
+        themes=theme_presets,
         ui=ui,
         config_path=path,
         root_dir=root_dir,
     )
+
+
+def _toml_str(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _toml_number(value: float | int) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int) or (isinstance(value, float) and value.is_integer()):
+        return str(int(value))
+    return repr(float(value))
+
+
+def _rel_path(path: Path, root: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def save_config(config: AppConfig, path: Path | None = None) -> None:
+    """Write AppConfig back to TOML for in-app editing."""
+    dest = Path(path or config.config_path).resolve()
+    root = config.root_dir
+    lines: list[str] = [
+        "# Terminal Relay — organizer config (editable in-app)",
+        "",
+        "[team]",
+        f"size = {config.team_size}",
+        f"rotation = [{', '.join(str(i) for i in config.rotation)}]",
+        "",
+    ]
+    for person in config.people:
+        lines.extend(
+            [
+                "[[team.people]]",
+                f"id = {_toml_str(person.id)}",
+                f"label = {_toml_str(person.label)}",
+                f"color = {_toml_str(person.color)}",
+                f"baton_pins = [{person.baton_pins[0]}, {person.baton_pins[1]}]",
+                "",
+            ]
+        )
+    t = config.timers
+    lines.extend(
+        [
+            "[timers]",
+            f"leg_seconds = {_toml_number(t.leg_seconds)}",
+            f"game_seconds = {_toml_number(t.game_seconds)}",
+            f"leg_runs_while_frozen = {'true' if t.leg_runs_while_frozen else 'false'}",
+            f"debounce_ms = {t.debounce_ms}",
+            f"resume_bonus_seconds = {_toml_number(t.resume_bonus_seconds)}",
+            "",
+            "[serial]",
+            f"port = {_toml_str(config.serial.port)}",
+            f"baud = {config.serial.baud}",
+            f"heartbeat_timeout_ms = {config.serial.heartbeat_timeout_ms}",
+            "",
+            "[scoring]",
+            f"partial_credit = {'true' if config.scoring.partial_credit else 'false'}",
+            f"wrong_answer_penalty = {_toml_number(config.scoring.wrong_answer_penalty)}",
+            f"redo_multiplier = {_toml_number(config.scoring.redo_multiplier)}",
+            "",
+            "[questions]",
+            "files = [",
+        ]
+    )
+    for qf in config.questions.files:
+        lines.append(f"    {_toml_str(_rel_path(qf, root))},")
+    lines.extend(
+        [
+            "]",
+            f"redo_missed_at_set_end = "
+            f"{'true' if config.questions.redo_missed_at_set_end else 'false'}",
+            "",
+            "[controller]",
+            f"enabled = {'true' if config.controller.enabled else 'false'}",
+            f"inactivity_lock_seconds = "
+            f"{_toml_number(config.controller.inactivity_lock_seconds)}",
+            f"unlock_hold_ms = {config.controller.unlock_hold_ms}",
+            f"device_name = {_toml_str(config.controller.device_name)}",
+            "unlock_buttons = ["
+            + ", ".join(_toml_str(b) for b in config.controller.unlock_buttons)
+            + "]",
+            "",
+            "[controller.bindings]",
+        ]
+    )
+    for action, button in sorted(config.controller.bindings.items()):
+        lines.append(f"{action} = {_toml_str(button)}")
+    lines.extend(
+        [
+            "",
+            "[organizer]",
+            f"password_hash = {_toml_str(config.organizer_password_hash)}",
+            "",
+            "[containers]",
+            f"runtime = {_toml_str(config.containers.runtime)}",
+            f"network_mode = {_toml_str(config.containers.network_mode)}",
+            f"memory_limit = {_toml_str(config.containers.memory_limit)}",
+            f"cpu_limit = {_toml_number(config.containers.cpu_limit)}",
+            f"default_timeout_seconds = {config.containers.default_timeout_seconds}",
+            "",
+            "[paths]",
+            f"results_dir = {_toml_str(_rel_path(config.paths.results_dir, root))}",
+            f"checkpoint_path = "
+            f"{_toml_str(_rel_path(config.paths.checkpoint_path, root))}",
+            "",
+            "[theme]",
+            f"name = {_toml_str(config.theme.name)}",
+            "",
+        ]
+    )
+    for name, preset in sorted(config.themes.items()):
+        lines.extend(
+            [
+                f"[themes.{name}]",
+                f"accent = {_toml_str(preset.accent)}",
+                f"background = {_toml_str(preset.background)}",
+                f"foreground = {_toml_str(preset.foreground)}",
+                "",
+            ]
+        )
+    ui = config.ui
+    lines.extend(
+        [
+            "[ui]",
+            f"correct_fade_in_ms = {ui.correct_fade_in_ms}",
+            f"correct_hold_ms = {ui.correct_hold_ms}",
+            f"correct_fade_out_ms = {ui.correct_fade_out_ms}",
+            f"switch_sound = {'true' if ui.switch_sound else 'false'}",
+            f"switch_sound_volume = {_toml_number(ui.switch_sound_volume)}",
+            "",
+        ]
+    )
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text("\n".join(lines), encoding="utf-8")
+

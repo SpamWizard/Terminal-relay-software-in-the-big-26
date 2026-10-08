@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Callable
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QKeyEvent, QPainter, QColor, QPen
+from PySide6.QtCore import QRect, Qt, QTimer, Signal
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
+    QPlainTextEdit,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
@@ -19,14 +21,18 @@ from PySide6.QtWidgets import (
 )
 
 from baton_relay.audio import play_switch_chime
-from baton_relay.config import AppConfig
+from baton_relay.config import AppConfig, load_config
 from baton_relay.input.base import BatonReading, ReadingKind
 from baton_relay.input.fake import FakeBatonSource
+from baton_relay.input.xbox import XboxController
 from baton_relay.questions.base import QuestionSet
+from baton_relay.questions.loader import load_all_question_files
 from baton_relay.results.log import EventLog, new_run_dir
-from baton_relay.state.machine import GameSession, GameSnapshot, RelayState
+from baton_relay.state.machine import GameSession, GameSnapshot, PlayerSlot, RelayState
+from baton_relay.ui.config_dialog import ConfigDialog
 from baton_relay.ui.correct_burst import CorrectBurst
 from baton_relay.ui.question_widgets import QuestionHost
+from baton_relay.ui.starfield import StarfieldOverlay
 from baton_relay.ui.theme import build_stylesheet, display_color, game_screen_wash, soften
 
 
@@ -39,73 +45,168 @@ def _fmt_time(seconds: float) -> str:
     return f"{m:02d}:{sec:02d}"
 
 
-class ScanlineOverlay(QWidget):
-    """Very light CRT-style scanlines (kept subtle so panels stay clean)."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-
-    def paintEvent(self, event) -> None:  # noqa: N802
-        painter = QPainter(self)
-        pen = QPen(QColor(0, 0, 0, 14))
-        pen.setWidth(1)
-        painter.setPen(pen)
-        for y in range(0, self.height(), 4):
-            painter.drawLine(0, y, self.width(), y)
+def _roster_text(roster: tuple[PlayerSlot, ...], *, highlight: int | None = None) -> str:
+    parts: list[str] = []
+    for slot in roster:
+        label = f"#{slot.player_number} {slot.name}"
+        if highlight is not None and slot.person_index == highlight:
+            parts.append(f"▸ {label} ◂")
+        else:
+            parts.append(label)
+    return "   ".join(parts)
 
 
 class StartupScreen(QWidget):
-    started = Signal(str)
+    started = Signal(str, list)  # team_name, handles
+    open_config = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, config: AppConfig, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(48, 48, 48, 48)
-        layout.addStretch(1)
+        self.config = config
+        self.setObjectName("startupScreen")
+        self._player_edits: list[QLineEdit] = []
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 20, 24, 24)
+        root.setSpacing(0)
+
+        top = QHBoxLayout()
+        self.config_btn = QPushButton("CONFIG")
+        self.config_btn.setObjectName("ghost")
+        self.config_btn.clicked.connect(self.open_config.emit)
+        top.addWidget(self.config_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        top.addStretch(1)
+        root.addLayout(top)
+
+        root.addStretch(1)
 
         brand = QLabel("TERMINAL RELAY")
         brand.setObjectName("brand")
         brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(brand)
+        root.addWidget(brand)
 
-        layout.addSpacing(32)
+        root.addSpacing(24)
 
-        panel = QFrame()
-        panel.setObjectName("startupPanel")
-        panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        panel_layout = QVBoxLayout(panel)
-        panel_layout.setContentsMargins(32, 28, 32, 28)
-        panel_layout.setSpacing(16)
-        title = QLabel("TEAM NAME")
+        self.panel = QFrame()
+        self.panel.setObjectName("startupPanel")
+        self.panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.panel.setAutoFillBackground(True)
+        panel_layout = QVBoxLayout(self.panel)
+        panel_layout.setContentsMargins(28, 24, 28, 24)
+        panel_layout.setSpacing(12)
+
+        title = QLabel("TEAM")
         title.setObjectName("muted")
         panel_layout.addWidget(title)
+
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("Enter team name…")
-        self.name_edit.returnPressed.connect(self._go)
+        self.name_edit.setPlaceholderText("Team name…")
+        self.name_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.name_edit.returnPressed.connect(self._focus_first_player)
         panel_layout.addWidget(self.name_edit)
+
+        self.crew_label = QLabel("Handles — numbered in entry order")
+        self.crew_label.setObjectName("muted")
+        panel_layout.addWidget(self.crew_label)
+
+        self.players_host = QVBoxLayout()
+        self.players_host.setSpacing(8)
+        panel_layout.addLayout(self.players_host)
+        self._rebuild_player_rows()
+
         self.start_btn = QPushButton("START")
         self.start_btn.setObjectName("primary")
+        self.start_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.start_btn.clicked.connect(self._go)
         panel_layout.addWidget(self.start_btn)
-        hint = QLabel("F11 toggles fullscreen · Esc exits fullscreen")
-        hint.setObjectName("muted")
-        panel_layout.addWidget(hint)
-        layout.addWidget(panel, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        layout.addStretch(2)
+        root.addWidget(self.panel, alignment=Qt.AlignmentFlag.AlignCenter)
+        root.addStretch(2)
+        self._apply_tab_order()
+
+    def apply_config(self, config: AppConfig) -> None:
+        """Update seat count/colors without wiping typed team/handles."""
+        team_text = self.name_edit.text()
+        handle_texts = [edit.text() for edit in self._player_edits]
+        self.config = config
+        self._rebuild_player_rows(preserve_handles=handle_texts)
+        self.name_edit.setText(team_text)
+
+    def _rebuild_player_rows(self, preserve_handles: list[str] | None = None) -> None:
+        while self.players_host.count():
+            item = self.players_host.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        self._player_edits.clear()
+        for i, person in enumerate(self.config.people):
+            row = QFrame()
+            row.setObjectName("playerRow")
+            row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            row.setAutoFillBackground(True)
+            hl = QHBoxLayout(row)
+            hl.setContentsMargins(12, 8, 12, 8)
+            badge = QLabel(f"#{i + 1}")
+            badge.setObjectName("playerBadge")
+            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge.setStyleSheet(
+                f"QLabel#playerBadge {{ background-color: {person.color}; color: #041018; }}"
+            )
+            hl.addWidget(badge)
+            edit = QLineEdit()
+            edit.setPlaceholderText(f"Handle #{i + 1}…")
+            edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            if preserve_handles is not None and i < len(preserve_handles):
+                edit.setText(preserve_handles[i])
+            if i + 1 < len(self.config.people):
+                edit.returnPressed.connect(
+                    lambda _=False, nxt=i + 1: self._player_edits[nxt].setFocus()
+                )
+            else:
+                edit.returnPressed.connect(self._go)
+            hl.addWidget(edit, 1)
+            swatch = QLabel("●")
+            swatch.setStyleSheet(f"color: {person.color}; font-size: 22px;")
+            hl.addWidget(swatch)
+            self.players_host.addWidget(row)
+            self._player_edits.append(edit)
+        self._apply_tab_order()
+
+    def _apply_tab_order(self) -> None:
+        chain: list[QWidget] = [self.name_edit, *self._player_edits, self.start_btn]
+        for a, b in zip(chain, chain[1:]):
+            QWidget.setTabOrder(a, b)
+
+    def _focus_first_player(self) -> None:
+        if self._player_edits:
+            self._player_edits[0].setFocus()
 
     def _go(self) -> None:
         name = self.name_edit.text().strip()
         if not name:
             self.name_edit.setPlaceholderText("Team name required")
+            self.name_edit.setFocus()
             return
-        self.started.emit(name)
+        handles: list[str] = []
+        for i, edit in enumerate(self._player_edits):
+            handle = edit.text().strip()
+            if not handle:
+                edit.setPlaceholderText(f"Handle #{i + 1} required")
+                edit.setFocus()
+                return
+            handles.append(handle)
+        self.started.emit(name, handles)
 
     def reset(self) -> None:
         self.name_edit.clear()
+        for edit in self._player_edits:
+            edit.clear()
         self.name_edit.setFocus()
+
+    def solid_panel_rect_in(self, target: QWidget) -> QRect:
+        """Rect of the solid crew panel, mapped into `target` coords."""
+        top_left = self.panel.mapTo(target, self.panel.rect().topLeft())
+        return QRect(top_left, self.panel.size())
 
 
 class ScoreScreen(QWidget):
@@ -113,6 +214,7 @@ class ScoreScreen(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("scoreScreen")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(48, 48, 48, 48)
         layout.addStretch(1)
@@ -124,6 +226,11 @@ class ScoreScreen(QWidget):
         self.team.setObjectName("headline")
         self.team.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.team)
+        self.roster = QLabel("")
+        self.roster.setObjectName("muted")
+        self.roster.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.roster.setWordWrap(True)
+        layout.addWidget(self.roster)
         self.score = QLabel("0")
         self.score.setObjectName("timerBig")
         self.score.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -139,8 +246,11 @@ class ScoreScreen(QWidget):
         layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addStretch(2)
 
-    def show_score(self, team: str, points: float, message: str) -> None:
+    def show_score(
+        self, team: str, points: float, message: str, roster: tuple[PlayerSlot, ...]
+    ) -> None:
         self.team.setText(team)
+        self.roster.setText(_roster_text(roster))
         self.score.setText(f"{points:.1f}" if points % 1 else f"{int(points)}")
         self.detail.setText(message)
 
@@ -155,19 +265,24 @@ class SwitchOverlay(QFrame):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(48, 48, 48, 48)
+        outer.setContentsMargins(40, 32, 40, 32)
         outer.addStretch(1)
 
         self.box = QFrame()
         self.box.setObjectName("switchBox")
         box_l = QVBoxLayout(self.box)
-        box_l.setContentsMargins(64, 48, 64, 48)
-        box_l.setSpacing(16)
+        box_l.setContentsMargins(48, 36, 48, 36)
+        box_l.setSpacing(12)
 
         self.title = QLabel("SWITCH")
         self.title.setObjectName("switchTitle")
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         box_l.addWidget(self.title)
+
+        self.team_label = QLabel("")
+        self.team_label.setObjectName("switchSub")
+        self.team_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        box_l.addWidget(self.team_label)
 
         self.person = QLabel("—")
         self.person.setObjectName("switchPerson")
@@ -180,39 +295,62 @@ class SwitchOverlay(QFrame):
         self.subtitle.setWordWrap(True)
         box_l.addWidget(self.subtitle)
 
+        self.roster_label = QLabel("")
+        self.roster_label.setObjectName("switchRoster")
+        self.roster_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.roster_label.setWordWrap(True)
+        box_l.addWidget(self.roster_label)
+
         outer.addWidget(self.box, alignment=Qt.AlignmentFlag.AlignCenter)
         outer.addStretch(1)
         self.hide()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
-        # Scale the switch card with the display
-        w = max(520, int(self.width() * 0.55))
+        w = max(520, int(self.width() * 0.58))
         h = max(360, int(self.height() * 0.55))
         self.box.setMinimumSize(w, h)
-        self.box.setMaximumWidth(int(self.width() * 0.85))
+        self.box.setMaximumWidth(int(self.width() * 0.88))
 
-    def show_switch(self, person_label: str, color: str, *, mode: str, detail: str = "") -> None:
+    def show_switch(
+        self,
+        person_label: str,
+        color: str,
+        *,
+        mode: str,
+        detail: str = "",
+        team_name: str = "",
+        roster: tuple[PlayerSlot, ...] = (),
+        highlight: int | None = None,
+        resume_bonus: float = 0.0,
+    ) -> None:
         if mode == "switch":
             self.title.setText("SWITCH")
-            self.subtitle.setText(detail or f"Person {person_label} — plug in now")
+            self.subtitle.setText(detail or f"{person_label} — plug in now")
         elif mode == "resume":
-            self.title.setText("BATON OUT")
-            self.subtitle.setText(detail or f"Person {person_label} — plug back in to continue")
+            self.title.setText("RESUME")
+            bonus = f"  ·  +{resume_bonus:g}s on reconnect" if resume_bonus else ""
+            self.subtitle.setText(
+                detail or f"{person_label} — plug back in to continue{bonus}"
+            )
         elif mode == "wrong":
             self.title.setText("WRONG")
-            self.subtitle.setText(detail or f"Need person {person_label}")
+            self.subtitle.setText(detail or f"Need {person_label}")
         else:
             self.title.setText("WAIT")
-            self.subtitle.setText(detail or f"Person {person_label}")
+            self.subtitle.setText(detail or person_label)
+        self.team_label.setText(f"TEAM {team_name}" if team_name else "")
         self.person.setText(person_label)
+        self.roster_label.setText(
+            _roster_text(roster, highlight=highlight) if roster else ""
+        )
         show = display_color(color, self.theme)
         border = soften(color, self.theme, amount=0.25)
         self.person.setStyleSheet(f"color: {show}; background: transparent;")
         self.title.setStyleSheet(f"color: {border}; background: transparent;")
         self.box.setStyleSheet(
             f"QFrame#switchBox {{ border: 3px solid {border}; "
-            f"background-color: rgba(10, 14, 20, 236); border-radius: 10px; }}"
+            f"background-color: rgba(5, 8, 22, 236); border-radius: 14px; }}"
         )
         self.show()
         self.raise_()
@@ -230,7 +368,7 @@ class GameScreen(QWidget):
         self._prev_switch_key: tuple[str, int] | None = None
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 20)
-        root.setSpacing(16)
+        root.setSpacing(12)
 
         header = QHBoxLayout()
         self.team_label = QLabel("TEAM")
@@ -244,11 +382,15 @@ class GameScreen(QWidget):
         header.addWidget(self.game_timer, 1, Qt.AlignmentFlag.AlignRight)
         root.addLayout(header)
 
-        # Stage holds gameplay + SWITCH overlay; header stays above so timers remain visible.
+        self.roster_bar = QLabel("")
+        self.roster_bar.setObjectName("muted")
+        self.roster_bar.setWordWrap(True)
+        root.addWidget(self.roster_bar)
+
         self.stage = QWidget()
         stage_l = QVBoxLayout(self.stage)
         stage_l.setContentsMargins(0, 0, 0, 0)
-        stage_l.setSpacing(16)
+        stage_l.setSpacing(12)
 
         body = QHBoxLayout()
 
@@ -259,6 +401,7 @@ class GameScreen(QWidget):
         self.next_big = QLabel("—")
         self.next_big.setObjectName("timerBig")
         self.next_big.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.next_big.setWordWrap(True)
         left_l.addWidget(self.next_big)
         self.leg_timer = QLabel("00:00")
         self.leg_timer.setObjectName("headline")
@@ -271,7 +414,16 @@ class GameScreen(QWidget):
         self.message.setWordWrap(True)
         self.message.setObjectName("muted")
         left_l.addWidget(self.message)
-        left_l.addStretch(1)
+        log_label = QLabel("Log")
+        log_label.setObjectName("muted")
+        left_l.addWidget(log_label)
+        self.activity_log = QPlainTextEdit()
+        self.activity_log.setObjectName("activityLog")
+        self.activity_log.setReadOnly(True)
+        self.activity_log.setMaximumBlockCount(120)
+        self.activity_log.setMinimumHeight(120)
+        self.activity_log.setUndoRedoEnabled(False)
+        left_l.addWidget(self.activity_log, 1)
         body.addWidget(left, 1)
 
         right = QFrame()
@@ -284,19 +436,28 @@ class GameScreen(QWidget):
         stage_l.addLayout(body, 1)
 
         footer = QHBoxLayout()
-        self.device_status = QLabel("DEVICE —")
+        footer.setContentsMargins(0, 4, 0, 0)
+        self.device_status = QLabel("DEVICE —  →")
         self.device_status.setObjectName("muted")
-        footer.addWidget(self.device_status)
+        footer.addWidget(self.device_status, 0, Qt.AlignmentFlag.AlignLeft)
         footer.addStretch(1)
-        self.hint = QLabel("Fake: 1-6 insert · P pull · U unknown")
+        self.hint = QLabel("←  Fake: 1–6 insert · P pull · U unknown")
         self.hint.setObjectName("muted")
-        footer.addWidget(self.hint)
+        footer.addWidget(self.hint, 0, Qt.AlignmentFlag.AlignRight)
         stage_l.addLayout(footer)
 
         root.addWidget(self.stage, 1)
 
         self.switch_overlay = SwitchOverlay(config.theme, self.stage)
         self.correct_burst = CorrectBurst(self.stage)
+
+    def clear_activity(self) -> None:
+        self.activity_log.clear()
+
+    def append_activity(self, line: str) -> None:
+        self.activity_log.appendPlainText(line)
+        bar = self.activity_log.verticalScrollBar()
+        bar.setValue(bar.maximum())
 
     def _fit_switch_overlay(self) -> None:
         self.switch_overlay.setGeometry(self.stage.rect())
@@ -324,7 +485,6 @@ class GameScreen(QWidget):
         )
 
     def apply_person_color(self, color: str, window: QMainWindow | None = None) -> None:
-        """Drive accents + background wash from the current / expected person."""
         if color == self._person_accent:
             return
         self._person_accent = color
@@ -341,25 +501,26 @@ class GameScreen(QWidget):
         question,
         *,
         window: QMainWindow | None = None,
+        resume_bonus_cfg: float = 10.0,
     ) -> None:
         self.team_label.setText(snap.team_name or "TEAM")
         score = snap.progress.total_score
         self.score_label.setText(f"SCORE {score:.1f}" if score % 1 else f"SCORE {int(score)}")
         self.game_timer.setText(f"GAME {_fmt_time(snap.game_remaining)}")
         self.leg_timer.setText(_fmt_time(snap.leg_remaining))
+        self.roster_bar.setText(_roster_text(snap.roster, highlight=snap.expected_person_index))
 
-        expected = self.config.people[snap.expected_person_index]
-        # Active person owns the color while answering; otherwise expected next
+        expected = snap.roster[snap.expected_person_index]
         if snap.state == RelayState.ACTIVE and snap.current_person_index is not None:
-            accent_person = self.config.people[snap.current_person_index]
+            accent_slot = snap.roster[snap.current_person_index]
         elif snap.state == RelayState.FROZEN and snap.current_person_index is not None:
-            accent_person = self.config.people[snap.current_person_index]
+            accent_slot = snap.roster[snap.current_person_index]
         else:
-            accent_person = expected
-        self.apply_person_color(accent_person.color, window=window)
+            accent_slot = expected
+        self.apply_person_color(accent_slot.color, window=window)
 
-        self.next_big.setText(expected.label)
-        show = display_color(accent_person.color, self.config.theme)
+        self.next_big.setText(f"#{expected.player_number}\n{expected.name}")
+        show = display_color(accent_slot.color, self.config.theme)
         self.next_big.setStyleSheet(f"color: {show}; background: transparent;")
         self.leg_timer.setStyleSheet(f"color: {show}; background: transparent;")
         self.game_timer.setStyleSheet(f"color: {show}; background: transparent;")
@@ -381,14 +542,14 @@ class GameScreen(QWidget):
         self.state_label.style().polish(self.state_label)
 
         self.message.setText(snap.last_message)
-        self.device_status.setText(f"DEVICE {snap.device_status}")
+        # Footer left text is composed by MainWindow (device + pad).
 
         locked = snap.state != RelayState.ACTIVE
         self.question_host.set_locked(locked)
         if question_changed:
             self.question_host.show_question(question)
 
-        # Big takeover when someone must plug in (header stays visible for game timer)
+        person_label = f"#{expected.player_number} {expected.name}"
         if snap.state == RelayState.WAITING_FOR_BATON:
             mode = "wrong" if snap.wrong_baton else "switch"
             switch_key = ("waiting", snap.expected_person_index)
@@ -400,33 +561,43 @@ class GameScreen(QWidget):
                 play_switch_chime(volume=self.config.ui.switch_sound_volume)
             self._prev_switch_key = switch_key
             self.switch_overlay.show_switch(
-                expected.label,
+                person_label,
                 expected.color,
                 mode=mode,
                 detail=snap.last_message,
+                team_name=snap.team_name,
+                roster=snap.roster,
+                highlight=snap.expected_person_index,
             )
             self._fit_switch_overlay()
         elif snap.state == RelayState.FROZEN:
             self._prev_switch_key = None
-            person = (
-                self.config.people[snap.current_person_index]
+            slot = (
+                snap.roster[snap.current_person_index]
                 if snap.current_person_index is not None
                 else expected
             )
             self.switch_overlay.show_switch(
-                person.label,
-                person.color,
+                f"#{slot.player_number} {slot.name}",
+                slot.color,
                 mode="resume",
                 detail=snap.last_message,
+                team_name=snap.team_name,
+                roster=snap.roster,
+                highlight=slot.person_index,
+                resume_bonus=resume_bonus_cfg,
             )
             self._fit_switch_overlay()
         elif snap.state == RelayState.DISCONNECTED:
             self._prev_switch_key = None
             self.switch_overlay.show_switch(
-                expected.label,
+                person_label,
                 expected.color,
                 mode="wait",
                 detail=snap.last_message or "Device disconnected",
+                team_name=snap.team_name,
+                roster=snap.roster,
+                highlight=snap.expected_person_index,
             )
             self._fit_switch_overlay()
         else:
@@ -460,8 +631,9 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
 
-        self.startup = StartupScreen()
+        self.startup = StartupScreen(config)
         self.startup.started.connect(self._start_game)
+        self.startup.open_config.connect(self._open_config)
         self.game_screen = GameScreen(config)
         self.game_screen.bind_submit(self._on_submit)
         self.score_screen = ScoreScreen()
@@ -470,32 +642,51 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.startup)
         self.stack.addWidget(self.game_screen)
         self.stack.addWidget(self.score_screen)
+        self.stack.currentChanged.connect(lambda _i: self._update_star_holes())
 
-        self._scanlines = ScanlineOverlay(self)
-        self._scanlines.resize(self.size())
-        self._scanlines.raise_()
+        # Full-bleed star overlay (edge-to-edge map); solid panels punch clear holes.
+        self._stars = StarfieldOverlay(self)
+        self._stars.resize(self.size())
+        self._stars.raise_()
 
         self._timer = QTimer(self)
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._on_tick)
 
+        self._xbox = XboxController(self)
+        self._xbox.status_changed.connect(self._on_xbox_status)
+        self._xbox.start(self._on_xbox_action)
+        self._xbox.apply_config(config.controller)
+
         if fake_device:
             self._fake = FakeBatonSource(config)
             self._fake.start(self._on_reading)
             self.game_screen.hint.setText(
-                "Fake: 1-6 insert · P pull · U unknown  (Ctrl+key while answering)  ·  F11 fullscreen"
+                "←  Fake: 1–6 insert · P pull · U unknown  (Ctrl+key while answering)"
             )
         else:
-            self.game_screen.hint.setText("Serial device mode (connect RP2040)  ·  F11 fullscreen")
+            self.game_screen.hint.setText("←  Serial · connect RP2040")
 
         self._pending_after_correct = False
+        self._device_label = "FAKE" if fake_device else "waiting"
         self.game_screen.correct_burst.finished.connect(self._after_correct_burst)
         self.startup.reset()
+        self._refresh_footer()
+        QTimer.singleShot(0, self._update_star_holes)
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
-        self._scanlines.setGeometry(self.rect())
-        self._scanlines.raise_()
+        self._stars.setGeometry(self.rect())
+        self._stars.raise_()
+        self._update_star_holes()
+
+    def _update_star_holes(self) -> None:
+        """Keep the crew entry panel fully solid (no stars drawn over it)."""
+        if self.stack.currentWidget() is self.startup:
+            rect = self.startup.solid_panel_rect_in(self._stars)
+            self._stars.set_holes([rect])
+        else:
+            self._stars.set_holes([])
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         key = event.key()
@@ -510,7 +701,6 @@ class MainWindow(QMainWindow):
             return
 
         if self._fake and self.stack.currentWidget() is self.game_screen:
-            # When answering, require Ctrl so digits don't steal from text fields.
             locked = not self.session or self.session.questions_locked()
             ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
             text = event.text()
@@ -547,6 +737,76 @@ class MainWindow(QMainWindow):
                 return
         super().keyPressEvent(event)
 
+    def _open_config(self) -> None:
+        dlg = ConfigDialog(self.config, self)
+        dlg.setStyleSheet(build_stylesheet(self.config.theme))
+        dlg.xbox_enabled_changed.connect(self._live_set_xbox_enabled)
+        if dlg.exec() and dlg.result_config is not None:
+            self._apply_config(dlg.result_config)
+
+    def _live_set_xbox_enabled(self, enabled: bool) -> None:
+        """Hot-toggle pad on/off from the config dialog (no restart, no Save required)."""
+        from dataclasses import replace
+
+        ctrl = replace(self.config.controller, enabled=enabled)
+        self.config = self.config.with_updates(controller=ctrl)
+        self._xbox.apply_config(ctrl)
+        self._refresh_footer()
+
+    def _apply_config(self, config: AppConfig) -> None:
+        self.config = config
+        try:
+            self.sets = load_all_question_files(config.questions.files)
+        except Exception:
+            pass
+        self.game_screen.config = config
+        self.game_screen.switch_overlay.theme = config.theme
+        self.startup.apply_config(config)
+        self.setStyleSheet(build_stylesheet(config.theme))
+        self.game_screen._person_accent = ""
+        if self._fake is not None:
+            self._fake.config = config
+        # Live-apply Xbox enable/bindings — no app restart
+        self._xbox.apply_config(config.controller)
+        if self.session is not None:
+            self.session.config = config
+        self._refresh_footer()
+
+    def _on_xbox_status(self, _status: str) -> None:
+        self._refresh_footer()
+
+    def _refresh_footer(self) -> None:
+        left = f"DEVICE {self._device_label}"
+        if self.config.controller.enabled:
+            left += f"  ·  PAD {self._xbox.status_label}"
+        else:
+            left += "  ·  PAD OFF"
+        self.game_screen.device_status.setText(f"{left}  →")
+
+    def _on_xbox_action(self, action: str) -> None:
+        if not self.config.controller.enabled:
+            return
+        if action == "skip_question" and self.session:
+            self.session.skip_question(organizer=True)
+            self._render(force_question=True)
+        elif action == "force_leg_swap" and self.session:
+            if self.session.state != RelayState.PAUSED_SCORE:
+                self.session.advance_rotation()
+                self._render()
+        elif action == "confirm":
+            # Trigger the same path as clicking SUBMIT when answering
+            if (
+                self.session
+                and self.session.state == RelayState.ACTIVE
+                and not self.session.questions_locked()
+            ):
+                self.game_screen.question_host._submit()
+        elif action == "cancel":
+            pass
+        elif action == "pause_overlay" and self.session:
+            self.session.last_message = "Controller pause — continue playing."
+            self._render()
+
     def _on_reading(self, reading: BatonReading) -> None:
         if not self.session:
             return
@@ -563,28 +823,86 @@ class MainWindow(QMainWindow):
         else:
             self.session.on_baton_reading(reading.person_index, source=reading.source)
 
-    def _start_game(self, team_name: str) -> None:
+    def _start_game(self, team_name: str, player_names: list) -> None:
         self.run_dir = new_run_dir(self.config.paths.results_dir, team_name)
         self.event_log = EventLog(self.run_dir / "events.jsonl")
+        self.game_screen.clear_activity()
 
         def on_event(name: str, payload: dict) -> None:
             assert self.event_log is not None
             self.event_log.emit(name, team=team_name, **payload)
+            self._mirror_event(name, payload)
 
         self.session = GameSession(
             self.config,
             self.sets,
             team_name=team_name,
+            player_names=list(player_names),
             on_event=on_event,
         )
         self.session.add_listener(lambda snap: self._on_snapshot(snap))
-        self.session.set_device_status("FAKE" if self.fake_device else "waiting")
+        self._device_label = "FAKE" if self.fake_device else "waiting"
+        self.session.set_device_status(self._device_label)
         self._last_qid = None
-        self.event_log.emit("game_started", team=team_name)
+        self._refresh_footer()
+        roster_payload = [
+            {
+                "player_number": s.player_number,
+                "name": s.name,
+                "person_index": s.person_index,
+                "color": s.color,
+            }
+            for s in self.session.roster
+        ]
+        self.event_log.emit(
+            "game_started",
+            team=team_name,
+            roster=roster_payload,
+            local_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        self.game_screen.append_activity(
+            f"{datetime.now().strftime('%H:%M:%S')}  {team_name} — "
+            + ", ".join(f"#{s.player_number} {s.name}" for s in self.session.roster)
+        )
         self.stack.setCurrentWidget(self.game_screen)
         self._timer.start()
         self._render(force_question=True)
         self.game_screen.setFocus()
+
+    def _mirror_event(self, name: str, payload: dict) -> None:
+        ts = datetime.now().strftime("%H:%M:%S")
+        if name == "answer":
+            who = f"#{payload.get('player_number')} {payload.get('player_name')}"
+            pts = payload.get("points")
+            max_p = payload.get("max_points")
+            qid = payload.get("question_id")
+            mark = "✓" if payload.get("correct") else "✗"
+            # Prefer short clock time from local_time if present
+            clock = str(payload.get("local_time", ts))
+            if " " in clock:
+                clock = clock.split(" ")[-1]
+            line = f"{clock}  {who}  {mark}  {qid}  +{pts:g}/{max_p:g}"
+            self.game_screen.append_activity(line)
+        elif name == "baton_accepted":
+            who = f"#{payload.get('player_number')} {payload.get('player_name')}"
+            bonus = payload.get("resume_bonus_seconds") or 0
+            verb = "resume" if payload.get("resume") else "in"
+            extra = f"  (+{bonus:g}s)" if bonus else ""
+            self.game_screen.append_activity(f"{ts}  {who}  {verb}{extra}")
+        elif name == "frozen":
+            who = f"#{payload.get('player_number')} {payload.get('player_name')}"
+            self.game_screen.append_activity(f"{ts}  {who}  baton out")
+        elif name == "leg_swap":
+            self.game_screen.append_activity(
+                f"{ts}  next  #{payload.get('expected_player_number')} "
+                f"{payload.get('expected_player_name')}"
+            )
+        elif name == "leg_expired":
+            self.game_screen.append_activity(f"{ts}  leg time up")
+        elif name == "game_ended":
+            self.game_screen.append_activity(
+                f"{ts}  end  {payload.get('score')} pts"
+            )
 
     def _on_snapshot(self, snap: GameSnapshot) -> None:
         if snap.state == RelayState.PAUSED_SCORE:
@@ -594,6 +912,14 @@ class MainWindow(QMainWindow):
                     self.run_dir / "summary.json",
                     {
                         "team": snap.team_name,
+                        "roster": [
+                            {
+                                "player_number": s.player_number,
+                                "name": s.name,
+                                "person_index": s.person_index,
+                            }
+                            for s in snap.roster
+                        ],
                         "score": snap.progress.total_score,
                         "answered": {
                             k: {
@@ -608,6 +934,7 @@ class MainWindow(QMainWindow):
                 snap.team_name,
                 snap.progress.total_score,
                 snap.last_message,
+                snap.roster,
             )
             self.stack.setCurrentWidget(self.score_screen)
         else:
@@ -647,14 +974,27 @@ class MainWindow(QMainWindow):
         qid = q.id if q else None
         changed = force_question or qid != self._last_qid
         self._last_qid = qid
-        self.game_screen.render(snap, changed, q, window=self)
+        self.game_screen.render(
+            snap,
+            changed,
+            q,
+            window=self,
+            resume_bonus_cfg=self.config.timers.resume_bonus_seconds,
+        )
+        self._refresh_footer()
 
     def _next_team(self) -> None:
         self.session = None
         self.event_log = None
         self.run_dir = None
         self._last_qid = None
-        self.game_screen._person_accent = ""  # force palette refresh next game
-        self.setStyleSheet(build_stylesheet(self.config.theme))
+        self.game_screen._person_accent = ""
+        self.game_screen.clear_activity()
+        # Reload config in case it changed mid-run via another path
+        try:
+            self.config = load_config(self.config.config_path)
+            self._apply_config(self.config)
+        except Exception:
+            self.setStyleSheet(build_stylesheet(self.config.theme))
         self.startup.reset()
         self.stack.setCurrentWidget(self.startup)

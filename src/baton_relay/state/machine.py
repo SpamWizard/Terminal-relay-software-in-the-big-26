@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum, auto
 from typing import Any, Callable
 
@@ -32,6 +33,17 @@ class Progress:
     finished: bool = False
 
 
+@dataclass(frozen=True)
+class PlayerSlot:
+    """Runtime player assignment for one seat (config person index)."""
+
+    person_index: int
+    player_number: int  # 1-based assignment order
+    name: str
+    color: str
+    seat_label: str
+
+
 @dataclass
 class GameSnapshot:
     team_name: str
@@ -44,6 +56,8 @@ class GameSnapshot:
     last_message: str
     wrong_baton: bool
     device_status: str
+    roster: tuple[PlayerSlot, ...]
+    last_resume_bonus: float
 
 
 Listener = Callable[[GameSnapshot], None]
@@ -58,6 +72,7 @@ class GameSession:
         sets: list[QuestionSet],
         *,
         team_name: str = "",
+        player_names: list[str] | None = None,
         on_event: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> None:
         if not sets:
@@ -67,6 +82,20 @@ class GameSession:
         self.team_name = team_name
         self._on_event = on_event or (lambda *_: None)
 
+        names = list(player_names or [])
+        while len(names) < config.team_size:
+            names.append(config.people[len(names)].label)
+        self.roster: tuple[PlayerSlot, ...] = tuple(
+            PlayerSlot(
+                person_index=i,
+                player_number=i + 1,
+                name=names[i].strip() or config.people[i].label,
+                color=config.people[i].color,
+                seat_label=config.people[i].label,
+            )
+            for i in range(config.team_size)
+        )
+
         self.state = RelayState.WAITING_FOR_BATON
         self.rotation_pos = 0  # index into config.rotation
         self.current_person_index: int | None = None
@@ -74,9 +103,11 @@ class GameSession:
         self.game_remaining = float(config.timers.game_seconds)
         self.timers_started = False
         self.progress = Progress()
-        self.last_message = "SWITCH — plug in to begin."
+        first = self.player_display(self.expected_person_index)
+        self.last_message = f"SWITCH — {first} plug in to begin."
         self.wrong_baton = False
         self.device_status = "unknown"
+        self.last_resume_bonus = 0.0
         self._pre_disconnect_state: RelayState | None = None
         self._listeners: list[Listener] = []
 
@@ -84,6 +115,13 @@ class GameSession:
 
     def add_listener(self, listener: Listener) -> None:
         self._listeners.append(listener)
+
+    def player_slot(self, person_index: int) -> PlayerSlot:
+        return self.roster[person_index]
+
+    def player_display(self, person_index: int) -> str:
+        slot = self.roster[person_index]
+        return f"#{slot.player_number} {slot.name}"
 
     def snapshot(self) -> GameSnapshot:
         return GameSnapshot(
@@ -97,6 +135,8 @@ class GameSession:
             last_message=self.last_message,
             wrong_baton=self.wrong_baton,
             device_status=self.device_status,
+            roster=self.roster,
+            last_resume_bonus=self.last_resume_bonus,
         )
 
     def _emit(self) -> None:
@@ -150,9 +190,16 @@ class GameSession:
         if person_index is None:
             self.wrong_baton = False
             if self.state == RelayState.ACTIVE:
-                self._freeze("Baton removed — plug back in.", source=source)
+                who = (
+                    self.player_display(self.current_person_index)
+                    if self.current_person_index is not None
+                    else self.player_display(self.expected_person_index)
+                )
+                self._freeze(f"Baton removed — {who} plug back in.", source=source)
             elif self.state == RelayState.WAITING_FOR_BATON:
-                self.last_message = f"SWITCH — person {self.expected_person.label}."
+                self.last_message = (
+                    f"SWITCH — {self.player_display(self.expected_person_index)}."
+                )
                 self._emit()
             return
 
@@ -180,17 +227,19 @@ class GameSession:
             if person_index == expected:
                 self._activate(person_index, source=source, resume=False)
             else:
-                person = self.config.people[person_index]
+                got = self.player_display(person_index)
+                need = self.player_display(expected)
                 self.wrong_baton = True
-                self.last_message = (
-                    f"Wrong person ({person.label}). "
-                    f"Need person {self.expected_person.label}."
-                )
+                self.last_message = f"Wrong player ({got}). Need {need}."
                 self._event(
                     "baton_rejected",
                     reason="wrong_person",
                     got=person_index,
+                    got_name=self.roster[person_index].name,
+                    got_player_number=self.roster[person_index].player_number,
                     expected=expected,
+                    expected_name=self.roster[expected].name,
+                    expected_player_number=self.roster[expected].player_number,
                     source=source,
                 )
                 self._emit()
@@ -223,7 +272,9 @@ class GameSession:
         # Return to waiting/frozen; require baton again
         self.state = RelayState.WAITING_FOR_BATON
         self.current_person_index = None
-        self.last_message = f"Reconnected. SWITCH — person {self.expected_person.label}."
+        self.last_message = (
+            f"Reconnected. SWITCH — {self.player_display(self.expected_person_index)}."
+        )
         self.device_status = "connected"
         self._pre_disconnect_state = None
         self._event("device_reconnected")
@@ -236,19 +287,43 @@ class GameSession:
     def _activate(self, person_index: int, *, source: str, resume: bool) -> None:
         self.wrong_baton = False
         self.current_person_index = person_index
-        if not resume:
+        slot = self.roster[person_index]
+        person = self.config.people[person_index]
+        bonus = 0.0
+        if resume:
+            bonus = float(self.config.timers.resume_bonus_seconds)
+            if bonus > 0:
+                self.leg_remaining += bonus
+                self.game_remaining += bonus
+            self.last_resume_bonus = bonus
+            if bonus > 0:
+                self.last_message = (
+                    f"{self.player_display(person_index)} resumed "
+                    f"(+{bonus:g}s). Team {self.team_name}."
+                )
+            else:
+                self.last_message = (
+                    f"{self.player_display(person_index)} resumed. "
+                    f"Team {self.team_name}."
+                )
+        else:
             self.leg_remaining = float(self.config.timers.leg_seconds)
+            self.last_resume_bonus = 0.0
+            self.last_message = (
+                f"{self.player_display(person_index)} active. Team {self.team_name}."
+            )
         if not self.timers_started:
             self.timers_started = True
             self._event("timers_started", source=source)
         self.state = RelayState.ACTIVE
-        person = self.config.people[person_index]
-        self.last_message = f"Person {person.label} active."
         self._event(
             "baton_accepted",
             person_index=person_index,
             person_id=person.id,
+            player_number=slot.player_number,
+            player_name=slot.name,
             resume=resume,
+            resume_bonus_seconds=bonus,
             source=source,
         )
         self._emit()
@@ -256,7 +331,21 @@ class GameSession:
     def _freeze(self, message: str, *, source: str) -> None:
         self.state = RelayState.FROZEN
         self.last_message = message
-        self._event("frozen", message=message, source=source)
+        who_idx = (
+            self.current_person_index
+            if self.current_person_index is not None
+            else self.expected_person_index
+        )
+        slot = self.roster[who_idx]
+        self._event(
+            "frozen",
+            message=message,
+            source=source,
+            player_number=slot.player_number,
+            player_name=slot.name,
+            person_index=who_idx,
+            team=self.team_name,
+        )
         self._emit()
 
     def advance_rotation(self) -> None:
@@ -264,9 +353,15 @@ class GameSession:
         self.current_person_index = None
         self.leg_remaining = float(self.config.timers.leg_seconds)
         self.state = RelayState.WAITING_FOR_BATON
-        self.last_message = f"SWITCH — person {self.expected_person.label} next."
+        nxt = self.expected_person_index
+        self.last_message = f"SWITCH — {self.player_display(nxt)} next."
         self.wrong_baton = False
-        self._event("leg_swap", expected=self.expected_person_index)
+        self._event(
+            "leg_swap",
+            expected=nxt,
+            expected_player_number=self.roster[nxt].player_number,
+            expected_player_name=self.roster[nxt].name,
+        )
         self._emit()
 
     # --- timers ---
@@ -348,13 +443,33 @@ class GameSession:
         if result.correct and qid in self.progress.missed_ids:
             self.progress.missed_ids.remove(qid)
 
+        who_idx = (
+            self.current_person_index
+            if self.current_person_index is not None
+            else self.expected_person_index
+        )
+        slot = self.roster[who_idx]
+        local_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self._event(
             "answer",
             question_id=qid,
+            question_type=question.type,
+            question_prompt=question.prompt,
             points=result.points,
+            max_points=result.max_points,
             correct=result.correct,
+            partial=result.partial,
             redo=is_redo,
             answer=answer,
+            feedback=result.feedback,
+            person_index=who_idx,
+            player_number=slot.player_number,
+            player_name=slot.name,
+            team=self.team_name,
+            local_time=local_time,
+            game_remaining=round(self.game_remaining, 2),
+            leg_remaining=round(self.leg_remaining, 2),
+            total_score=round(self.progress.total_score, 3),
         )
         self._advance_after_answer()
         self._emit()

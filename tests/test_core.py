@@ -36,7 +36,10 @@ def test_load_config(config):
     assert config.people[0].baton_pins == (1, 2)
     assert config.timers.leg_seconds > 0
     assert config.timers.game_seconds > 0
-    assert config.theme.name == "neon_terminal"
+    assert config.timers.resume_bonus_seconds == 10
+    assert config.theme.name == "deep_space"
+    assert config.controller.unlock_buttons == ("LB", "RB")
+    assert config.controller.bindings["confirm"] == "A"
 
 
 def test_number_expr():
@@ -131,8 +134,12 @@ def test_short_answer_casefold():
 
 def test_state_machine_baton_flow(config, sets):
     # Short timers for tests
-    session = GameSession(config, sets, team_name="Test")
+    session = GameSession(
+        config, sets, team_name="Test", player_names=["Ada", "Ben", "Cy", "Dee"]
+    )
     assert session.state == RelayState.WAITING_FOR_BATON
+    assert session.roster[0].player_number == 1
+    assert session.roster[0].name == "Ada"
     # Wrong person
     session.on_baton_reading(1, source="fake")
     assert session.state == RelayState.WAITING_FOR_BATON
@@ -143,9 +150,39 @@ def test_state_machine_baton_flow(config, sets):
     # Pull out
     session.on_baton_reading(None, source="fake")
     assert session.state == RelayState.FROZEN
-    # Same person resumes
+    # Same person resumes — gains resume bonus on leg + game timers
+    leg_before = session.leg_remaining
+    game_before = session.game_remaining
     session.on_baton_reading(0, source="fake")
     assert session.state == RelayState.ACTIVE
+    assert session.leg_remaining == pytest.approx(
+        leg_before + config.timers.resume_bonus_seconds
+    )
+    assert session.game_remaining == pytest.approx(
+        game_before + config.timers.resume_bonus_seconds
+    )
+
+
+def test_answer_logs_player(config, sets):
+    events: list[tuple[str, dict]] = []
+    session = GameSession(
+        config,
+        sets,
+        team_name="Nova",
+        player_names=["Ada", "Ben", "Cy", "Dee"],
+        on_event=lambda n, p: events.append((n, p)),
+    )
+    session.on_baton_reading(0, source="fake")
+    result = session.submit_answer(3)
+    assert result is not None
+    answer_events = [p for n, p in events if n == "answer"]
+    assert answer_events
+    payload = answer_events[0]
+    assert payload["player_name"] == "Ada"
+    assert payload["player_number"] == 1
+    assert payload["team"] == "Nova"
+    assert "local_time" in payload
+    assert "question_prompt" in payload
 
 
 def test_timers_wait_for_first_baton(config, sets):
@@ -187,3 +224,23 @@ def test_answer_advances(config, sets):
 def test_missing_config(tmp_path):
     with pytest.raises(ConfigError):
         load_config(tmp_path / "nope.toml")
+
+
+def test_save_config_roundtrip(config, tmp_path):
+    from dataclasses import replace
+
+    from baton_relay.config import save_config
+
+    dest = tmp_path / "config.toml"
+    save_config(config, dest)
+    reloaded = load_config(dest)
+    assert reloaded.team_size == config.team_size
+    assert reloaded.timers.resume_bonus_seconds == config.timers.resume_bonus_seconds
+    assert reloaded.controller.bindings == config.controller.bindings
+    assert reloaded.theme.name == config.theme.name
+
+    disabled = config.with_updates(
+        controller=replace(config.controller, enabled=False)
+    )
+    save_config(disabled, dest)
+    assert load_config(dest).controller.enabled is False

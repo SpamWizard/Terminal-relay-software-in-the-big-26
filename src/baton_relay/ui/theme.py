@@ -61,14 +61,20 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
     }}
     QLabel#brand {{
         color: {ac};
-        font-size: 64px;
+        font-size: 58px;
         font-weight: 700;
-        letter-spacing: 6px;
+        letter-spacing: 10px;
+        background-color: transparent;
+    }}
+    QLabel#tagline {{
+        color: {muted};
+        font-size: 16px;
+        letter-spacing: 4px;
         background-color: transparent;
     }}
     QLabel#headline {{
         color: {fg};
-        font-size: 32px;
+        font-size: 28px;
         font-weight: 600;
         background-color: transparent;
     }}
@@ -89,14 +95,32 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         font-weight: 600;
         background-color: transparent;
     }}
-    QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox {{
-        background-color: {input_bg};
-        border: 1px solid {ac};
-        border-radius: 2px;
-        padding: 14px 16px;
+    QLabel#playerBadge {{
+        color: {bg};
+        background-color: {ac};
+        border-radius: 18px;
+        font-size: 18px;
+        font-weight: 800;
+        min-width: 36px;
+        max-width: 48px;
+        min-height: 36px;
+        padding: 4px 8px;
+        qproperty-alignment: AlignCenter;
+    }}
+    QLabel#rosterLine {{
         color: {fg};
         font-size: 20px;
-        min-height: 28px;
+        font-weight: 600;
+        background-color: transparent;
+    }}
+    QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox {{
+        background-color: {input_bg};
+        border: 1px solid {ac};
+        border-radius: 6px;
+        padding: 12px 14px;
+        color: {fg};
+        font-size: 18px;
+        min-height: 26px;
         selection-background-color: {ac};
         selection-color: {bg};
     }}
@@ -104,9 +128,9 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         background-color: transparent;
         border: 1px solid {ac};
         color: {ac};
-        padding: 14px 28px;
-        border-radius: 2px;
-        font-size: 18px;
+        padding: 12px 24px;
+        border-radius: 6px;
+        font-size: 17px;
         font-weight: 600;
     }}
     QPushButton:hover {{
@@ -125,6 +149,72 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
     }}
     QPushButton#primary:hover {{
         background-color: {mix(ac, "#ffffff", 0.25)};
+    }}
+    QPushButton#ghost {{
+        border-color: {panel_border};
+        color: {muted};
+        font-size: 15px;
+        padding: 10px 18px;
+    }}
+    QPushButton#bindButton {{
+        background-color: {input_bg};
+        border: 1px solid {panel_border};
+        color: {fg};
+        padding: 8px 14px;
+        font-size: 15px;
+        font-weight: 700;
+        min-width: 64px;
+    }}
+    QPushButton#bindButton:hover {{
+        border-color: {ac};
+        color: {ac};
+        background-color: {hover};
+    }}
+    QPushButton#bindButton:checked {{
+        background-color: {ac};
+        border-color: {ac};
+        color: {bg};
+    }}
+    QPushButton#bindListening {{
+        background-color: {mix(bg, ac, 0.35)};
+        border: 2px solid {ac};
+        color: {fg};
+        padding: 8px 14px;
+        font-size: 14px;
+        font-weight: 700;
+    }}
+    QTabWidget::pane {{
+        border: 1px solid {panel_border};
+        background: {panel};
+        border-radius: 6px;
+    }}
+    QTabBar::tab {{
+        background: {input_bg};
+        color: {muted};
+        border: 1px solid {panel_border};
+        padding: 10px 16px;
+        margin-right: 4px;
+        border-top-left-radius: 6px;
+        border-top-right-radius: 6px;
+    }}
+    QTabBar::tab:selected {{
+        color: {bg};
+        background: {ac};
+        border-color: {ac};
+    }}
+    QGroupBox {{
+        border: 1px solid {panel_border};
+        border-radius: 6px;
+        margin-top: 14px;
+        padding-top: 12px;
+        color: {fg};
+        font-weight: 600;
+    }}
+    QGroupBox::title {{
+        subcontrol-origin: margin;
+        left: 12px;
+        padding: 0 6px;
+        color: {ac};
     }}
     QPushButton#choice {{
         background-color: {input_bg};
@@ -154,48 +244,68 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
     QFrame#panel {{
         background-color: {panel};
         border: 2px solid {panel_border};
-        border-radius: 4px;
+        border-radius: 8px;
     }}
     QFrame#startupPanel {{
-        background-color: {mix(bg, "#000000", 0.15)};
+        background-color: {mix(bg, "#000000", 0.22)};
         border: 1px solid {ac};
-        border-radius: 4px;
-        min-width: 480px;
-        max-width: 640px;
+        border-radius: 12px;
+        min-width: 560px;
+        max-width: 720px;
+    }}
+    QFrame#playerRow {{
+        background-color: {mix(bg, "#000000", 0.12)};
+        border: 1px solid {panel_border};
+        border-radius: 8px;
     }}
     QFrame#frozenOverlay {{
         background-color: {rgba(bg, 0.86)};
         border: 2px solid {ac};
     }}
     QFrame#switchOverlay {{
-        background-color: {rgba(mix(bg, ac, 0.35), 0.92)};
+        background-color: {rgba(mix(bg, ac, 0.28), 0.93)};
     }}
     QFrame#switchBox {{
-        background-color: {mix(bg, ac, 0.18)};
-        border: 5px solid {ac};
-        border-radius: 10px;
+        background-color: {mix(bg, ac, 0.16)};
+        border: 4px solid {ac};
+        border-radius: 14px;
     }}
     QLabel#switchTitle {{
         color: {ac};
-        font-size: 110px;
+        font-size: 72px;
         font-weight: 800;
-        letter-spacing: 14px;
+        letter-spacing: 10px;
     }}
     QLabel#switchPerson {{
-        font-size: 160px;
+        font-size: 84px;
         font-weight: 800;
     }}
     QLabel#switchSub {{
         color: {fg};
-        font-size: 28px;
+        font-size: 22px;
         font-weight: 600;
+    }}
+    QLabel#switchRoster {{
+        color: {muted};
+        font-size: 16px;
+        font-weight: 500;
     }}
     QListWidget, QComboBox {{
         background-color: {input_bg};
         border: 1px solid {panel_border};
         color: {fg};
-        font-size: 18px;
+        font-size: 16px;
         padding: 6px;
+        border-radius: 6px;
+    }}
+    QPlainTextEdit#activityLog {{
+        background-color: {mix(bg, "#000000", 0.22)};
+        border: 1px solid {mix(bg, ac, 0.22)};
+        border-radius: 4px;
+        color: {mix(fg, bg, 0.35)};
+        font-size: 12px;
+        padding: 8px;
+        selection-background-color: {mix(bg, ac, 0.25)};
     }}
     QRadioButton, QCheckBox {{
         spacing: 12px;
@@ -203,10 +313,37 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         font-size: 18px;
     }}
     QRadioButton::indicator, QCheckBox::indicator {{
-        width: 20px;
-        height: 20px;
-        border: 1px solid {ac};
+        width: 22px;
+        height: 22px;
+        border: 2px solid {ac};
+        border-radius: 4px;
         background: {input_bg};
+    }}
+    QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
+        background-color: {ac};
+        border-color: {ac};
+        image: none;
+    }}
+    QCheckBox::indicator:unchecked:hover, QRadioButton::indicator:unchecked:hover {{
+        background-color: {hover};
+    }}
+    QPushButton#xboxToggle {{
+        background-color: {input_bg};
+        border: 2px solid {panel_border};
+        color: {muted};
+        padding: 12px 20px;
+        font-size: 18px;
+        font-weight: 800;
+        letter-spacing: 1px;
+        min-width: 220px;
+    }}
+    QPushButton#xboxToggle:checked {{
+        background-color: {ac};
+        border-color: {ac};
+        color: {bg};
+    }}
+    QPushButton#xboxToggle:hover {{
+        border-color: {ac};
     }}
     QProgressBar {{
         border: 1px solid {panel_border};

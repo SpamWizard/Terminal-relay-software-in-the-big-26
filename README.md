@@ -1,6 +1,6 @@
 # Terminal Relay
 
-Desktop relay app with physical baton (RP2040) identity, timed rotation, extensible question types, and optional hands-on container challenges.
+Space-themed desktop relay app with physical baton (RP2040) identity, timed crew rotation, extensible question types, and optional hands-on container challenges.
 
 ## Quick start (MVP / fake-device mode)
 
@@ -13,7 +13,9 @@ relay run --fake-device
 # or: python -m baton_relay --fake-device
 ```
 
-Opens fullscreen. **F11** toggles windowed; **Esc** leaves fullscreen.
+Opens fullscreen. Enter **team name** + **player names** (numbers `#1`… assigned in order). **CONFIG** (top-left) edits timers, theme, and Xbox bindings in-app.
+
+Unplug → resume overlay shows the full roster and adds ~10s (configurable) back onto the timers.
 
 Fake baton keys (when the game window has focus):
 
