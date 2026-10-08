@@ -258,9 +258,6 @@ class GameSession:
         if self.state in (RelayState.DISCONNECTED, RelayState.PAUSED_SCORE):
             return
         self._pre_disconnect_state = self.state
-        if self.state == RelayState.ACTIVE:
-            # Preserve question; freeze visually via DISCONNECTED
-            pass
         self.state = RelayState.DISCONNECTED
         self.last_message = "Device disconnected. Use controller override or reconnect."
         self.device_status = "disconnected"
@@ -272,14 +269,22 @@ class GameSession:
             self.device_status = "connected"
             self._emit()
             return
-        # Return to waiting/frozen; require baton again
-        self.state = RelayState.WAITING_FOR_BATON
-        self.current_person_index = None
-        self.last_message = (
-            f"Reconnected. SWITCH — {self.player_display(self.expected_person_index)}."
-        )
-        self.device_status = "connected"
+        prior = self._pre_disconnect_state
         self._pre_disconnect_state = None
+        self.device_status = "connected"
+        # Mid-leg disconnect: return to frozen so the same player can resume
+        if prior in (RelayState.ACTIVE, RelayState.FROZEN) and self.current_person_index is not None:
+            self.state = RelayState.FROZEN
+            who = self.current_person_index
+            self.last_message = (
+                f"Reconnected — {self.player_display(who)} plug back in."
+            )
+        else:
+            self.state = RelayState.WAITING_FOR_BATON
+            self.current_person_index = None
+            self.last_message = (
+                f"Reconnected. SWITCH — {self.player_display(self.expected_person_index)}."
+            )
         self._event("device_reconnected")
         self._emit()
 
@@ -378,7 +383,8 @@ class GameSession:
             self._emit()
             return
 
-        # Game timer runs in active/frozen/waiting (paused only while app down — handled by checkpoint)
+        # Game timer runs in active/frozen/waiting/disconnected.
+        # Wall-clock pause while the app is down is handled by checkpoint restore.
         if self.state in (
             RelayState.ACTIVE,
             RelayState.FROZEN,

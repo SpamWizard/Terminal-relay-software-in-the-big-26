@@ -38,7 +38,8 @@ def test_load_config(config):
     assert config.timers.game_seconds > 0
     assert config.timers.resume_bonus_seconds == 10
     assert config.theme.name == "deep_space"
-    assert config.controller.unlock_buttons == ("LB", "RB")
+    assert config.controller.unlock_buttons  # organizer-configurable chord
+    assert all(b for b in config.controller.unlock_buttons)
     assert config.controller.bindings["confirm"] == "A"
 
 
@@ -91,6 +92,14 @@ def test_decode_unknown_one_pin(config):
 def test_decode_empty(config):
     r = decode_pins((), config)
     assert r.kind == ReadingKind.EMPTY
+
+
+def test_pins_from_mask():
+    from baton_relay.input.decode import pins_from_mask
+
+    assert pins_from_mask(0b00000) == ()
+    assert pins_from_mask(0b00011) == (1, 2)
+    assert pins_from_mask(0b10101) == (1, 3, 5)
 
 
 def test_scoring_mc():
@@ -285,3 +294,16 @@ def test_player_display_skips_numeric_duplicate(config, sets):
     )
     assert session.player_display(0) == "#1"
     assert session.player_display(1) == "#2 Ben"
+
+
+def test_device_reconnect_returns_to_frozen(config, sets):
+    session = GameSession(
+        config, sets, team_name="T", player_names=["Ada", "Ben", "Cy", "Dee"]
+    )
+    session.on_baton_reading(0, source="fake")
+    assert session.state == RelayState.ACTIVE
+    session.on_device_disconnected()
+    assert session.state == RelayState.DISCONNECTED
+    session.on_device_reconnected()
+    assert session.state == RelayState.FROZEN
+    assert session.current_person_index == 0

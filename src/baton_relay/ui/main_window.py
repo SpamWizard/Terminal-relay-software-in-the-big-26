@@ -791,8 +791,11 @@ class MainWindow(QMainWindow):
         self.config = config
         try:
             self.sets = load_all_question_files(config.questions.files)
-        except Exception:
-            pass
+        except Exception as exc:
+            # Keep prior sets if the new question paths fail to load
+            self.game_screen.append_activity(
+                f"{datetime.now().strftime('%H:%M:%S')}  config: questions not reloaded ({exc})"
+            )
         self.game_screen.config = config
         self.game_screen.switch_overlay.theme = config.theme
         self.startup.apply_config(config)
@@ -855,11 +858,15 @@ class MainWindow(QMainWindow):
                 self._flash_override("OVERRIDE · CONFIRM", "Submit")
                 self.game_screen.question_host._submit()
         elif action == "cancel":
-            self._flash_override("OVERRIDE · CANCEL", "No action bound")
+            # Reserved bind — clears wrong-baton flash / soft nudge only for now
+            if self.session:
+                self.session.wrong_baton = False
+                self._render()
+            self._flash_override("OVERRIDE · CANCEL", "Cleared")
         elif action == "pause_overlay" and self.session:
-            self.session.last_message = "Controller pause — continue playing."
-            self._flash_override("OVERRIDE · PAUSE", "Message ping")
-            self.game_screen.append_activity(f"{ts}  OVERRIDE pause ping")
+            self.session.last_message = "Organizer ping — keep playing."
+            self._flash_override("OVERRIDE · PING", "Attention")
+            self.game_screen.append_activity(f"{ts}  OVERRIDE ping")
             self._render()
 
     def _on_reading(self, reading: BatonReading) -> None:
@@ -877,6 +884,28 @@ class MainWindow(QMainWindow):
             self._render()
         else:
             self.session.on_baton_reading(reading.person_index, source=reading.source)
+
+    def _on_session_event(self, name: str, payload: dict) -> None:
+        assert self.event_log is not None
+        assert self.session is not None
+        # payload may already include team — merge so we don't double-pass it
+        self.event_log.emit(name, **{**payload, "team": self.session.team_name})
+        self._mirror_event(name, payload)
+        self._save_checkpoint()
+
+    def _wire_session(self, session: GameSession) -> None:
+        self.session = session
+        self.session.add_listener(lambda snap: self._on_snapshot(snap))
+        self._device_label = "FAKE" if self.fake_device else "waiting"
+        self.session.set_device_status(self._device_label)
+        self._last_qid = None
+
+    def _show_game(self) -> None:
+        self._save_checkpoint()
+        self.stack.setCurrentWidget(self.game_screen)
+        self._timer.start()
+        self._render(force_question=True)
+        self.game_screen.setFocus()
 
     def _start_game(self, team_name: str, player_names: list) -> None:
         results_dir = self.config.paths.results_dir
@@ -906,23 +935,13 @@ class MainWindow(QMainWindow):
         self.run_dir = run_dir
         self.event_log = EventLog(run_dir / "events.jsonl")
         self.game_screen.clear_activity()
-
-        def on_event(name: str, payload: dict) -> None:
-            assert self.event_log is not None
-            assert self.session is not None
-            # payload may already include team — merge so we don't double-pass it
-            self.event_log.emit(
-                name, **{**payload, "team": self.session.team_name}
+        self._wire_session(
+            load_checkpoint(
+                ckpt, self.config, self.sets, on_event=self._on_session_event
             )
-            self._mirror_event(name, payload)
-            self._save_checkpoint()
-
-        session = load_checkpoint(ckpt, self.config, self.sets, on_event=on_event)
-        self.session = session
-        self.session.add_listener(lambda snap: self._on_snapshot(snap))
-        self._device_label = "FAKE" if self.fake_device else "waiting"
-        self.session.set_device_status(self._device_label)
-        self._last_qid = None
+        )
+        assert self.session is not None
+        assert self.event_log is not None
 
         self.event_log.emit(
             "run_resumed",
@@ -936,35 +955,23 @@ class MainWindow(QMainWindow):
             + ", ".join(_player_label(s) for s in self.session.roster)
             + f"  ·  {self.session.progress.total_score:g} pts"
         )
-        self._save_checkpoint()
-        self.stack.setCurrentWidget(self.game_screen)
-        self._timer.start()
-        self._render(force_question=True)
-        self.game_screen.setFocus()
+        self._show_game()
 
     def _begin_new_game(self, team_name: str, player_names: list) -> None:
         self.run_dir = new_run_dir(self.config.paths.results_dir, team_name)
         self.event_log = EventLog(self.run_dir / "events.jsonl")
         self.game_screen.clear_activity()
-
-        def on_event(name: str, payload: dict) -> None:
-            assert self.event_log is not None
-            # payload may already include team — merge so we don't double-pass it
-            self.event_log.emit(name, **{**payload, "team": team_name})
-            self._mirror_event(name, payload)
-            self._save_checkpoint()
-
-        self.session = GameSession(
-            self.config,
-            self.sets,
-            team_name=team_name,
-            player_names=list(player_names),
-            on_event=on_event,
+        self._wire_session(
+            GameSession(
+                self.config,
+                self.sets,
+                team_name=team_name,
+                player_names=list(player_names),
+                on_event=self._on_session_event,
+            )
         )
-        self.session.add_listener(lambda snap: self._on_snapshot(snap))
-        self._device_label = "FAKE" if self.fake_device else "waiting"
-        self.session.set_device_status(self._device_label)
-        self._last_qid = None
+        assert self.session is not None
+        assert self.event_log is not None
         roster_payload = [
             {
                 "player_number": s.player_number,
@@ -984,11 +991,7 @@ class MainWindow(QMainWindow):
             f"{datetime.now().strftime('%H:%M:%S')}  {team_name} — "
             + ", ".join(_player_label(s) for s in self.session.roster)
         )
-        self._save_checkpoint()
-        self.stack.setCurrentWidget(self.game_screen)
-        self._timer.start()
-        self._render(force_question=True)
-        self.game_screen.setFocus()
+        self._show_game()
 
     def _save_checkpoint(self) -> None:
         if not self.session or not self.run_dir:

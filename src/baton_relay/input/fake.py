@@ -11,7 +11,7 @@ class FakeBatonSource(BatonSource):
     Keys (when forwarded from the UI):
       1-6  → insert that person's baton (seat index 0-5)
       0/U  → unknown reading
-      P/Backspace → pull out (empty)
+      P / Backspace / Space → pull out (empty)
     """
 
     def __init__(self, config: AppConfig) -> None:

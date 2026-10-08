@@ -1,4 +1,4 @@
-# Question format reference (MVP)
+# Question format reference
 
 Question sets are JSON files listed in `[questions].files`.
 

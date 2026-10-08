@@ -254,7 +254,7 @@ def _text(q: Question) -> tuple[QWidget, Callable[[], Any]]:
     if isinstance(q, HandsOn):
         layout.addWidget(
             QLabel(
-                "Hands-on containers ship in a later phase. "
+                "Container challenges are not available yet. "
                 "If a practice flag is configured, enter it below."
             )
         )

@@ -1,10 +1,13 @@
-"""Organizer password helpers (MVP stub; real Argon2 in a later phase)."""
+"""Organizer password helpers (reserved — CONFIG lock not wired yet).
+
+Dev hashes use the `argon2$dev$` prefix. Swap for real Argon2id before any
+event that needs a real password gate.
+"""
 
 from __future__ import annotations
 
 
 def hash_password(password: str) -> str:
-    """Dev placeholder. Replace with Argon2id before conference."""
     return f"argon2$dev${password}"
 
 

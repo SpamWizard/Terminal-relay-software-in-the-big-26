@@ -197,7 +197,7 @@ class HandsOn(Question):
     success: dict[str, Any] | None = None
 
     def score(self, answer: Any, scoring: ScoringConfig) -> ScoreResult:
-        # MVP: treat like a flag if success.type == flag; otherwise always incorrect stub
+        # Flag-style success works now; full container challenges are Linux-only later.
         success = self.success or {}
         if success.get("type") == "flag":
             return Flag(
@@ -212,7 +212,7 @@ class HandsOn(Question):
             0,
             self.points,
             False,
-            "Hands-on container challenges are not available yet (Linux phase).",
+            "Hands-on container challenges are not available yet.",
         )
 
 

@@ -1,4 +1,4 @@
-# Results format (MVP)
+# Results format
 
 Each team run creates:
 
@@ -17,7 +17,7 @@ Team names must be unique. Re-entering a name that already has results shows a
 
 One JSON object per line, flushed on every event. Common fields: `ts` (UTC ISO), `event`, `team`.
 
-Events include: `game_started`, `baton_accepted`, `baton_rejected`, `baton_unknown`, `frozen`, `leg_swap`, `leg_expired`, `answer`, `skip`, `set_started`, `game_ended`, …
+Events include: `game_started`, `run_resumed`, `baton_accepted`, `baton_rejected`, `baton_unknown`, `frozen`, `leg_swap`, `leg_expired`, `answer`, `skip`, `set_started`, `game_ended`, …
 
 `source` is `fake`, `baton`, or `controller` when relevant.
 

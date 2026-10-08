@@ -2,7 +2,7 @@
 
 Xbox / XInput-style pads via pygame (SDL). Enable/disable and rebinds apply from **CONFIG → Xbox** without restarting the app.
 
-## In-app controls (Minecraft-style)
+## In-app controls (click-to-rebind)
 
 1. Toggle **Xbox controller** on/off, then **Save**.
 2. Unlock chord chips: click to toggle which buttons must be held.

@@ -1,22 +1,24 @@
-# Config reference (MVP)
+# Config reference
 
 Config file: TOML at `config/config.toml` (override with `--config`).
 
 Prefer the in-app **CONFIG** screen on launch — edits save to `config.toml` and apply without a text editor.
+
+For short local debug timers, use `config/config.local.toml` (gitignored) if you add a loader override later, or edit `leg_seconds` temporarily in-app.
 
 ## Sections
 
 | Section | Purpose |
 |---------|---------|
 | `[team]` | size (3–6), rotation, `[[team.people]]` id/label/color/baton_pins (Okabe–Ito colorblind-safe defaults) |
-| `[timers]` | leg_seconds, game_seconds (number or `"4*60"`), leg_runs_while_frozen, debounce_ms, resume_bonus_seconds (~10) |
-| `[serial]` | port, baud, heartbeat_timeout_ms (serial reader later) |
+| `[timers]` | leg_seconds, game_seconds (number or `"4*60"`), leg_runs_while_frozen, debounce_ms (reserved for serial), resume_bonus_seconds (~10) |
+| `[serial]` | port, baud, heartbeat_timeout_ms — reserved until RP2040 serial lands |
 | `[scoring]` | partial_credit, wrong_answer_penalty, redo_multiplier |
 | `[questions]` | files (ordered), redo_missed_at_set_end |
 | `[controller]` | Xbox: enabled, device_name, inactivity_lock_seconds, unlock_hold_ms, unlock_buttons, `[controller.bindings]` |
-| `[organizer]` | password_hash |
-| `[containers]` | runtime/limits (Linux later) |
-| `[paths]` | results_dir, checkpoint_path |
+| `[organizer]` | password_hash — reserved (CONFIG lock not wired yet) |
+| `[containers]` | runtime/limits — reserved for Linux hands-on challenges |
+| `[paths]` | results_dir, checkpoint_path (mirror of the active run checkpoint) |
 | `[theme]` | `name` selects a preset (default `deep_space`); optional accent/background/foreground overrides |
 | `[themes.<name>]` | Named color presets (deep_space, neon_terminal, amber_grid, violet_pulse, ice, crimson, …) |
 | `[ui]` | correct toast timings; `switch_sound` / `switch_sound_volume` (0–1) for change alert |

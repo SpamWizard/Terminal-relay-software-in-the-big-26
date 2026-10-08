@@ -29,7 +29,7 @@ color = "#CC79A7"
 baton_pins = [1, 5]
 
 [timers]
-leg_seconds = 5
+leg_seconds = 90
 game_seconds = 2700
 leg_runs_while_frozen = true
 debounce_ms = 80

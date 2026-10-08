@@ -1,4 +1,4 @@
-"""In-app visual editor — flat tabs, Minecraft-style Xbox rebinds."""
+"""In-app visual editor — flat tabs, click-to-rebind Xbox controls."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ _ACTIONS: tuple[tuple[str, str], ...] = (
 
 
 class BindButton(QPushButton):
-    """Click → listen for the next Xbox button (Minecraft controls style)."""
+    """Click → listen for the next Xbox button press."""
 
     def __init__(self, value: str = "A", parent: QWidget | None = None) -> None:
         super().__init__(parent)

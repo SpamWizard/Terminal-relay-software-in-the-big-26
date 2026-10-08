@@ -52,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     reset_p = sub.add_parser(
         "reset",
-        help="Prepare machine for next team (archive results, clear state)",
+        help="Archive checkpoints so the next team starts clean",
     )
     reset_p.set_defaults(func=cmd_reset)
 

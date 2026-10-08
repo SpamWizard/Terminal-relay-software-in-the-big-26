@@ -7,7 +7,7 @@ from baton_relay.input.base import BatonReading, ReadingKind
 
 
 def pins_from_mask(mask: int) -> tuple[int, ...]:
-    """mask bit0 = pin1, bit1 = pin2, ... (1 = connected to GND / active)."""
+    """Convert a serial heartbeat bitmask to pin numbers (bit0 = pin 1)."""
     pins = []
     for i in range(5):
         if mask & (1 << i):
