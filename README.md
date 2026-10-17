@@ -5,19 +5,25 @@ rotation, extensible question types, and optional hands-on challenges (Linux lat
 
 Package import name: `baton_relay`. CLI: `relay`.
 
-## Quick start (fake-device mode)
+## Quick start
 
 ```bash
 python -m venv .venv
 # Linux/macOS: source .venv/bin/activate
 # Windows:    .venv\Scripts\activate
 pip install -e ".[dev]"
-relay run --fake-device
+relay run --fake-device          # keyboard batons (dev / no hardware)
+# relay run                    # real RP2040 baton over USB serial
 # or: python -m baton_relay --fake-device
 ```
 
 Opens fullscreen. Enter **team name** + **player names** (numbers `#1`… assigned
-in order). **CONFIG** (top-left) edits timers, theme, and Xbox bindings in-app.
+in order). **CONFIG** (top-left) edits timers, theme, serial port, and Xbox
+bindings in-app.
+
+**Real baton:** flash CircuitPython, copy `firmware/boot.py` + `firmware/code.py`
+to `CIRCUITPY`, wire pins per `docs/firmware.md` / `docs/baton-wiring.md`, then
+`relay run` (set `[serial].port` if auto-detect misses the board).
 
 Reusing a team name shows a **WOAH** dialog — resume an unfinished run, or change
 the name (no automatic `#1` / `#2` suffixes).
@@ -53,7 +59,7 @@ are not cleared yet (not implemented).
 - `docs/` — config, questions, results, controller, wiring references
 - `tests/` — unit tests
 
-Firmware / serial protocol notes live under `docs/` until hardware lands.
+RP2040 firmware is in `firmware/`; protocol + wiring under `docs/`.
 
 ## Platforms
 

@@ -46,7 +46,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument(
         "--fake-device",
         action="store_true",
-        help="Simulate batons with keyboard (1-6 insert, P pull out, U unknown)",
+        help="Simulate batons with keyboard (1-6 insert, P pull out, U unknown). "
+        "Default is RP2040 USB serial from [serial] in config.",
     )
     run_p.set_defaults(func=cmd_run)
 

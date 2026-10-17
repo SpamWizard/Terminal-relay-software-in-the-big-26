@@ -11,8 +11,8 @@ For short local debug timers, use `config/config.local.toml` (gitignored) if you
 | Section | Purpose |
 |---------|---------|
 | `[team]` | size (3–6), rotation, `[[team.people]]` id/label/color/baton_pins (Okabe–Ito colorblind-safe defaults) |
-| `[timers]` | leg_seconds, game_seconds (number or `"4*60"`), leg_runs_while_frozen, debounce_ms (reserved for serial), resume_bonus_seconds (~10) |
-| `[serial]` | port, baud, heartbeat_timeout_ms — reserved until RP2040 serial lands |
+| `[timers]` | leg_seconds, game_seconds (number or `"4*60"`), leg_runs_while_frozen, debounce_ms (serial pin settle), resume_bonus_seconds (~10) |
+| `[serial]` | port (`auto` or `COMx` / `/dev/ttyACM0`), baud, heartbeat_timeout_ms — RP2040 USB CDC |
 | `[scoring]` | partial_credit, wrong_answer_penalty, redo_multiplier |
 | `[questions]` | files (ordered), redo_missed_at_set_end |
 | `[controller]` | Xbox: enabled, device_name, inactivity_lock_seconds, unlock_hold_ms, unlock_buttons, `[controller.bindings]` |

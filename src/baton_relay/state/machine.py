@@ -216,10 +216,10 @@ class GameSession:
         expected = self.expected_person_index
 
         if self.state in (RelayState.WAITING_FOR_BATON, RelayState.FROZEN, RelayState.DISCONNECTED):
-            # From DISCONNECTED, still allow correct baton if device came back via override path
+            # Hardware readings ignored while disconnected; reconnect path restores state first.
+            # Controller override (source != "baton") may still force a seat change.
             if self.state == RelayState.DISCONNECTED and source == "baton":
-                # Device readings ignored while disconnected unless we reconnect separately
-                pass
+                return
 
             if self.state == RelayState.FROZEN and self.current_person_index is not None:
                 # Same person may resume

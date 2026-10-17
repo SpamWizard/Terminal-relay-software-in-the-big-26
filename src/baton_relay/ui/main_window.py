@@ -24,6 +24,7 @@ from baton_relay.audio import play_switch_chime
 from baton_relay.config import AppConfig, load_config
 from baton_relay.input.base import BatonReading, ReadingKind
 from baton_relay.input.fake import FakeBatonSource
+from baton_relay.input.serial_source import SerialBatonSource
 from baton_relay.input.xbox import XboxController
 from baton_relay.questions.base import QuestionSet
 from baton_relay.questions.loader import load_all_question_files
@@ -650,6 +651,7 @@ class MainWindow(QMainWindow):
         self.run_dir = None
         self._last_qid: str | None = None
         self._fake: FakeBatonSource | None = None
+        self._serial: SerialBatonSource | None = None
 
         self.setWindowTitle("Terminal Relay")
         self.resize(1280, 800)
@@ -695,9 +697,17 @@ class MainWindow(QMainWindow):
         if fake_device:
             self._fake = FakeBatonSource(config)
             self._fake.start(self._on_reading)
+            self._device_label = "FAKE"
+        else:
+            self._serial = SerialBatonSource(config, parent=self)
+            self._serial.start(
+                self._on_reading,
+                on_disconnected=self._on_serial_disconnected,
+                on_reconnected=self._on_serial_reconnected,
+            )
+            self._device_label = self._serial.status_label
 
         self._pending_after_correct = False
-        self._device_label = "FAKE" if fake_device else "waiting"
         self._ckpt_ticks = 0
         self.game_screen.correct_burst.finished.connect(self._after_correct_burst)
         self.startup.reset()
@@ -710,6 +720,14 @@ class MainWindow(QMainWindow):
         self._override_flash.setGeometry(self.rect())
         self._override_flash.raise_()
         self._update_star_holes()
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        if self._serial is not None:
+            self._serial.stop()
+        if self._fake is not None:
+            self._fake.stop()
+        self._xbox.stop()
+        super().closeEvent(event)
 
     def _flash_override(self, title: str, sub: str = "") -> None:
         self._override_flash.setGeometry(self.rect())
@@ -803,6 +821,11 @@ class MainWindow(QMainWindow):
         self.game_screen._person_accent = ""
         if self._fake is not None:
             self._fake.config = config
+        if self._serial is not None:
+            self._serial.apply_config(config)
+            self._device_label = self._serial.status_label
+            if self.session is not None:
+                self.session.set_device_status(self._device_label)
         self._xbox.apply_config(config.controller)
         if self.session is not None:
             self.session.config = config
@@ -885,6 +908,19 @@ class MainWindow(QMainWindow):
         else:
             self.session.on_baton_reading(reading.person_index, source=reading.source)
 
+    def _on_serial_disconnected(self) -> None:
+        self._device_label = "disconnected"
+        if self.session is not None:
+            self.session.on_device_disconnected()
+
+    def _on_serial_reconnected(self) -> None:
+        if self._serial is not None:
+            self._device_label = self._serial.status_label
+        else:
+            self._device_label = "connected"
+        if self.session is not None:
+            self.session.on_device_reconnected()
+
     def _on_session_event(self, name: str, payload: dict) -> None:
         assert self.event_log is not None
         assert self.session is not None
@@ -896,7 +932,12 @@ class MainWindow(QMainWindow):
     def _wire_session(self, session: GameSession) -> None:
         self.session = session
         self.session.add_listener(lambda snap: self._on_snapshot(snap))
-        self._device_label = "FAKE" if self.fake_device else "waiting"
+        if self.fake_device:
+            self._device_label = "FAKE"
+        elif self._serial is not None:
+            self._device_label = self._serial.status_label
+        else:
+            self._device_label = "waiting"
         self.session.set_device_status(self._device_label)
         self._last_qid = None
 

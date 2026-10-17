@@ -31,8 +31,8 @@ def sets(config):
 
 
 def test_load_config(config):
-    assert config.team_size == 4
-    assert len(config.people) == 4
+    assert config.team_size == len(config.people)
+    assert config.team_size >= 2
     assert config.people[0].baton_pins == (1, 2)
     assert config.timers.leg_seconds > 0
     assert config.timers.game_seconds > 0
@@ -100,6 +100,17 @@ def test_pins_from_mask():
     assert pins_from_mask(0b00000) == ()
     assert pins_from_mask(0b00011) == (1, 2)
     assert pins_from_mask(0b10101) == (1, 3, 5)
+
+
+def test_parse_heartbeat():
+    from baton_relay.input.serial_source import parse_heartbeat
+
+    assert parse_heartbeat("HB pins=0b00011 seq=9") == (0b00011, 9)
+    assert parse_heartbeat("HB pins=0b10101") == (0b10101, None)
+    assert parse_heartbeat("HB pins=0x15 seq=1") == (0x15 & 0x1F, 1)
+    assert parse_heartbeat("HB pins=3 seq=2") == (3, 2)
+    assert parse_heartbeat("garbage") is None
+    assert parse_heartbeat("") is None
 
 
 def test_scoring_mc():

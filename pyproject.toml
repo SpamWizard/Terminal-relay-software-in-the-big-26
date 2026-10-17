@@ -28,7 +28,7 @@ containers = [
 relay = "baton_relay.cli:main"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/baton_relay", "config", "questions", "docs", "tests", "README.md"]
+include = ["src/baton_relay", "config", "questions", "docs", "firmware", "tests", "README.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -22,18 +22,18 @@ def run_app(*, config_path: Path, fake_device: bool = False) -> int:
         print(f"ERROR: bad question file: {exc}", file=sys.stderr)
         return 1
 
-    # Default to fake device when no serial hardware path is ready
-    if not fake_device:
-        # Until serial lands, fall back to fake so the app is playable
-        print("Note: serial RP2040 mode not implemented yet; enabling --fake-device.")
-        fake_device = True
-
     from PySide6.QtWidgets import QApplication
 
     from baton_relay.ui.main_window import MainWindow
 
     app = QApplication(sys.argv)
     app.setApplicationName("Terminal Relay")
+    if fake_device:
+        print("Baton input: fake-device (keyboard 1–6 / P / U)")
+    else:
+        port = config.serial.port
+        print(f"Baton input: RP2040 serial (port={port!r}, baud={config.serial.baud})")
+        print("Use --fake-device if no board is connected.")
     window = MainWindow(config, sets, fake_device=fake_device)
     window.showFullScreen()
     return app.exec()
