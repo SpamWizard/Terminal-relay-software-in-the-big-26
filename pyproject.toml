@@ -27,6 +27,9 @@ containers = [
 [project.scripts]
 relay = "baton_relay.cli:main"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/baton_relay"]
+
 [tool.hatch.build.targets.sdist]
 include = ["src/baton_relay", "config", "questions", "docs", "firmware", "tests", "README.md"]
 
