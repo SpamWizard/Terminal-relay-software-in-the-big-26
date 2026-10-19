@@ -35,6 +35,14 @@ def progress_to_dict(progress: Progress) -> dict[str, Any]:
         "missed_ids": list(progress.missed_ids),
         "total_score": progress.total_score,
         "finished": progress.finished,
+        "phase": progress.phase,
+        "warmup_done": progress.warmup_done,
+        "set_cursors": dict(progress.set_cursors),
+        "board_slots": list(progress.board_slots),
+        "pool": list(progress.pool),
+        "pick_set_id": progress.pick_set_id,
+        "pick_remaining": progress.pick_remaining,
+        "pick_missed": list(progress.pick_missed),
     }
 
 
@@ -50,6 +58,11 @@ def progress_from_dict(raw: dict[str, Any]) -> Progress:
                 feedback=str(val.get("feedback", "")),
                 partial=bool(val.get("partial", False)),
             )
+    cursors_raw = raw.get("set_cursors") or {}
+    set_cursors = {
+        str(k): int(v) for k, v in cursors_raw.items() if isinstance(v, (int, float))
+    }
+    pick_set = raw.get("pick_set_id")
     return Progress(
         set_index=int(raw.get("set_index", 0)),
         question_index=int(raw.get("question_index", 0)),
@@ -60,6 +73,14 @@ def progress_from_dict(raw: dict[str, Any]) -> Progress:
         missed_ids=list(raw.get("missed_ids") or []),
         total_score=float(raw.get("total_score", 0)),
         finished=bool(raw.get("finished", False)),
+        phase=str(raw.get("phase") or "warmup"),
+        warmup_done=int(raw.get("warmup_done", 0)),
+        set_cursors=set_cursors,
+        board_slots=[str(s) for s in (raw.get("board_slots") or [])],
+        pool=[str(s) for s in (raw.get("pool") or [])],
+        pick_set_id=str(pick_set) if pick_set else None,
+        pick_remaining=int(raw.get("pick_remaining", 0)),
+        pick_missed=[str(s) for s in (raw.get("pick_missed") or [])],
     )
 
 
@@ -142,6 +163,9 @@ def apply_checkpoint(session: GameSession, data: dict[str, Any], config: AppConf
     session.timers_started = bool(data.get("timers_started", False))
     session.progress = progress_from_dict(dict(data.get("progress") or {}))
     session.progress.finished = False
+    # Ensure cursors exist for every loaded set
+    for s in session.sets:
+        session.progress.set_cursors.setdefault(s.set_id, 0)
     session.last_message = str(
         data.get("last_message")
         or f"Resumed — {session.player_display(session.expected_person_index)} plug in."
@@ -159,6 +183,10 @@ def apply_checkpoint(session: GameSession, data: dict[str, Any], config: AppConf
         )
         session.last_message = (
             f"Run resumed — {session.player_display(who)} plug back in."
+        )
+    elif session.state == RelayState.CHOOSING_CATEGORY:
+        session.last_message = str(
+            data.get("last_message") or "Resumed — choose a category."
         )
 
 

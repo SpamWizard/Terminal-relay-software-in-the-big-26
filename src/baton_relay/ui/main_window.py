@@ -40,6 +40,7 @@ from baton_relay.results.log import (
     team_name_taken,
 )
 from baton_relay.state.machine import GameSession, GameSnapshot, PlayerSlot, RelayState
+from baton_relay.ui.category_board import CategoryBoard
 from baton_relay.ui.config_dialog import ConfigDialog
 from baton_relay.ui.correct_burst import CorrectBurst, OverrideFlash
 from baton_relay.ui.question_widgets import QuestionHost
@@ -463,8 +464,12 @@ class GameScreen(QWidget):
         self.right_panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.right_panel.setAutoFillBackground(True)
         right_l = QVBoxLayout(self.right_panel)
+        self.right_stack = QStackedWidget()
         self.question_host = QuestionHost()
-        right_l.addWidget(self.question_host)
+        self.category_board = CategoryBoard()
+        self.right_stack.addWidget(self.question_host)
+        self.right_stack.addWidget(self.category_board)
+        right_l.addWidget(self.right_stack)
         body.addWidget(self.right_panel, 2)
 
         stage_l.addLayout(body, 1)
@@ -501,6 +506,9 @@ class GameScreen(QWidget):
     def bind_submit(self, handler: Callable) -> None:
         self.question_host.set_submit_handler(handler)
 
+    def bind_category_choose(self, handler: Callable[[str], None]) -> None:
+        self.category_board.set_choose_handler(handler)
+
     def play_correct(self, points_text: str = "") -> None:
         ui = self.config.ui
         self.correct_burst.setGeometry(self.rect())
@@ -529,6 +537,7 @@ class GameScreen(QWidget):
         *,
         window: QMainWindow | None = None,
         resume_bonus_cfg: float = 10.0,
+        board_categories: list[tuple[str, str]] | None = None,
     ) -> None:
         self.team_label.setText(snap.team_name or "TEAM")
         score = snap.progress.total_score
@@ -562,6 +571,7 @@ class GameScreen(QWidget):
             RelayState.FROZEN: "FROZEN",
             RelayState.DISCONNECTED: "DISCONNECTED",
             RelayState.PAUSED_SCORE: "SCORE",
+            RelayState.CHOOSING_CATEGORY: "BOARD",
         }
         self.state_label.setText(state_names.get(snap.state, snap.state.name))
         if snap.wrong_baton or snap.state == RelayState.DISCONNECTED:
@@ -573,13 +583,24 @@ class GameScreen(QWidget):
 
         self.message.setText(snap.last_message)
 
-        locked = snap.state != RelayState.ACTIVE
-        self.question_host.set_locked(locked)
-        if question_changed:
-            self.question_host.show_question(question)
+        if snap.state == RelayState.CHOOSING_CATEGORY:
+            self.right_stack.setCurrentWidget(self.category_board)
+            cats = board_categories
+            if cats is None:
+                cats = [(sid, sid) for sid in snap.progress.board_slots]
+            self.category_board.show_categories(list(cats))
+        else:
+            self.right_stack.setCurrentWidget(self.question_host)
+            locked = snap.state != RelayState.ACTIVE
+            self.question_host.set_locked(locked)
+            if question_changed:
+                self.question_host.show_question(question)
 
         person_label = _player_label(expected)
-        if snap.state == RelayState.WAITING_FOR_BATON:
+        if snap.state == RelayState.CHOOSING_CATEGORY:
+            self._prev_switch_key = None
+            self.switch_overlay.clear()
+        elif snap.state == RelayState.WAITING_FOR_BATON:
             mode = "wrong" if snap.wrong_baton else "switch"
             switch_key = ("waiting", snap.expected_person_index)
             if (
@@ -666,6 +687,7 @@ class MainWindow(QMainWindow):
         self.startup.open_config.connect(self._open_config)
         self.game_screen = GameScreen(config)
         self.game_screen.bind_submit(self._on_submit)
+        self.game_screen.bind_category_choose(self._on_category_choose)
         self.score_screen = ScoreScreen()
         self.score_screen.next_team.connect(self._next_team)
 
@@ -1087,9 +1109,20 @@ class MainWindow(QMainWindow):
             self.game_screen.append_activity(f"{ts}  next  {who}")
         elif name == "leg_expired":
             self.game_screen.append_activity(f"{ts}  leg time up")
-        elif name == "game_ended":
+        elif name == "board_opened":
+            titles = payload.get("titles") or payload.get("categories") or []
             self.game_screen.append_activity(
-                f"{ts}  end  {payload.get('score')} pts"
+                f"{ts}  board  {', '.join(str(t) for t in titles)}"
+            )
+        elif name == "category_selected":
+            self.game_screen.append_activity(
+                f"{ts}  pick  {payload.get('title')}  ({payload.get('questions')} q)"
+            )
+        elif name == "game_ended":
+            rem = payload.get("game_remaining")
+            rem_s = f"  game left {rem:g}s" if isinstance(rem, (int, float)) else ""
+            self.game_screen.append_activity(
+                f"{ts}  end  {payload.get('score')} pts{rem_s}"
             )
 
     def _on_snapshot(self, snap: GameSnapshot) -> None:
@@ -1109,6 +1142,9 @@ class MainWindow(QMainWindow):
                             for s in snap.roster
                         ],
                         "score": snap.progress.total_score,
+                        "game_remaining": round(snap.game_remaining, 2),
+                        "leg_remaining": round(snap.leg_remaining, 2),
+                        "reason": snap.last_message,
                         "answered": {
                             k: {
                                 "points": v.points,
@@ -1147,6 +1183,13 @@ class MainWindow(QMainWindow):
                 self._ckpt_ticks = 0
                 self._save_checkpoint()
 
+    def _on_category_choose(self, set_id: str) -> None:
+        if not self.session:
+            return
+        if self.session.select_category(set_id):
+            self._render(force_question=True)
+            self._save_checkpoint()
+
     def _on_submit(self, answer) -> None:
         if not self.session:
             return
@@ -1183,6 +1226,7 @@ class MainWindow(QMainWindow):
             q,
             window=self,
             resume_bonus_cfg=self.config.timers.resume_bonus_seconds,
+            board_categories=self.session.board_categories(),
         )
         self._update_star_holes()
 

@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from baton_relay.config import ConfigError, load_config
+from baton_relay.config import ConfigError, ScoringConfig, load_config
 from baton_relay.input.decode import decode_pins
 from baton_relay.input.base import ReadingKind
 from baton_relay.questions.loader import QuestionLoadError, load_all_question_files
 from baton_relay.questions.registry import ensure_builtin_types_loaded
 from baton_relay.questions.types import MultipleChoice, SelectAll, ShortAnswer
-from baton_relay.config import ScoringConfig
 from baton_relay.state.machine import GameSession, RelayState
 
 
@@ -30,6 +30,12 @@ def sets(config):
     return load_all_question_files(config.questions.files)
 
 
+def _with_warmup(config, warmup_count: int = 9999, **q_kwargs):
+    """Linear warm-up mode for tests that answer before the board."""
+    q = replace(config.questions, warmup_count=warmup_count, **q_kwargs)
+    return config.with_updates(questions=q)
+
+
 def test_load_config(config):
     assert config.team_size == len(config.people)
     assert config.team_size >= 2
@@ -41,6 +47,9 @@ def test_load_config(config):
     assert config.controller.unlock_buttons  # organizer-configurable chord
     assert all(b for b in config.controller.unlock_buttons)
     assert config.controller.bindings["confirm"] == "A"
+    assert config.questions.warmup_count == 0
+    assert config.questions.board_slots >= 1
+    assert config.questions.questions_per_pick >= 1
 
 
 def test_number_expr():
@@ -54,8 +63,10 @@ def test_number_expr():
 
 
 def test_load_questions(sets):
-    assert len(sets) == 1
-    assert sets[0].set_id == "type_test"
+    assert len(sets) >= 2
+    ids = {s.set_id for s in sets}
+    assert "type_test" in ids
+    assert "potatoes" in ids
     types = {q.type for s in sets for q in s.questions}
     for needed in (
         "multiple_choice",
@@ -100,6 +111,28 @@ def test_pins_from_mask():
     assert pins_from_mask(0b00000) == ()
     assert pins_from_mask(0b00011) == (1, 2)
     assert pins_from_mask(0b10101) == (1, 3, 5)
+
+
+def test_split_serial_lines():
+    from baton_relay.probe import split_serial_lines
+
+    buf = bytearray(b"Adafruit CircuitPython\nHB pins=0b00011 seq=1\npartial")
+    masks, others = split_serial_lines(buf)
+    assert masks == [0b00011]
+    assert others == ["Adafruit CircuitPython"]
+    assert bytes(buf) == b"partial"
+
+
+def test_describe_mask(config):
+    from baton_relay.probe import describe_mask
+
+    plugged = describe_mask(0b00011, config)
+    assert "1:ON" in plugged
+    assert "2:ON" in plugged
+    assert "3:--" in plugged
+    assert "#1 A" in plugged
+    assert "nothing plugged in" in describe_mask(0, config)
+    assert "unknown (1)" in describe_mask(0b00001, config)
 
 
 def test_parse_heartbeat():
@@ -153,9 +186,9 @@ def test_short_answer_casefold():
 
 
 def test_state_machine_baton_flow(config, sets):
-    # Short timers for tests
+    cfg = _with_warmup(config)
     session = GameSession(
-        config, sets, team_name="Test", player_names=["Ada", "Ben", "Cy", "Dee"]
+        cfg, sets, team_name="Test", player_names=["Ada", "Ben", "Cy", "Dee"]
     )
     assert session.state == RelayState.WAITING_FOR_BATON
     assert session.roster[0].player_number == 1
@@ -176,17 +209,18 @@ def test_state_machine_baton_flow(config, sets):
     session.on_baton_reading(0, source="fake")
     assert session.state == RelayState.ACTIVE
     assert session.leg_remaining == pytest.approx(
-        leg_before + config.timers.resume_bonus_seconds
+        leg_before + cfg.timers.resume_bonus_seconds
     )
     assert session.game_remaining == pytest.approx(
-        game_before + config.timers.resume_bonus_seconds
+        game_before + cfg.timers.resume_bonus_seconds
     )
 
 
 def test_answer_logs_player(config, sets):
     events: list[tuple[str, dict]] = []
+    cfg = _with_warmup(config)
     session = GameSession(
-        config,
+        cfg,
         sets,
         team_name="Nova",
         player_names=["Ada", "Ben", "Cy", "Dee"],
@@ -206,7 +240,8 @@ def test_answer_logs_player(config, sets):
 
 
 def test_timers_wait_for_first_baton(config, sets):
-    session = GameSession(config, sets, team_name="Test")
+    cfg = _with_warmup(config)
+    session = GameSession(cfg, sets, team_name="Test")
     game_before = session.game_remaining
     leg_before = session.leg_remaining
     session.tick(5.0)
@@ -221,7 +256,8 @@ def test_timers_wait_for_first_baton(config, sets):
 
 
 def test_leg_timer_forces_swap(config, sets):
-    session = GameSession(config, sets, team_name="Test")
+    cfg = _with_warmup(config)
+    session = GameSession(cfg, sets, team_name="Test")
     session.on_baton_reading(0, source="fake")
     session.leg_remaining = 0.05
     session.tick(0.1)
@@ -230,7 +266,8 @@ def test_leg_timer_forces_swap(config, sets):
 
 
 def test_answer_advances(config, sets):
-    session = GameSession(config, sets, team_name="Test")
+    cfg = _with_warmup(config)
+    session = GameSession(cfg, sets, team_name="Test")
     session.on_baton_reading(0, source="fake")
     q = session.current_question()
     assert q is not None
@@ -239,6 +276,107 @@ def test_answer_advances(config, sets):
     assert result is not None
     assert result.correct
     assert session.progress.total_score > 0
+
+
+def test_board_opens_when_warmup_zero(config, sets):
+    session = GameSession(config, sets, team_name="Test")
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert session.progress.phase == "board"
+    cats = session.board_categories()
+    assert len(cats) >= 1
+    assert all(title for _sid, title in cats)
+
+
+def test_board_timers_frozen(config, sets):
+    session = GameSession(config, sets, team_name="Test")
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    # Pretend timers already started (e.g. mid-run return to board)
+    session.timers_started = True
+    game_before = session.game_remaining
+    leg_before = session.leg_remaining
+    session.tick(5.0)
+    assert session.game_remaining == game_before
+    assert session.leg_remaining == leg_before
+
+
+def test_select_category_and_refill(config, sets):
+    cfg = _with_warmup(config, warmup_count=0, questions_per_pick=1, board_slots=2)
+    session = GameSession(
+        cfg, sets, team_name="Test", player_names=["Ada", "Ben", "Cy", "Dee"]
+    )
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    first_id = session.progress.board_slots[0]
+    assert session.select_category(first_id)
+    assert session.progress.phase == "in_pick"
+    assert session.progress.pick_remaining == 1
+    # Need baton to answer
+    assert session.state == RelayState.WAITING_FOR_BATON
+    session.on_baton_reading(0, source="fake")
+    q = session.current_question()
+    assert q is not None
+    # Answer correctly for first Q of whichever set was picked
+    if q.type == "multiple_choice":
+        session.submit_answer(q.answer)  # type: ignore[attr-defined]
+    elif q.type == "short_answer":
+        session.submit_answer(q.accepted[0])  # type: ignore[attr-defined]
+    else:
+        session.skip_question(organizer=True)
+    # Back on board with a category (refill or remaining)
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert session.progress.board_slots
+
+
+def test_warmup_then_board(config, sets):
+    cfg = _with_warmup(config, warmup_count=1, questions_per_pick=2, board_slots=4)
+    session = GameSession(
+        cfg, sets, team_name="Test", player_names=["Ada", "Ben", "Cy", "Dee"]
+    )
+    assert session.state == RelayState.WAITING_FOR_BATON
+    assert session.progress.phase == "warmup"
+    session.on_baton_reading(0, source="fake")
+    session.submit_answer(3)  # first MC in type_test
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert session.progress.phase == "board"
+    # First question of type_test consumed
+    assert session.progress.set_cursors.get("type_test", 0) >= 1
+
+
+def test_board_ends_when_categories_exhausted(config, sets):
+    # One question per pick; exhaust everything
+    cfg = _with_warmup(
+        config,
+        warmup_count=0,
+        questions_per_pick=100,
+        board_slots=8,
+        redo_missed_at_set_end=False,
+    )
+    events: list[tuple[str, dict]] = []
+    session = GameSession(
+        cfg,
+        sets,
+        team_name="Test",
+        player_names=["Ada", "Ben", "Cy", "Dee"],
+        on_event=lambda n, p: events.append((n, p)),
+    )
+    session.on_baton_reading(0, source="fake")  # ready while on board
+    # Drain all categories
+    safety = 0
+    while session.state == RelayState.CHOOSING_CATEGORY and safety < 50:
+        safety += 1
+        sid = session.progress.board_slots[0]
+        session.select_category(sid)
+        if session.state == RelayState.WAITING_FOR_BATON:
+            session.on_baton_reading(0, source="fake")
+        while session.progress.phase == "in_pick" and not session.progress.finished:
+            q = session.current_question()
+            if q is None:
+                break
+            session.skip_question(organizer=True)
+    assert session.state == RelayState.PAUSED_SCORE
+    ended = [p for n, p in events if n == "game_ended"]
+    assert ended
+    assert "game_remaining" in ended[0]
+    assert "leg_remaining" in ended[0]
 
 
 def test_missing_config(tmp_path):
@@ -274,10 +412,11 @@ def test_team_name_collision_and_resume(config, sets, tmp_path):
         team_name_taken,
     )
 
+    cfg = _with_warmup(config)
     assert not team_name_taken(tmp_path, "Orbit")
     run = new_run_dir(tmp_path, "Orbit")
     session = GameSession(
-        config, sets, team_name="Orbit", player_names=["Ada", "Ben", "Cy", "Dee"]
+        cfg, sets, team_name="Orbit", player_names=["Ada", "Ben", "Cy", "Dee"]
     )
     session.on_baton_reading(0, source="fake")
     session.submit_answer(3)
@@ -292,7 +431,7 @@ def test_team_name_collision_and_resume(config, sets, tmp_path):
     assert resumable is not None
     assert resumable.run_dir == run
 
-    restored = load_checkpoint(run / "checkpoint.json", config, sets)
+    restored = load_checkpoint(run / "checkpoint.json", cfg, sets)
     assert restored.team_name == "Orbit"
     assert restored.roster[0].name == "Ada"
     assert restored.progress.total_score > 0
@@ -301,7 +440,7 @@ def test_team_name_collision_and_resume(config, sets, tmp_path):
 
 def test_player_display_skips_numeric_duplicate(config, sets):
     session = GameSession(
-        config, sets, team_name="T", player_names=["1", "Ben", "Cy", "Dee"]
+        _with_warmup(config), sets, team_name="T", player_names=["1", "Ben", "Cy", "Dee"]
     )
     assert session.player_display(0) == "#1"
     assert session.player_display(1) == "#2 Ben"
@@ -309,7 +448,10 @@ def test_player_display_skips_numeric_duplicate(config, sets):
 
 def test_device_reconnect_returns_to_frozen(config, sets):
     session = GameSession(
-        config, sets, team_name="T", player_names=["Ada", "Ben", "Cy", "Dee"]
+        _with_warmup(config),
+        sets,
+        team_name="T",
+        player_names=["Ada", "Ben", "Cy", "Dee"],
     )
     session.on_baton_reading(0, source="fake")
     assert session.state == RelayState.ACTIVE
@@ -318,3 +460,19 @@ def test_device_reconnect_returns_to_frozen(config, sets):
     session.on_device_reconnected()
     assert session.state == RelayState.FROZEN
     assert session.current_person_index == 0
+
+
+def test_checkpoint_restores_board(config, sets, tmp_path):
+    from baton_relay.results.checkpoint import load_checkpoint, save_checkpoint
+
+    session = GameSession(
+        config, sets, team_name="Board", player_names=["Ada", "Ben", "Cy", "Dee"]
+    )
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    slots = list(session.progress.board_slots)
+    path = tmp_path / "checkpoint.json"
+    save_checkpoint(path, session)
+    restored = load_checkpoint(path, config, sets)
+    assert restored.state == RelayState.CHOOSING_CATEGORY
+    assert restored.progress.board_slots == slots
+    assert restored.progress.phase == "board"

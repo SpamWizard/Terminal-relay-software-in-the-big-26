@@ -17,13 +17,14 @@ class RelayState(Enum):
     FROZEN = auto()
     DISCONNECTED = auto()
     PAUSED_SCORE = auto()
+    CHOOSING_CATEGORY = auto()
 
 
 @dataclass
 class Progress:
     set_index: int = 0
     question_index: int = 0
-    # Within a set redo pass
+    # Within a set / pick redo pass
     in_redo: bool = False
     redo_queue: list[str] = field(default_factory=list)  # question ids
     redo_index: int = 0
@@ -31,6 +32,15 @@ class Progress:
     missed_ids: list[str] = field(default_factory=list)
     total_score: float = 0.0
     finished: bool = False
+    # Board / warm-up
+    phase: str = "warmup"  # warmup | board | in_pick
+    warmup_done: int = 0
+    set_cursors: dict[str, int] = field(default_factory=dict)  # set_id -> next q index
+    board_slots: list[str] = field(default_factory=list)  # set_ids on the board
+    pool: list[str] = field(default_factory=list)  # unused set_ids with questions left
+    pick_set_id: str | None = None
+    pick_remaining: int = 0
+    pick_missed: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -79,6 +89,7 @@ class GameSession:
             raise ValueError("at least one question set is required")
         self.config = config
         self.sets = sets
+        self._sets_by_id = {s.set_id: s for s in sets}
         self.team_name = team_name
         self._on_event = on_event or (lambda *_: None)
 
@@ -102,7 +113,9 @@ class GameSession:
         self.leg_remaining = float(config.timers.leg_seconds)
         self.game_remaining = float(config.timers.game_seconds)
         self.timers_started = False
-        self.progress = Progress()
+        self.progress = Progress(
+            set_cursors={s.set_id: 0 for s in sets},
+        )
         first = self.player_display(self.expected_person_index)
         self.last_message = f"SWITCH — {first} plug in to begin."
         self.wrong_baton = False
@@ -110,6 +123,9 @@ class GameSession:
         self.last_resume_bonus = 0.0
         self._pre_disconnect_state: RelayState | None = None
         self._listeners: list[Listener] = []
+
+        if config.questions.warmup_count <= 0:
+            self._enter_board(initial=True)
 
     # --- observers ---
 
@@ -160,14 +176,41 @@ class GameSession:
     def expected_person(self) -> PersonConfig:
         return self.config.people[self.expected_person_index]
 
+    def board_categories(self) -> list[tuple[str, str]]:
+        """Visible board slots as (set_id, title)."""
+        out: list[tuple[str, str]] = []
+        for sid in self.progress.board_slots:
+            s = self._sets_by_id.get(sid)
+            if s is not None:
+                out.append((sid, s.title))
+        return out
+
     def current_question(self) -> Question | None:
         if self.progress.finished:
+            return None
+        if self.progress.phase == "board":
             return None
         if self.progress.in_redo:
             if not self.progress.redo_queue:
                 return None
+            if self.progress.redo_index >= len(self.progress.redo_queue):
+                return None
             qid = self.progress.redo_queue[self.progress.redo_index]
             return self._find_question(qid)
+        if self.progress.phase == "in_pick":
+            sid = self.progress.pick_set_id
+            if not sid:
+                return None
+            s = self._sets_by_id.get(sid)
+            if s is None:
+                return None
+            idx = self.progress.set_cursors.get(sid, 0)
+            if idx >= len(s.questions):
+                return None
+            return s.questions[idx]
+        # warmup
+        if self.progress.set_index >= len(self.sets):
+            return None
         s = self.sets[self.progress.set_index]
         if self.progress.question_index >= len(s.questions):
             return None
@@ -180,14 +223,176 @@ class GameSession:
                     return q
         return None
 
+    def _set_index_for_id(self, set_id: str) -> int:
+        for i, s in enumerate(self.sets):
+            if s.set_id == set_id:
+                return i
+        return 0
+
+    def _remaining_in_set(self, set_id: str) -> int:
+        s = self._sets_by_id.get(set_id)
+        if s is None:
+            return 0
+        cursor = self.progress.set_cursors.get(set_id, 0)
+        return max(0, len(s.questions) - cursor)
+
     def questions_locked(self) -> bool:
         return self.state != RelayState.ACTIVE
+
+    # --- board ---
+
+    def _sets_with_remaining(self) -> list[str]:
+        return [s.set_id for s in self.sets if self._remaining_in_set(s.set_id) > 0]
+
+    def _enter_board(self, *, initial: bool = False) -> None:
+        self.progress.phase = "board"
+        self.progress.pick_set_id = None
+        self.progress.pick_remaining = 0
+        self.progress.pick_missed = []
+        self.progress.in_redo = False
+        self.progress.redo_queue = []
+        self.progress.redo_index = 0
+
+        available = self._sets_with_remaining()
+        on_board = [sid for sid in self.progress.board_slots if sid in available]
+        used = set(on_board)
+        pool = [sid for sid in available if sid not in used]
+        # Prefer original file order for first fill
+        if not on_board and not self.progress.pool:
+            pool = list(available)
+
+        slots_n = self.config.questions.board_slots
+        while len(on_board) < slots_n and pool:
+            on_board.append(pool.pop(0))
+
+        self.progress.board_slots = on_board
+        self.progress.pool = pool
+
+        if not on_board:
+            self._pause_score("All categories complete.")
+            return
+
+        self.state = RelayState.CHOOSING_CATEGORY
+        titles = [self._sets_by_id[sid].title for sid in on_board]
+        self.last_message = "Choose a category."
+        self._event(
+            "board_opened",
+            categories=list(on_board),
+            titles=titles,
+            initial=initial,
+        )
+        if not initial:
+            self._emit()
+
+    def select_category(self, set_id: str) -> bool:
+        """Mouse pick from the board. Returns True if the pick started."""
+        if self.state != RelayState.CHOOSING_CATEGORY or self.progress.phase != "board":
+            return False
+        if set_id not in self.progress.board_slots:
+            return False
+        remaining = self._remaining_in_set(set_id)
+        if remaining <= 0:
+            return False
+
+        self.progress.board_slots = [s for s in self.progress.board_slots if s != set_id]
+        pick_n = min(self.config.questions.questions_per_pick, remaining)
+        self.progress.phase = "in_pick"
+        self.progress.pick_set_id = set_id
+        self.progress.pick_remaining = pick_n
+        self.progress.pick_missed = []
+        self.progress.set_index = self._set_index_for_id(set_id)
+        self.progress.question_index = self.progress.set_cursors.get(set_id, 0)
+
+        title = self._sets_by_id[set_id].title
+        self.last_message = f"Category: {title}"
+        self._event(
+            "category_selected",
+            set_id=set_id,
+            title=title,
+            questions=pick_n,
+        )
+
+        if self.current_person_index is not None:
+            self.state = RelayState.ACTIVE
+            if not self.timers_started:
+                self.timers_started = True
+                self._event("timers_started", source="board")
+        else:
+            self.state = RelayState.WAITING_FOR_BATON
+            self.last_message = (
+                f"Category: {title} — "
+                f"{self.player_display(self.expected_person_index)} plug in."
+            )
+        self._emit()
+        return True
+
+    def _refill_and_return_to_board(self) -> None:
+        finished_id = self.progress.pick_set_id
+        # If the picked set still has questions, it goes to the back of the pool
+        # only after being fully unused on board — plan says replace slot with a
+        # *different* category. Exhausted sets stay out; leftover questions stay
+        # in pool for a later refill of a different slot.
+        if finished_id and self._remaining_in_set(finished_id) > 0:
+            if finished_id not in self.progress.pool:
+                self.progress.pool.append(finished_id)
+
+        # Drop pool entries with nothing left
+        self.progress.pool = [
+            sid for sid in self.progress.pool if self._remaining_in_set(sid) > 0
+        ]
+
+        slots_n = self.config.questions.board_slots
+        while len(self.progress.board_slots) < slots_n and self.progress.pool:
+            nxt = self.progress.pool.pop(0)
+            if nxt not in self.progress.board_slots and self._remaining_in_set(nxt) > 0:
+                self.progress.board_slots.append(nxt)
+
+        self.progress.pick_set_id = None
+        self.progress.pick_remaining = 0
+        self.progress.pick_missed = []
+
+        if not self.progress.board_slots:
+            self._pause_score("All categories complete.")
+            return
+
+        self.progress.phase = "board"
+        self.state = RelayState.CHOOSING_CATEGORY
+        self.last_message = "Choose a category."
+        self._event(
+            "board_opened",
+            categories=list(self.progress.board_slots),
+            titles=[self._sets_by_id[s].title for s in self.progress.board_slots],
+            initial=False,
+        )
 
     # --- input: baton ---
 
     def on_baton_reading(self, person_index: int | None, *, source: str = "baton") -> None:
         """person_index is seat index, or None for unknown / empty."""
         if self.state == RelayState.PAUSED_SCORE:
+            return
+
+        if self.state == RelayState.CHOOSING_CATEGORY:
+            if person_index is None:
+                self.current_person_index = None
+                self.wrong_baton = False
+                self._emit()
+                return
+            if person_index < 0 or person_index >= self.config.team_size:
+                self.wrong_baton = True
+                self._emit()
+                return
+            expected = self.expected_person_index
+            if person_index == expected or person_index == self.current_person_index:
+                self.current_person_index = person_index
+                self.wrong_baton = False
+            else:
+                self.wrong_baton = True
+                self.last_message = (
+                    f"Wrong player ({self.player_display(person_index)}). "
+                    f"Need {self.player_display(expected)}. Choose a category."
+                )
+            self._emit()
             return
 
         if person_index is None:
@@ -272,8 +477,10 @@ class GameSession:
         prior = self._pre_disconnect_state
         self._pre_disconnect_state = None
         self.device_status = "connected"
-        # Mid-leg disconnect: return to frozen so the same player can resume
-        if prior in (RelayState.ACTIVE, RelayState.FROZEN) and self.current_person_index is not None:
+        if prior == RelayState.CHOOSING_CATEGORY:
+            self.state = RelayState.CHOOSING_CATEGORY
+            self.last_message = "Reconnected — choose a category."
+        elif prior in (RelayState.ACTIVE, RelayState.FROZEN) and self.current_person_index is not None:
             self.state = RelayState.FROZEN
             who = self.current_person_index
             self.last_message = (
@@ -360,9 +567,17 @@ class GameSession:
         self.rotation_pos = (self.rotation_pos + 1) % len(self.config.rotation)
         self.current_person_index = None
         self.leg_remaining = float(self.config.timers.leg_seconds)
-        self.state = RelayState.WAITING_FOR_BATON
+        # Stay on board if choosing; otherwise wait for next baton
+        if self.progress.phase == "board":
+            self.state = RelayState.CHOOSING_CATEGORY
+            self.last_message = (
+                f"SWITCH — {self.player_display(self.expected_person_index)} "
+                f"(choose a category)."
+            )
+        else:
+            self.state = RelayState.WAITING_FOR_BATON
+            self.last_message = f"SWITCH — {self.player_display(self.expected_person_index)} next."
         nxt = self.expected_person_index
-        self.last_message = f"SWITCH — {self.player_display(nxt)} next."
         self.wrong_baton = False
         self._event(
             "leg_swap",
@@ -376,6 +591,11 @@ class GameSession:
 
     def tick(self, dt: float) -> None:
         if dt <= 0 or self.state == RelayState.PAUSED_SCORE:
+            return
+
+        # Board menu: neither timer runs
+        if self.state == RelayState.CHOOSING_CATEGORY:
+            self._emit()
             return
 
         # Timers stay frozen until the first correct baton is accepted.
@@ -415,7 +635,13 @@ class GameSession:
         self.state = RelayState.PAUSED_SCORE
         self.last_message = message
         self.progress.finished = True
-        self._event("game_ended", score=self.progress.total_score, reason=message)
+        self._event(
+            "game_ended",
+            score=self.progress.total_score,
+            reason=message,
+            game_remaining=round(self.game_remaining, 2),
+            leg_remaining=round(self.leg_remaining, 2),
+        )
         self._emit()
 
     # --- answers ---
@@ -451,6 +677,12 @@ class GameSession:
             self.progress.missed_ids.append(qid)
         if result.correct and qid in self.progress.missed_ids:
             self.progress.missed_ids.remove(qid)
+
+        if self.progress.phase == "in_pick" and not is_redo:
+            if not result.correct and qid not in self.progress.pick_missed:
+                self.progress.pick_missed.append(qid)
+            if result.correct and qid in self.progress.pick_missed:
+                self.progress.pick_missed.remove(qid)
 
         who_idx = (
             self.current_person_index
@@ -493,9 +725,17 @@ class GameSession:
         qid = question.id
         if qid not in self.progress.missed_ids:
             self.progress.missed_ids.append(qid)
+        if self.progress.phase == "in_pick" and not self.progress.in_redo:
+            if qid not in self.progress.pick_missed:
+                self.progress.pick_missed.append(qid)
         self._event("skip", question_id=qid, organizer=organizer)
         self._advance_after_answer()
         self._emit()
+
+    def _sync_cursor_from_warmup(self) -> None:
+        if self.progress.set_index < len(self.sets):
+            sid = self.sets[self.progress.set_index].set_id
+            self.progress.set_cursors[sid] = self.progress.question_index
 
     def _advance_after_answer(self) -> None:
         if self.progress.in_redo:
@@ -504,29 +744,61 @@ class GameSession:
                 self.progress.in_redo = False
                 self.progress.redo_queue = []
                 self.progress.redo_index = 0
-                self._next_set()
+                if self.progress.phase == "in_pick":
+                    self._refill_and_return_to_board()
+                elif self.progress.phase == "warmup":
+                    self._warmup_next_after_set()
             return
 
+        if self.progress.phase == "in_pick":
+            sid = self.progress.pick_set_id
+            if sid:
+                cursor = self.progress.set_cursors.get(sid, 0) + 1
+                self.progress.set_cursors[sid] = cursor
+                self.progress.question_index = cursor
+            self.progress.pick_remaining = max(0, self.progress.pick_remaining - 1)
+            exhausted = sid is None or self._remaining_in_set(sid) <= 0
+            if self.progress.pick_remaining <= 0 or exhausted:
+                if self.config.questions.redo_missed_at_set_end and self.progress.pick_missed:
+                    self.progress.in_redo = True
+                    self.progress.redo_queue = list(self.progress.pick_missed)
+                    self.progress.redo_index = 0
+                    self.last_message = "Redo pass for missed questions."
+                    return
+                self._refill_and_return_to_board()
+            return
+
+        # Warm-up linear advance
         self.progress.question_index += 1
+        self.progress.warmup_done += 1
+        self._sync_cursor_from_warmup()
+
+        if self.progress.warmup_done >= self.config.questions.warmup_count:
+            self._enter_board()
+            return
+
         s = self.sets[self.progress.set_index]
         if self.progress.question_index >= len(s.questions):
-            # End of set — maybe redo missed from this set
             if self.config.questions.redo_missed_at_set_end:
-                set_ids = {q.id for q in s.questions}
-                missed = [qid for qid in self.progress.missed_ids if qid in set_ids]
+                set_qids = {q.id for q in s.questions}
+                missed = [qid for qid in self.progress.missed_ids if qid in set_qids]
                 if missed:
                     self.progress.in_redo = True
                     self.progress.redo_queue = missed
                     self.progress.redo_index = 0
                     self.last_message = "Redo pass for missed questions."
                     return
-            self._next_set()
+            self._warmup_next_after_set()
 
-    def _next_set(self) -> None:
+    def _warmup_next_after_set(self) -> None:
         self.progress.set_index += 1
         self.progress.question_index = 0
         if self.progress.set_index >= len(self.sets):
-            self._pause_score("All questions complete.")
-        else:
-            self.last_message = f"Set: {self.sets[self.progress.set_index].title}"
-            self._event("set_started", set_id=self.sets[self.progress.set_index].set_id)
+            # No more warm-up material — go to board (may end if empty)
+            self._enter_board()
+            return
+        if self.progress.warmup_done >= self.config.questions.warmup_count:
+            self._enter_board()
+            return
+        self.last_message = f"Set: {self.sets[self.progress.set_index].title}"
+        self._event("set_started", set_id=self.sets[self.progress.set_index].set_id)

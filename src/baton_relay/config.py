@@ -79,6 +79,9 @@ class ScoringConfig:
 class QuestionsConfig:
     files: tuple[Path, ...]
     redo_missed_at_set_end: bool
+    warmup_count: int
+    board_slots: int
+    questions_per_pick: int
 
 
 @dataclass(frozen=True)
@@ -373,12 +376,26 @@ def load_config(path: Path) -> AppConfig:
         if not p.is_absolute():
             p = (root_dir / p).resolve()
         q_files.append(p)
+    warmup_count = _as_int(questions_raw.get("warmup_count", 0), "[questions].warmup_count")
+    if warmup_count < 0:
+        raise ConfigError("[questions].warmup_count: must be >= 0")
+    board_slots = _as_int(questions_raw.get("board_slots", 6), "[questions].board_slots")
+    if board_slots < 1:
+        raise ConfigError("[questions].board_slots: must be >= 1")
+    questions_per_pick = _as_int(
+        questions_raw.get("questions_per_pick", 5), "[questions].questions_per_pick"
+    )
+    if questions_per_pick < 1:
+        raise ConfigError("[questions].questions_per_pick: must be >= 1")
     questions = QuestionsConfig(
         files=tuple(q_files),
         redo_missed_at_set_end=_as_bool(
             questions_raw.get("redo_missed_at_set_end", True),
             "[questions].redo_missed_at_set_end",
         ),
+        warmup_count=warmup_count,
+        board_slots=board_slots,
+        questions_per_pick=questions_per_pick,
     )
 
     controller_raw = raw.get("controller", {})
@@ -656,6 +673,9 @@ def save_config(config: AppConfig, path: Path | None = None) -> None:
             "]",
             f"redo_missed_at_set_end = "
             f"{'true' if config.questions.redo_missed_at_set_end else 'false'}",
+            f"warmup_count = {config.questions.warmup_count}",
+            f"board_slots = {config.questions.board_slots}",
+            f"questions_per_pick = {config.questions.questions_per_pick}",
             "",
             "[controller]",
             f"enabled = {'true' if config.controller.enabled else 'false'}",

@@ -241,6 +241,26 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         color: #475569;
         background-color: {panel};
     }}
+    QPushButton#categoryTile {{
+        background-color: {input_bg};
+        border: 2px solid {panel_border};
+        border-radius: 10px;
+        color: {fg};
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        padding: 18px 12px;
+    }}
+    QPushButton#categoryTile:hover {{
+        border-color: {ac};
+        background-color: {hover};
+        color: {ac};
+    }}
+    QPushButton#categoryTile:pressed {{
+        background-color: {ac};
+        color: {bg};
+        border-color: {ac};
+    }}
     QFrame#panel {{
         background-color: {panel};
         border: 2px solid {panel_border};

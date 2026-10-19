@@ -17,7 +17,9 @@ Team names must be unique. Re-entering a name that already has results shows a
 
 One JSON object per line, flushed on every event. Common fields: `ts` (UTC ISO), `event`, `team`.
 
-Events include: `game_started`, `run_resumed`, `baton_accepted`, `baton_rejected`, `baton_unknown`, `frozen`, `leg_swap`, `leg_expired`, `answer`, `skip`, `set_started`, `game_ended`, …
+Events include: `game_started`, `run_resumed`, `baton_accepted`, `baton_rejected`, `baton_unknown`, `frozen`, `leg_swap`, `leg_expired`, `answer`, `skip`, `set_started`, `board_opened`, `category_selected`, `game_ended`, …
+
+`game_ended` includes `score`, `reason`, `game_remaining`, and `leg_remaining`.
 
 `source` is `fake`, `baton`, or `controller` when relevant.
 
@@ -27,4 +29,4 @@ Events include: `game_started`, `run_resumed`, `baton_accepted`, `baton_rejected
 
 ## summary.json
 
-Written when the game ends (timer or all questions done): team name, roster, total score, per-question points.
+Written when the game ends (timer, all categories done, etc.): team name, roster, total score, `game_remaining`, `leg_remaining`, `reason`, per-question points.

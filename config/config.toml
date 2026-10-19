@@ -1,8 +1,8 @@
 # Terminal Relay — organizer config (editable in-app)
 
 [team]
-size = 4
-rotation = [0, 1, 2, 3]
+size = 3
+rotation = [0, 1, 2]
 
 [[team.people]]
 id = "p1"
@@ -21,12 +21,6 @@ id = "p3"
 label = "C"
 color = "#009E73"
 baton_pins = [1, 4]
-
-[[team.people]]
-id = "p4"
-label = "D"
-color = "#CC79A7"
-baton_pins = [1, 5]
 
 [timers]
 leg_seconds = 90
@@ -48,8 +42,12 @@ redo_multiplier = 0.5
 [questions]
 files = [
     "questions/01_type_test.json",
+    "questions/02_sample_category.json",
 ]
 redo_missed_at_set_end = true
+warmup_count = 0
+board_slots = 6
+questions_per_pick = 5
 
 [controller]
 enabled = true

@@ -154,6 +154,7 @@ class ConfigDialog(QDialog):
         self._build_timers_tab()
         self._build_controller_tab()
         self._build_scoring_tab()
+        self._build_questions_tab()
         self._build_theme_tab()
         self._build_serial_tab()
 
@@ -362,12 +363,31 @@ class ConfigDialog(QDialog):
         self.redo_mult.setRange(0, 1)
         self.redo_mult.setSingleStep(0.05)
         form.addRow("Redo multiplier", self.redo_mult)
-        self.redo_at_end = QCheckBox("Redo missed questions at set end")
-        form.addRow(self.redo_at_end)
-        self.question_files = QLineEdit()
-        self.question_files.setPlaceholderText("questions/01_type_test.json")
-        form.addRow("Question files", self.question_files)
         self.tabs.addTab(page, "Scoring")
+
+    def _build_questions_tab(self) -> None:
+        page = QWidget()
+        form = QFormLayout(page)
+        form.setContentsMargins(8, 16, 8, 8)
+        self.question_files = QLineEdit()
+        self.question_files.setPlaceholderText("questions/01_type_test.json, questions/02_….json")
+        form.addRow("Category files", self.question_files)
+        hint = QLabel("Each JSON file is one board category (title shown on the board).")
+        hint.setObjectName("muted")
+        hint.setWordWrap(True)
+        form.addRow(hint)
+        self.warmup_count = QSpinBox()
+        self.warmup_count.setRange(0, 9999)
+        form.addRow("Warm-up questions (0 = board first)", self.warmup_count)
+        self.board_slots = QSpinBox()
+        self.board_slots.setRange(1, 16)
+        form.addRow("Board slots", self.board_slots)
+        self.questions_per_pick = QSpinBox()
+        self.questions_per_pick.setRange(1, 100)
+        form.addRow("Questions per category pick", self.questions_per_pick)
+        self.redo_at_end = QCheckBox("Redo missed questions at set / pick end")
+        form.addRow(self.redo_at_end)
+        self.tabs.addTab(page, "Questions")
 
     def _build_theme_tab(self) -> None:
         page = QWidget()
@@ -451,6 +471,9 @@ class ConfigDialog(QDialog):
         self.wrong_penalty.setValue(config.scoring.wrong_answer_penalty)
         self.redo_mult.setValue(config.scoring.redo_multiplier)
         self.redo_at_end.setChecked(config.questions.redo_missed_at_set_end)
+        self.warmup_count.setValue(config.questions.warmup_count)
+        self.board_slots.setValue(config.questions.board_slots)
+        self.questions_per_pick.setValue(config.questions.questions_per_pick)
         rel_files = []
         for f in config.questions.files:
             try:
@@ -573,6 +596,9 @@ class ConfigDialog(QDialog):
             questions=QuestionsConfig(
                 files=tuple(q_files),
                 redo_missed_at_set_end=self.redo_at_end.isChecked(),
+                warmup_count=self.warmup_count.value(),
+                board_slots=self.board_slots.value(),
+                questions_per_pick=self.questions_per_pick.value(),
             ),
             controller=ControllerConfig(
                 enabled=self.ctrl_enabled.isChecked(),
