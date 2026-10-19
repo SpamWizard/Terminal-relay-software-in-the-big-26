@@ -1,4 +1,4 @@
-"""CLI entrypoints: `relay run`, `relay reset`."""
+"""CLI entrypoints: `relay run`, `relay probe`, `relay reset`."""
 
 from __future__ import annotations
 
@@ -22,6 +22,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         config_path=Path(args.config),
         fake_device=args.fake_device,
     )
+
+
+def cmd_probe(args: argparse.Namespace) -> int:
+    from baton_relay.probe import run_probe
+
+    return run_probe(Path(args.config), port=args.port)
 
 
 def cmd_reset(args: argparse.Namespace) -> int:
@@ -51,6 +57,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_p.set_defaults(func=cmd_run)
 
+    probe_p = sub.add_parser(
+        "probe",
+        help="Print which baton pins are plugged in (no game window)",
+    )
+    probe_p.add_argument(
+        "--port",
+        default=None,
+        help="Serial port override (default: [serial].port, usually auto)",
+    )
+    probe_p.set_defaults(func=cmd_probe)
+
     reset_p = sub.add_parser(
         "reset",
         help="Archive checkpoints so the next team starts clean",
@@ -63,7 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
-    if not raw or raw[0] not in ("run", "reset"):
+    if not raw or raw[0] not in ("run", "probe", "reset"):
         raw = ["run", *raw]
     args = parser.parse_args(raw)
     return args.func(args)

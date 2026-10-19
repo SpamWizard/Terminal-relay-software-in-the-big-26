@@ -30,11 +30,22 @@ PINS = (
 HEARTBEAT_S = 0.15
 
 
-def _serial_out():
-    # Prefer the data CDC (enabled in boot.py); fall back to the console.
-    if usb_cdc.data is not None:
-        return usb_cdc.data
-    return usb_cdc.console
+def _outputs():
+    """Console and data CDC, non-blocking.
+
+    Windows often exposes only one of the two ports. Writing only to data,
+    and blocking when that port has no reader, makes the visible port silent.
+    """
+    ports = []
+    for port in (usb_cdc.console, usb_cdc.data):
+        if port is None:
+            continue
+        try:
+            port.timeout = 0
+        except Exception:
+            pass
+        ports.append(port)
+    return ports
 
 
 def main() -> None:
@@ -44,7 +55,7 @@ def main() -> None:
         dio.switch_to_input(pull=digitalio.Pull.UP)
         dios.append(dio)
 
-    out = _serial_out()
+    outs = _outputs()
     seq = 0
     while True:
         mask = 0
@@ -53,11 +64,12 @@ def main() -> None:
             if not dio.value:
                 mask |= 1 << i
         seq = (seq + 1) & 0xFFFF
-        line = f"HB pins=0b{mask:05b} seq={seq}\n"
-        try:
-            out.write(line.encode("utf-8"))
-        except Exception:
-            pass
+        payload = f"HB pins=0b{mask:05b} seq={seq}\n".encode("utf-8")
+        for port in outs:
+            try:
+                port.write(payload)
+            except Exception:
+                pass
         time.sleep(HEARTBEAT_S)
 
 

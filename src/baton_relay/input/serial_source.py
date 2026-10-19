@@ -19,8 +19,8 @@ _HB_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Prefer Raspberry Pi / CircuitPython CDC adapters when port=auto.
-_RP2040_VID = 0x2E8A
+# Bootloader uses Raspberry Pi's VID. Running CircuitPython uses Adafruit's.
+_BOARD_VIDS = (0x2E8A, 0x239A)
 _HINTS = (
     "circuitpython",
     "pico",
@@ -67,7 +67,7 @@ def list_candidate_ports() -> list[str]:
         product = (getattr(info, "product", None) or "").lower()
         hwid = (info.hwid or "").lower()
         blob = f"{desc} {mfg} {product} {hwid}"
-        if info.vid == _RP2040_VID:
+        if info.vid in _BOARD_VIDS:
             score += 100
         for hint in _HINTS:
             if hint in blob:
