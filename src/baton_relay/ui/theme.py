@@ -322,10 +322,12 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         background-color: {mix(bg, "#000000", 0.22)};
         border: 1px solid {mix(bg, ac, 0.22)};
         border-radius: 4px;
-        color: {mix(fg, bg, 0.35)};
-        font-size: 12px;
-        padding: 8px;
+        color: {fg};
+        font-family: "Segoe UI", "Segoe UI Variable", sans-serif;
+        font-size: 15px;
+        padding: 10px 12px;
         selection-background-color: {mix(bg, ac, 0.25)};
+        selection-color: {fg};
     }}
     QRadioButton, QCheckBox {{
         spacing: 12px;

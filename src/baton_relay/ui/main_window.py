@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Callable
 
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QKeyEvent, QTextOption
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -77,6 +77,162 @@ def _player_label(slot: PlayerSlot) -> str:
     if slot.name.strip() == str(slot.player_number):
         return f"#{slot.player_number}"
     return f"#{slot.player_number} {slot.name}"
+
+
+def _flat(value) -> str:
+    return " ".join(str(value or "").split())
+
+
+def _num(value) -> str:
+    if isinstance(value, bool) or value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return f"{value:g}"
+    return str(value)
+
+
+def _clock_of(payload: dict, fallback: str) -> str:
+    clock = _flat(payload.get("local_time") or fallback)
+    if " " in clock:
+        clock = clock.rsplit(" ", 1)[-1]
+    return clock or fallback
+
+
+def _person_phrase(number, name) -> str:
+    handle = str(name or "").strip()
+    numbered = number is not None and str(number) != ""
+    if handle and (not numbered or handle != str(number)):
+        if numbered:
+            return f"{handle} (#{number})"
+        return handle
+    if numbered:
+        return f"Player {number}"
+    return "Someone"
+
+
+def _question_line(payload: dict) -> str:
+    cat = _flat(payload.get("set_title") or payload.get("set_id") or "")
+    prompt = _flat(payload.get("question_prompt") or payload.get("question_id") or "")
+    if cat and prompt:
+        return f"{cat} — {prompt}"
+    return cat or prompt
+
+
+def _answer_block(clock: str, payload: dict) -> str:
+    who = _person_phrase(payload.get("player_number"), payload.get("player_name"))
+    redo = " on a redo" if payload.get("redo") else ""
+    if payload.get("correct"):
+        verdict = f"got it right{redo}"
+    elif payload.get("partial"):
+        verdict = f"was partly right{redo}"
+    else:
+        verdict = f"missed it{redo}"
+    pts_s = _num(payload.get("points"))
+    max_s = _num(payload.get("max_points"))
+    if pts_s and max_s and pts_s != max_s:
+        earned = f"+{pts_s} of {max_s} points"
+    elif pts_s:
+        earned = f"+{pts_s} points"
+    else:
+        earned = ""
+    total_s = _num(payload.get("total_score"))
+    score = f"score {total_s}" if total_s else ""
+    headline = " · ".join(bit for bit in (earned, score) if bit)
+    lines = [f"{clock}  {who} {verdict}"]
+    if headline:
+        lines.append(headline)
+    question = _question_line(payload)
+    if question:
+        lines.append(question)
+    said = payload.get("answer_text")
+    if said is None:
+        said = payload.get("answer")
+    said_s = _flat(said)
+    expected = _flat(payload.get("expected_text") or "")
+    if said_s and expected and said_s.casefold() != expected.casefold():
+        lines.append(f"Said: {said_s}")
+        lines.append(f"Answer: {expected}")
+    elif said_s:
+        lines.append(f"Answer: {said_s}")
+    elif expected:
+        lines.append(f"Answer: {expected}")
+    return "\n".join(lines)
+
+
+def _skip_block(clock: str, payload: dict) -> str:
+    named = payload.get("player_number") is not None or _flat(payload.get("player_name"))
+    if named:
+        who = _person_phrase(payload.get("player_number"), payload.get("player_name"))
+        lines = [f"{clock}  {who} skipped this one"]
+    else:
+        lines = [f"{clock}  Question skipped"]
+    question = _question_line(payload)
+    if question:
+        lines.append(question)
+    expected = _flat(payload.get("expected_text") or "")
+    if expected:
+        lines.append(f"Answer: {expected}")
+    return "\n".join(lines)
+
+
+def _activity_block(name: str, payload: dict, ts: str) -> str:
+    clock = _clock_of(payload, ts)
+    if name == "answer":
+        return _answer_block(clock, payload)
+    if name == "skip":
+        return _skip_block(clock, payload)
+    if name == "baton_accepted":
+        who = _person_phrase(payload.get("player_number"), payload.get("player_name"))
+        bonus = payload.get("resume_bonus_seconds") or 0
+        if payload.get("resume"):
+            line = f"{clock}  {who} plugged back in"
+        else:
+            line = f"{clock}  {who} plugged in"
+        if bonus:
+            line += f"  ·  +{_num(bonus)}s"
+        return line
+    if name == "frozen":
+        who = _person_phrase(payload.get("player_number"), payload.get("player_name"))
+        return f"{clock}  {who} pulled the baton out"
+    if name == "leg_swap":
+        who = _person_phrase(
+            payload.get("expected_player_number"),
+            payload.get("expected_player_name"),
+        )
+        return f"{clock}  Next up is {who}"
+    if name == "leg_expired":
+        return f"{clock}  Leg time is up"
+    if name == "board_opened":
+        titles = payload.get("titles") or payload.get("categories") or []
+        names = ", ".join(_flat(t) for t in titles if _flat(t))
+        if names:
+            return f"{clock}  Choose a category\n{names}"
+        return f"{clock}  Choose a category"
+    if name == "category_selected":
+        title = _flat(payload.get("title") or "a category")
+        count = payload.get("questions")
+        count_s = _num(count) if isinstance(count, (int, float)) else _flat(count)
+        if count_s:
+            return f"{clock}  Picked {title} · {count_s} questions"
+        return f"{clock}  Picked {title}"
+    if name == "game_ended":
+        score = payload.get("score")
+        score_s = _num(score) if isinstance(score, (int, float)) else _flat(score)
+        lines = [f"{clock}  Game over · {score_s} points"]
+        bits: list[str] = []
+        used = _flat(payload.get("time_used") or "")
+        if used:
+            bits.append(f"played {used}")
+        rem = payload.get("game_remaining")
+        if isinstance(rem, (int, float)):
+            bits.append(f"{_num(rem)}s left")
+        if bits:
+            lines.append(" · ".join(bits))
+        reason = _flat(payload.get("reason") or "")
+        if reason:
+            lines.append(reason)
+        return "\n".join(lines)
+    return ""
 
 
 def _roster_text(roster: tuple[PlayerSlot, ...], *, highlight: int | None = None) -> str:
@@ -474,9 +630,11 @@ class GameScreen(QWidget):
         self.activity_log = QPlainTextEdit()
         self.activity_log.setObjectName("activityLog")
         self.activity_log.setReadOnly(True)
-        self.activity_log.setMaximumBlockCount(120)
+        self.activity_log.setMaximumBlockCount(800)
         self.activity_log.setMinimumHeight(120)
         self.activity_log.setUndoRedoEnabled(False)
+        self.activity_log.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self.activity_log.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         left_l.addWidget(self.activity_log, 1)
         body.addWidget(self.left_panel, 1)
 
@@ -504,8 +662,13 @@ class GameScreen(QWidget):
     def clear_activity(self) -> None:
         self.activity_log.clear()
 
-    def append_activity(self, line: str) -> None:
-        self.activity_log.appendPlainText(line)
+    def append_activity(self, text: str) -> None:
+        text = text.strip("\n")
+        if not text:
+            return
+        if self.activity_log.toPlainText().strip():
+            self.activity_log.appendPlainText("")
+        self.activity_log.appendPlainText(text)
         bar = self.activity_log.verticalScrollBar()
         bar.setValue(bar.maximum())
 
@@ -855,7 +1018,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             # Keep prior sets if the new question paths fail to load
             self.game_screen.append_activity(
-                f"{datetime.now().strftime('%H:%M:%S')}  config: questions not reloaded ({exc})"
+                f"{datetime.now().strftime('%H:%M:%S')}  Couldn't reload the questions\n{exc}"
             )
         self.game_screen.config = config
         self.game_screen.switch_overlay.theme = config.theme
@@ -884,7 +1047,7 @@ class MainWindow(QMainWindow):
             self._flash_override("OVERRIDE", "Pad armed — use bound buttons")
             if self.stack.currentWidget() is self.game_screen:
                 self.game_screen.append_activity(
-                    f"{datetime.now().strftime('%H:%M:%S')}  OVERRIDE armed"
+                    f"{datetime.now().strftime('%H:%M:%S')}  Pad is armed"
                 )
         else:
             self._flash_override(
@@ -907,13 +1070,13 @@ class MainWindow(QMainWindow):
         if action == "skip_question" and self.session:
             self.session.skip_question(organizer=True)
             self._flash_override("OVERRIDE · SKIP", "Question skipped")
-            self.game_screen.append_activity(f"{ts}  OVERRIDE skip")
+            self.game_screen.append_activity(f"{ts}  Override skipped the question")
             self._render(force_question=True)
         elif action == "force_leg_swap" and self.session:
             if self.session.state != RelayState.PAUSED_SCORE:
                 self.session.advance_rotation()
                 self._flash_override("OVERRIDE · SWAP", "Forced leg change")
-                self.game_screen.append_activity(f"{ts}  OVERRIDE leg swap")
+                self.game_screen.append_activity(f"{ts}  Override forced a leg change")
                 self._render()
         elif action == "confirm":
             if (
@@ -932,7 +1095,7 @@ class MainWindow(QMainWindow):
         elif action == "pause_overlay" and self.session:
             self.session.last_message = "Organizer ping — keep playing."
             self._flash_override("OVERRIDE · PING", "Attention")
-            self.game_screen.append_activity(f"{ts}  OVERRIDE ping")
+            self.game_screen.append_activity(f"{ts}  Override ping")
             self._render()
 
     def _on_reading(self, reading: BatonReading) -> None:
@@ -1040,9 +1203,9 @@ class MainWindow(QMainWindow):
             game_remaining=round(self.session.game_remaining, 2),
         )
         self.game_screen.append_activity(
-            f"{datetime.now().strftime('%H:%M:%S')}  RESUME {self.session.team_name} — "
+            f"{datetime.now().strftime('%H:%M:%S')}  Back in · {self.session.team_name}"
+            f" · {self.session.progress.total_score:g} points\n"
             + ", ".join(_player_label(s) for s in self.session.roster)
-            + f"  ·  {self.session.progress.total_score:g} pts"
         )
         self._show_game()
 
@@ -1077,7 +1240,7 @@ class MainWindow(QMainWindow):
             local_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
         self.game_screen.append_activity(
-            f"{datetime.now().strftime('%H:%M:%S')}  {team_name} — "
+            f"{datetime.now().strftime('%H:%M:%S')}  Started · {team_name}\n"
             + ", ".join(_player_label(s) for s in self.session.roster)
         )
         self._show_game()
@@ -1097,89 +1260,11 @@ class MainWindow(QMainWindow):
         except OSError:
             pass
 
-    def _who_label(self, number, name) -> str:
-        num = number if number is not None else "?"
-        handle = str(name or "").strip()
-        if handle and handle != str(num):
-            return f"#{num} {handle}"
-        return f"#{num}"
-
     def _mirror_event(self, name: str, payload: dict) -> None:
         ts = datetime.now().strftime("%H:%M:%S")
-        if name == "answer":
-            who = self._who_label(payload.get("player_number"), payload.get("player_name"))
-            pts = payload.get("points")
-            max_p = payload.get("max_points")
-            mark = "✓" if payload.get("correct") else ("~" if payload.get("partial") else "✗")
-            redo = "  redo" if payload.get("redo") else ""
-            clock = str(payload.get("local_time", ts))
-            if " " in clock:
-                clock = clock.split(" ")[-1]
-            cat = payload.get("set_title") or payload.get("set_id") or ""
-            prompt = payload.get("question_prompt") or payload.get("question_id") or ""
-            answered = payload.get("answer_text")
-            if answered is None:
-                answered = payload.get("answer")
-            expected = payload.get("expected_text") or ""
-            key_s = f"  key: {expected}" if expected else ""
-            used = payload.get("time_used") or ""
-            total = payload.get("total_score")
-            total_s = f"{total:g}" if isinstance(total, (int, float)) else str(total)
-            pts_s = f"{pts:g}" if isinstance(pts, (int, float)) else str(pts)
-            max_s = f"{max_p:g}" if isinstance(max_p, (int, float)) else str(max_p)
-            line = (
-                f"{clock}  time {used}  {who}  {mark}{redo}  [{cat}]  {prompt}  "
-                f"answer: {answered}{key_s}  +{pts_s}/{max_s}  total {total_s}"
-            )
-            self.game_screen.append_activity(line)
-        elif name == "skip":
-            who = self._who_label(payload.get("player_number"), payload.get("player_name"))
-            clock = str(payload.get("local_time", ts))
-            if " " in clock:
-                clock = clock.split(" ")[-1]
-            cat = payload.get("set_title") or payload.get("set_id") or ""
-            prompt = payload.get("question_prompt") or payload.get("question_id") or ""
-            used = payload.get("time_used") or ""
-            expected = payload.get("expected_text") or ""
-            key_s = f"  key: {expected}" if expected else ""
-            who_bit = f"  {who}" if payload.get("player_number") is not None else ""
-            self.game_screen.append_activity(
-                f"{clock}  time {used}{who_bit}  SKIP  [{cat}]  {prompt}{key_s}  +0"
-            )
-        elif name == "baton_accepted":
-            who = self._who_label(payload.get("player_number"), payload.get("player_name"))
-            bonus = payload.get("resume_bonus_seconds") or 0
-            verb = "resume" if payload.get("resume") else "in"
-            extra = f"  (+{bonus:g}s)" if bonus else ""
-            self.game_screen.append_activity(f"{ts}  {who}  {verb}{extra}")
-        elif name == "frozen":
-            who = self._who_label(payload.get("player_number"), payload.get("player_name"))
-            self.game_screen.append_activity(f"{ts}  {who}  baton out")
-        elif name == "leg_swap":
-            who = self._who_label(
-                payload.get("expected_player_number"),
-                payload.get("expected_player_name"),
-            )
-            self.game_screen.append_activity(f"{ts}  next  {who}")
-        elif name == "leg_expired":
-            self.game_screen.append_activity(f"{ts}  leg time up")
-        elif name == "board_opened":
-            titles = payload.get("titles") or payload.get("categories") or []
-            self.game_screen.append_activity(
-                f"{ts}  board  {', '.join(str(t) for t in titles)}"
-            )
-        elif name == "category_selected":
-            self.game_screen.append_activity(
-                f"{ts}  pick  {payload.get('title')}  ({payload.get('questions')} q)"
-            )
-        elif name == "game_ended":
-            rem = payload.get("game_remaining")
-            rem_s = f"  left {rem:g}s" if isinstance(rem, (int, float)) else ""
-            used = payload.get("time_used") or ""
-            used_s = f"  time {used}" if used else ""
-            self.game_screen.append_activity(
-                f"{ts}  END  {payload.get('score')} pts{used_s}{rem_s}  {payload.get('reason') or ''}"
-            )
+        block = _activity_block(name, payload, ts)
+        if block:
+            self.game_screen.append_activity(block)
 
     def _on_snapshot(self, snap: GameSnapshot) -> None:
         if snap.state == RelayState.PAUSED_SCORE:
