@@ -36,6 +36,10 @@ include = ["src/baton_relay", "config", "questions", "docs", "firmware", "tests"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "marathon: hour-scale stress (opt-in: pytest -m marathon)",
+]
+addopts = "-m 'not marathon'"
 
 [tool.ruff]
 line-length = 100

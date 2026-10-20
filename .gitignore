@@ -31,3 +31,6 @@ data/checkpoints/*
 # Local secrets / machine-specific
 config/config.local.toml
 .env
+
+# Exhaustive marathon run log
+tests/_marathon_run.log
