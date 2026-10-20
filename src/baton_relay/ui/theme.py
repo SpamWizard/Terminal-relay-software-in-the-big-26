@@ -59,8 +59,51 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
     QLabel {{
         background-color: transparent;
     }}
-    QWidget#questionBody {{
+    QWidget#questionBody, QWidget#questionScrollBody {{
         background-color: transparent;
+    }}
+    QScrollArea#questionScroll, QWidget#questionScrollViewport {{
+        background: transparent;
+        border: none;
+    }}
+    QFrame#imageGallery {{
+        background-color: {mix(bg, "#000000", 0.38)};
+        border: 1px solid {mix(bg, ac, 0.50)};
+        border-radius: 14px;
+    }}
+    QFrame#imageTile {{
+        background-color: {mix(bg, "#000000", 0.62)};
+        border: 1px solid {mix(bg, ac, 0.32)};
+        border-radius: 10px;
+    }}
+    QFrame#imageTileFlat {{
+        background-color: transparent;
+        border: none;
+    }}
+    QLabel#imageCaption {{
+        color: {fg};
+        font-size: 14px;
+        font-weight: 600;
+        background-color: transparent;
+    }}
+    QScrollArea#questionScroll QScrollBar:vertical {{
+        background: transparent;
+        width: 10px;
+        margin: 6px 2px 6px 0;
+    }}
+    QScrollArea#questionScroll QScrollBar::handle:vertical {{
+        background: {mix(bg, ac, 0.55)};
+        border-radius: 4px;
+        min-height: 28px;
+    }}
+    QScrollArea#questionScroll QScrollBar::add-line:vertical,
+    QScrollArea#questionScroll QScrollBar::sub-line:vertical {{
+        height: 0;
+        background: transparent;
+    }}
+    QScrollArea#questionScroll QScrollBar::add-page:vertical,
+    QScrollArea#questionScroll QScrollBar::sub-page:vertical {{
+        background: transparent;
     }}
     QLabel#brand {{
         color: {ac};

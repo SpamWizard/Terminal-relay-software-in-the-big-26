@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from baton_relay.questions.base import Question, QuestionSet
+from baton_relay.questions.images import QuestionImage, QuestionImageError, resolve_question_images
 from baton_relay.questions.registry import ensure_builtin_types_loaded, get_builder, known_types
 
 
@@ -18,6 +19,16 @@ def _require(data: dict[str, Any], key: str, where: str) -> Any:
     if key not in data:
         raise QuestionLoadError(f"{where}: missing required field '{key}'")
     return data[key]
+
+
+def _load_images(qdata: dict[str, Any], where: str, base_dir: Path) -> list[QuestionImage] | None:
+    """Optional pictures. Missing key means text only; a present key must be 1-8 files."""
+    if "images" not in qdata:
+        return None
+    try:
+        return resolve_question_images(qdata["images"], where=where, base_dir=base_dir)
+    except QuestionImageError as exc:
+        raise QuestionLoadError(str(exc)) from exc
 
 
 def load_question_file(path: Path) -> QuestionSet:
@@ -50,6 +61,7 @@ def load_question_file(path: Path) -> QuestionSet:
         seen_ids.add(qid)
         qtype = str(_require(qdata, "type", qwhere))
         _require(qdata, "prompt", qwhere)
+        images = _load_images(qdata, qwhere, path.parent)
         builder = get_builder(qtype)
         if builder is None:
             raise QuestionLoadError(
@@ -59,6 +71,7 @@ def load_question_file(path: Path) -> QuestionSet:
             question = builder(qdata)
         except Exception as exc:
             raise QuestionLoadError(f"{qwhere}: {exc}") from exc
+        question.images = images
         questions.append(question)
 
     return QuestionSet(set_id=set_id, title=title, questions=questions, source_path=where)
