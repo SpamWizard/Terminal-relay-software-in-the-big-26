@@ -53,6 +53,89 @@ def test_event_log_and_summary(tmp_path: Path):
     assert "ts" in data
 
 
+def test_score_sheet_counts_last_answer_and_time():
+    from baton_relay.duration import format_duration
+    from baton_relay.results.log import score_sheet
+
+    events = [
+        {
+            "event": "game_started",
+            "team": "Orbit",
+            "local_time": "2026-10-19 21:00:00",
+            "roster": [
+                {"player_number": 1, "name": "Ada"},
+                {"player_number": 2, "name": "Ben"},
+            ],
+        },
+        {
+            "event": "answer",
+            "question_id": "mc1",
+            "question_prompt": "Pick the right answer.",
+            "set_title": "Type smoke test (easy)",
+            "player_number": 1,
+            "player_name": "Ada",
+            "answer_text": "A. Wrong",
+            "expected_text": "D. Right",
+            "points": 0,
+            "correct": False,
+            "skipped": False,
+        },
+        {
+            "event": "answer",
+            "question_id": "mc1",
+            "question_prompt": "Pick the right answer.",
+            "set_title": "Type smoke test (easy)",
+            "player_number": 2,
+            "player_name": "Ben",
+            "answer_text": "D. Right",
+            "expected_text": "D. Right",
+            "points": 2.5,
+            "correct": True,
+            "redo": True,
+            "skipped": False,
+        },
+        {
+            "event": "skip",
+            "question_id": "short1",
+            "question_prompt": "Type the word Right.",
+            "player_number": 1,
+            "player_name": "Ada",
+            "skipped": True,
+        },
+        {
+            "event": "game_ended",
+            "score": 2.5,
+            "reason": "All categories complete.",
+            "local_time": "2026-10-19 21:12:34",
+            "time_used_seconds": 754.2,
+            "time_used": "12:34",
+            "game_limit_seconds": 2700,
+            "game_remaining": 1945.8,
+            "leg_remaining": 40,
+        },
+    ]
+    sheet = score_sheet(events)
+    assert sheet["team"] == "Orbit"
+    assert sheet["time_used"] == "12:34"
+    assert sheet["finished_at"] == "2026-10-19 21:12:34"
+    assert sheet["started_at"] == "2026-10-19 21:00:00"
+    assert len(sheet["attempts"]) == 3
+    assert sheet["attempts"][2]["kind"] == "skip"
+    assert len(sheet["counted_answers"]) == 1
+    assert sheet["counted_answers"][0]["answer_text"] == "D. Right"
+    assert sheet["players"][0]["points"] == 0
+    assert sheet["players"][1]["points"] == 2.5
+    assert format_duration(754.2) == "12:34"
+
+
+def test_empty_events_file_does_not_take_team_name(tmp_path: Path):
+    run = new_run_dir(tmp_path, "nope")
+    (run / "events.jsonl").write_text("", encoding="utf-8")
+    assert find_team_folder(tmp_path, "nope") is not None
+    assert list_team_runs(tmp_path, "nope") == []
+    assert not team_name_taken(tmp_path, "nope")
+
+
 def test_list_team_runs_finished_and_unfinished(config, tmp_path):
     run = new_run_dir(tmp_path, "Orbit")
     (run / "events.jsonl").write_text(

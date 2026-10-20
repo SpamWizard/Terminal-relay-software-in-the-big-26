@@ -23,6 +23,7 @@ class CategoryBoard(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._handler: Callable[[str], None] | None = None
+        self._shown: tuple[tuple[str, str], ...] | None = None
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(16)
@@ -48,6 +49,13 @@ class CategoryBoard(QWidget):
 
     def show_categories(self, categories: list[tuple[str, str]]) -> None:
         """categories: list of (set_id, title)."""
+        shown = tuple((sid, title) for sid, title in categories)
+        # The game view re-renders many times a second. Rebuilding the buttons
+        # each time deletes the one under the cursor, so the click never lands.
+        if shown == self._shown:
+            return
+        self._shown = shown
+
         while self._grid.count():
             item = self._grid.takeAt(0)
             w = item.widget()

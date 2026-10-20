@@ -8,7 +8,9 @@ from enum import Enum, auto
 from typing import Any, Callable
 
 from baton_relay.config import AppConfig, PersonConfig
+from baton_relay.duration import format_duration
 from baton_relay.questions.base import Question, QuestionSet, ScoreResult
+from baton_relay.questions.describe import format_expected, format_submitted
 
 
 class RelayState(Enum):
@@ -164,6 +166,9 @@ class GameSession:
             listener(snap)
 
     def _event(self, name: str, **payload: Any) -> None:
+        # Include team even for events fired from __init__, before the UI
+        # has stored the session (board open when warmup_count is 0).
+        payload.setdefault("team", self.team_name)
         self._on_event(name, payload)
 
     # --- derived ---
@@ -593,9 +598,9 @@ class GameSession:
         if dt <= 0 or self.state == RelayState.PAUSED_SCORE:
             return
 
-        # Board menu: neither timer runs
+        # Board menu: neither timer runs, and nothing else changes on a tick.
+        # Emitting here re-rendered the category buttons ~10×/s and ate clicks.
         if self.state == RelayState.CHOOSING_CATEGORY:
-            self._emit()
             return
 
         # Timers stay frozen until the first correct baton is accepted.
@@ -631,16 +636,81 @@ class GameSession:
 
         self._emit()
 
+    def time_used_seconds(self) -> float:
+        """Game-clock time used. Bonuses that add time back make this smaller."""
+        return round(
+            max(0.0, float(self.config.timers.game_seconds) - self.game_remaining),
+            2,
+        )
+
+    def _set_for_question(self, question: Question) -> tuple[str, str]:
+        for s in self.sets:
+            if any(q.id == question.id for q in s.questions):
+                return s.set_id, s.title
+        return "", ""
+
+    def _attempt_fields(
+        self,
+        question: Question,
+        *,
+        answer: Any,
+        skipped: bool,
+        result: ScoreResult | None,
+        redo: bool,
+    ) -> dict[str, Any]:
+        set_id, set_title = self._set_for_question(question)
+        who_idx = (
+            self.current_person_index
+            if self.current_person_index is not None
+            else self.expected_person_index
+        )
+        slot = self.roster[who_idx]
+        used = self.time_used_seconds()
+        return {
+            "question_id": question.id,
+            "question_type": question.type,
+            "question_prompt": question.prompt,
+            "question_points": question.points,
+            "set_id": set_id,
+            "set_title": set_title,
+            "answer": answer,
+            "answer_text": "" if skipped else format_submitted(question, answer),
+            "expected_text": format_expected(question),
+            "correct": False if result is None else result.correct,
+            "partial": False if result is None else result.partial,
+            "redo": redo,
+            "skipped": skipped,
+            "points": 0.0 if result is None else result.points,
+            "max_points": question.points if result is None else result.max_points,
+            "feedback": "" if result is None else result.feedback,
+            "phase": "redo" if self.progress.in_redo else self.progress.phase,
+            "person_index": who_idx,
+            "player_number": slot.player_number,
+            "player_name": slot.name,
+            "local_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "time_used_seconds": used,
+            "time_used": format_duration(used),
+            "game_remaining": round(self.game_remaining, 2),
+            "leg_remaining": round(self.leg_remaining, 2),
+            "game_limit_seconds": float(self.config.timers.game_seconds),
+            "total_score": round(self.progress.total_score, 3),
+        }
+
     def _pause_score(self, message: str) -> None:
         self.state = RelayState.PAUSED_SCORE
         self.last_message = message
         self.progress.finished = True
+        used = self.time_used_seconds()
         self._event(
             "game_ended",
             score=self.progress.total_score,
             reason=message,
             game_remaining=round(self.game_remaining, 2),
             leg_remaining=round(self.leg_remaining, 2),
+            game_limit_seconds=float(self.config.timers.game_seconds),
+            time_used_seconds=used,
+            time_used=format_duration(used),
+            local_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
         self._emit()
 
@@ -684,33 +754,15 @@ class GameSession:
             if result.correct and qid in self.progress.pick_missed:
                 self.progress.pick_missed.remove(qid)
 
-        who_idx = (
-            self.current_person_index
-            if self.current_person_index is not None
-            else self.expected_person_index
-        )
-        slot = self.roster[who_idx]
-        local_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self._event(
             "answer",
-            question_id=qid,
-            question_type=question.type,
-            question_prompt=question.prompt,
-            points=result.points,
-            max_points=result.max_points,
-            correct=result.correct,
-            partial=result.partial,
-            redo=is_redo,
-            answer=answer,
-            feedback=result.feedback,
-            person_index=who_idx,
-            player_number=slot.player_number,
-            player_name=slot.name,
-            team=self.team_name,
-            local_time=local_time,
-            game_remaining=round(self.game_remaining, 2),
-            leg_remaining=round(self.leg_remaining, 2),
-            total_score=round(self.progress.total_score, 3),
+            **self._attempt_fields(
+                question,
+                answer=answer,
+                skipped=False,
+                result=result,
+                redo=is_redo,
+            ),
         )
         self._advance_after_answer()
         self._emit()
@@ -728,7 +780,17 @@ class GameSession:
         if self.progress.phase == "in_pick" and not self.progress.in_redo:
             if qid not in self.progress.pick_missed:
                 self.progress.pick_missed.append(qid)
-        self._event("skip", question_id=qid, organizer=organizer)
+        self._event(
+            "skip",
+            organizer=organizer,
+            **self._attempt_fields(
+                question,
+                answer=None,
+                skipped=True,
+                result=None,
+                redo=self.progress.in_redo,
+            ),
+        )
         self._advance_after_answer()
         self._emit()
 

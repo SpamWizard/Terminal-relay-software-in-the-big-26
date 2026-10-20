@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from baton_relay.audio import play_switch_chime
 from baton_relay.config import AppConfig, load_config
+from baton_relay.duration import format_duration
 from baton_relay.input.base import BatonReading, ReadingKind
 from baton_relay.input.fake import FakeBatonSource
 from baton_relay.input.serial_source import SerialBatonSource
@@ -37,6 +38,8 @@ from baton_relay.results.log import (
     EventLog,
     find_resumable_run,
     new_run_dir,
+    read_events,
+    score_sheet,
     team_name_taken,
 )
 from baton_relay.state.machine import GameSession, GameSnapshot, PlayerSlot, RelayState
@@ -266,9 +269,18 @@ class ScoreScreen(QWidget):
         self.score.setObjectName("timerBig")
         self.score.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.score)
+        self.time = QLabel("")
+        self.time.setObjectName("headline")
+        self.time.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.time)
+        self.finished = QLabel("")
+        self.finished.setObjectName("muted")
+        self.finished.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.finished)
         self.detail = QLabel("")
         self.detail.setObjectName("muted")
         self.detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.detail.setWordWrap(True)
         layout.addWidget(self.detail)
         layout.addSpacing(28)
         btn = QPushButton("NEXT TEAM")
@@ -278,11 +290,20 @@ class ScoreScreen(QWidget):
         layout.addStretch(2)
 
     def show_score(
-        self, team: str, points: float, message: str, roster: tuple[PlayerSlot, ...]
+        self,
+        team: str,
+        points: float,
+        message: str,
+        roster: tuple[PlayerSlot, ...],
+        *,
+        time_used: str,
+        finished_at: str,
     ) -> None:
         self.team.setText(team)
         self.roster.setText(_roster_text(roster))
         self.score.setText(f"{points:.1f}" if points % 1 else f"{int(points)}")
+        self.time.setText(f"TIME {time_used}")
+        self.finished.setText(f"Finished {finished_at}" if finished_at else "")
         self.detail.setText(message)
 
 
@@ -945,9 +966,14 @@ class MainWindow(QMainWindow):
 
     def _on_session_event(self, name: str, payload: dict) -> None:
         assert self.event_log is not None
-        assert self.session is not None
+        # warmup_count == 0 opens the board inside GameSession.__init__, which
+        # calls this before _wire_session assigns self.session.
+        if self.session is not None:
+            team = self.session.team_name
+        else:
+            team = str(payload.get("team") or "")
         # payload may already include team — merge so we don't double-pass it
-        self.event_log.emit(name, **{**payload, "team": self.session.team_name})
+        self.event_log.emit(name, **{**payload, "team": team})
         self._mirror_event(name, payload)
         self._save_checkpoint()
 
@@ -1084,14 +1110,42 @@ class MainWindow(QMainWindow):
             who = self._who_label(payload.get("player_number"), payload.get("player_name"))
             pts = payload.get("points")
             max_p = payload.get("max_points")
-            qid = payload.get("question_id")
-            mark = "✓" if payload.get("correct") else "✗"
-            # Prefer short clock time from local_time if present
+            mark = "✓" if payload.get("correct") else ("~" if payload.get("partial") else "✗")
+            redo = "  redo" if payload.get("redo") else ""
             clock = str(payload.get("local_time", ts))
             if " " in clock:
                 clock = clock.split(" ")[-1]
-            line = f"{clock}  {who}  {mark}  {qid}  +{pts:g}/{max_p:g}"
+            cat = payload.get("set_title") or payload.get("set_id") or ""
+            prompt = payload.get("question_prompt") or payload.get("question_id") or ""
+            answered = payload.get("answer_text")
+            if answered is None:
+                answered = payload.get("answer")
+            expected = payload.get("expected_text") or ""
+            key_s = f"  key: {expected}" if expected else ""
+            used = payload.get("time_used") or ""
+            total = payload.get("total_score")
+            total_s = f"{total:g}" if isinstance(total, (int, float)) else str(total)
+            pts_s = f"{pts:g}" if isinstance(pts, (int, float)) else str(pts)
+            max_s = f"{max_p:g}" if isinstance(max_p, (int, float)) else str(max_p)
+            line = (
+                f"{clock}  time {used}  {who}  {mark}{redo}  [{cat}]  {prompt}  "
+                f"answer: {answered}{key_s}  +{pts_s}/{max_s}  total {total_s}"
+            )
             self.game_screen.append_activity(line)
+        elif name == "skip":
+            who = self._who_label(payload.get("player_number"), payload.get("player_name"))
+            clock = str(payload.get("local_time", ts))
+            if " " in clock:
+                clock = clock.split(" ")[-1]
+            cat = payload.get("set_title") or payload.get("set_id") or ""
+            prompt = payload.get("question_prompt") or payload.get("question_id") or ""
+            used = payload.get("time_used") or ""
+            expected = payload.get("expected_text") or ""
+            key_s = f"  key: {expected}" if expected else ""
+            who_bit = f"  {who}" if payload.get("player_number") is not None else ""
+            self.game_screen.append_activity(
+                f"{clock}  time {used}{who_bit}  SKIP  [{cat}]  {prompt}{key_s}  +0"
+            )
         elif name == "baton_accepted":
             who = self._who_label(payload.get("player_number"), payload.get("player_name"))
             bonus = payload.get("resume_bonus_seconds") or 0
@@ -1120,40 +1174,40 @@ class MainWindow(QMainWindow):
             )
         elif name == "game_ended":
             rem = payload.get("game_remaining")
-            rem_s = f"  game left {rem:g}s" if isinstance(rem, (int, float)) else ""
+            rem_s = f"  left {rem:g}s" if isinstance(rem, (int, float)) else ""
+            used = payload.get("time_used") or ""
+            used_s = f"  time {used}" if used else ""
             self.game_screen.append_activity(
-                f"{ts}  end  {payload.get('score')} pts{rem_s}"
+                f"{ts}  END  {payload.get('score')} pts{used_s}{rem_s}  {payload.get('reason') or ''}"
             )
 
     def _on_snapshot(self, snap: GameSnapshot) -> None:
         if snap.state == RelayState.PAUSED_SCORE:
             self._timer.stop()
             if self.session and self.event_log and self.run_dir:
-                self.event_log.write_summary(
-                    self.run_dir / "summary.json",
-                    {
-                        "team": snap.team_name,
-                        "roster": [
-                            {
-                                "player_number": s.player_number,
-                                "name": s.name,
-                                "person_index": s.person_index,
-                            }
-                            for s in snap.roster
-                        ],
-                        "score": snap.progress.total_score,
-                        "game_remaining": round(snap.game_remaining, 2),
-                        "leg_remaining": round(snap.leg_remaining, 2),
-                        "reason": snap.last_message,
-                        "answered": {
-                            k: {
-                                "points": v.points,
-                                "correct": v.correct,
-                            }
-                            for k, v in snap.progress.answered.items()
-                        },
-                    },
-                )
+                finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                limit = float(self.config.timers.game_seconds)
+                used = max(0.0, limit - snap.game_remaining)
+                sheet = score_sheet(read_events(self.event_log.path))
+                sheet["team"] = snap.team_name
+                sheet["score"] = snap.progress.total_score
+                sheet["reason"] = snap.last_message
+                sheet["time_used_seconds"] = round(used, 2)
+                sheet["time_used"] = format_duration(used)
+                sheet["game_limit_seconds"] = limit
+                sheet["game_remaining"] = round(snap.game_remaining, 2)
+                sheet["leg_remaining"] = round(snap.leg_remaining, 2)
+                sheet["finished_at"] = finished_at
+                if not sheet["roster"]:
+                    sheet["roster"] = [
+                        {
+                            "player_number": s.player_number,
+                            "name": s.name,
+                            "person_index": s.person_index,
+                        }
+                        for s in snap.roster
+                    ]
+                self.event_log.write_summary(self.run_dir / "summary.json", sheet)
                 # Finished runs are not resumable
                 for path in (
                     checkpoint_path_for(self.run_dir),
@@ -1169,6 +1223,10 @@ class MainWindow(QMainWindow):
                 snap.progress.total_score,
                 snap.last_message,
                 snap.roster,
+                time_used=format_duration(
+                    max(0.0, float(self.config.timers.game_seconds) - snap.game_remaining)
+                ),
+                finished_at=datetime.now().strftime("%H:%M:%S"),
             )
             self.stack.setCurrentWidget(self.score_screen)
         else:

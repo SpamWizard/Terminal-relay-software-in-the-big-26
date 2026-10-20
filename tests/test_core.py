@@ -235,8 +235,14 @@ def test_answer_logs_player(config, sets):
     assert payload["player_name"] == "Ada"
     assert payload["player_number"] == 1
     assert payload["team"] == "Nova"
+    assert payload["set_title"]
+    assert payload["question_prompt"]
+    assert payload["answer_text"] == "D. Right"
+    assert payload["expected_text"] == "D. Right"
+    assert payload["points"] == 5
+    assert payload["max_points"] == 5
+    assert "time_used" in payload
     assert "local_time" in payload
-    assert "question_prompt" in payload
 
 
 def test_timers_wait_for_first_baton(config, sets):
@@ -294,9 +300,12 @@ def test_board_timers_frozen(config, sets):
     session.timers_started = True
     game_before = session.game_remaining
     leg_before = session.leg_remaining
+    notes: list[int] = []
+    session.add_listener(lambda _snap: notes.append(1))
     session.tick(5.0)
     assert session.game_remaining == game_before
     assert session.leg_remaining == leg_before
+    assert notes == []
 
 
 def test_select_category_and_refill(config, sets):
