@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QColor, QKeyEvent, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -88,6 +88,8 @@ class QuestionHost(QWidget):
             return
         self.prompt.setText(question.prompt)
         body, collect = build_answer_widget(question)
+        body.setObjectName("questionBody")
+        body.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._body = body
         self._collect = collect
         self._slot.addWidget(body)
@@ -275,7 +277,12 @@ def _numeric(q: Numeric) -> tuple[QWidget, Callable[[], Any]]:
     root = QWidget()
     layout = QVBoxLayout(root)
     edit = QLineEdit()
-    edit.setPlaceholderText("Number…")
+    edit.setObjectName("numberAnswer")
+    edit.setPlaceholderText("Type a number")
+    edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    palette = edit.palette()
+    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor("#d5e4f5"))
+    edit.setPalette(palette)
     layout.addWidget(edit)
 
     def collect() -> float:

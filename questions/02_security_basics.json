@@ -1,0 +1,74 @@
+{
+  "set_id": "security_basics",
+  "title": "Security Scenarios",
+  "questions": [
+    {
+      "id": "sec01",
+      "type": "multiple_choice",
+      "prompt": "Employees keep leaving unlocked computers unattended at lunch. Which control most directly reduces that risk?",
+      "points": 100,
+      "choices": [
+        "Automatic screen lock after inactivity",
+        "Longer minimum password length",
+        "Encrypting all email",
+        "A yearly security audit"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "sec02",
+      "type": "select_all",
+      "prompt": "Select ALL events that violate integrity, not just confidentiality or availability.",
+      "points": 200,
+      "choices": [
+        "An attacker edits a payment amount in a database",
+        "A stranger reads a stolen backup",
+        "A log file is silently altered to hide activity",
+        "A website goes offline from a traffic flood"
+      ],
+      "answer": [
+        0,
+        2
+      ]
+    },
+    {
+      "id": "sec03",
+      "type": "numeric",
+      "prompt": "A server breach would cost 500000 dollars. Breaches are expected once every 5 years. What is the annualized loss expectancy in dollars? Digits only.",
+      "points": 300,
+      "answer": 100000,
+      "tolerance": 0
+    },
+    {
+      "id": "sec04",
+      "type": "match_up",
+      "prompt": "Match each scenario to the CIA property it most directly threatens.",
+      "points": 400,
+      "left": [
+        "Ransomware locks every file server",
+        "A stranger reads customer emails",
+        "A clerk's invoice total is quietly changed"
+      ],
+      "right": [
+        "Confidentiality",
+        "Integrity",
+        "Availability"
+      ],
+      "answer": {
+        "0": 2,
+        "1": 0,
+        "2": 1
+      }
+    },
+    {
+      "id": "sec05",
+      "type": "fill_blank",
+      "prompt": "A company checks every request as if it came from the open internet, even from inside the office. This model is called Zero ___.",
+      "points": 500,
+      "accepted": [
+        "trust"
+      ],
+      "case_sensitive": false
+    }
+  ]
+}

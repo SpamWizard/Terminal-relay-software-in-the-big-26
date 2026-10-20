@@ -34,6 +34,7 @@ from baton_relay.config import (
     ControllerConfig,
     PathsConfig,
     PersonConfig,
+    MAX_BOARD_SLOTS,
     QuestionsConfig,
     ScoringConfig,
     SerialConfig,
@@ -380,8 +381,8 @@ class ConfigDialog(QDialog):
         self.warmup_count.setRange(0, 9999)
         form.addRow("Warm-up questions (0 = board first)", self.warmup_count)
         self.board_slots = QSpinBox()
-        self.board_slots.setRange(1, 16)
-        form.addRow("Board slots", self.board_slots)
+        self.board_slots.setRange(1, MAX_BOARD_SLOTS)
+        form.addRow("Board slots (max 8 on screen)", self.board_slots)
         self.questions_per_pick = QSpinBox()
         self.questions_per_pick.setRange(1, 100)
         form.addRow("Questions per category pick", self.questions_per_pick)

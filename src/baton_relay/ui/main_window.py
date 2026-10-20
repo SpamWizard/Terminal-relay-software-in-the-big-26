@@ -635,6 +635,8 @@ class GameScreen(QWidget):
         self.activity_log.setUndoRedoEnabled(False)
         self.activity_log.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.activity_log.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        self.activity_log.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.activity_log.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         left_l.addWidget(self.activity_log, 1)
         body.addWidget(self.left_panel, 1)
 

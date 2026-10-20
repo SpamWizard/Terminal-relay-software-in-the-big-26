@@ -41,12 +41,15 @@ redo_multiplier = 0.5
 
 [questions]
 files = [
-    "questions/01_type_test.json",
-    "questions/02_sample_category.json",
+    "questions/01_network_basics.json",
+    "questions/02_security_basics.json",
+    "questions/03_identity_access.json",
+    "questions/04_social_engineering.json",
+    "questions/05_compliance.json",
 ]
 redo_missed_at_set_end = true
 warmup_count = 0
-board_slots = 6
+board_slots = 8
 questions_per_pick = 5
 
 [controller]

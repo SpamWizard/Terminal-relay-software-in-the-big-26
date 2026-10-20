@@ -1,0 +1,72 @@
+{
+  "set_id": "compliance",
+  "title": "Compliance & Frameworks",
+  "questions": [
+    {
+      "id": "cmp01",
+      "type": "multiple_choice",
+      "prompt": "A shop must make stored card numbers unreadable. Which method does NOT do that?",
+      "points": 100,
+      "choices": [
+        "Truncation",
+        "Tokenization",
+        "Strong encryption with key management",
+        "Base64 encoding"
+      ],
+      "answer": 3
+    },
+    {
+      "id": "cmp02",
+      "type": "numeric",
+      "prompt": "Logs must be kept 12 months, with the latest 3 months immediately available. How many months may sit in slower archive storage?",
+      "points": 200,
+      "answer": 9,
+      "tolerance": 0
+    },
+    {
+      "id": "cmp03",
+      "type": "fill_blank",
+      "prompt": "A random stand-in value that replaces a real card number in storage is called a ___.",
+      "points": 300,
+      "accepted": [
+        "token"
+      ],
+      "case_sensitive": false
+    },
+    {
+      "id": "cmp04",
+      "type": "select_all",
+      "prompt": "Card systems are moved onto an isolated network segment. Select ALL statements that are true.",
+      "points": 400,
+      "choices": [
+        "Fewer systems fall in scope for assessment",
+        "The isolated segment must still be protected",
+        "Encryption is no longer needed there",
+        "An infected office laptop is less likely to reach card data"
+      ],
+      "answer": [
+        0,
+        1,
+        3
+      ]
+    },
+    {
+      "id": "cmp05",
+      "type": "put_in_order",
+      "prompt": "Put a basic risk management cycle in order. Top happens first.",
+      "points": 500,
+      "items": [
+        "Treat the risks with controls",
+        "Identify risks",
+        "Evaluate and rank risks",
+        "Review and monitor results"
+      ],
+      "answer": [
+        1,
+        2,
+        0,
+        3
+      ]
+    }
+  ]
+}

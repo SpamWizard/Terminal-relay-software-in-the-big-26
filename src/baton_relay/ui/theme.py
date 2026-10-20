@@ -59,6 +59,9 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
     QLabel {{
         background-color: transparent;
     }}
+    QWidget#questionBody {{
+        background-color: transparent;
+    }}
     QLabel#brand {{
         color: {ac};
         font-size: 58px;
@@ -123,6 +126,15 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         min-height: 26px;
         selection-background-color: {ac};
         selection-color: {bg};
+    }}
+    QLineEdit#numberAnswer {{
+        font-size: 42px;
+        font-weight: 700;
+        min-height: 84px;
+        padding: 18px 24px;
+        border: 2px solid {ac};
+        border-radius: 10px;
+        qproperty-alignment: AlignCenter;
     }}
     QPushButton {{
         background-color: transparent;

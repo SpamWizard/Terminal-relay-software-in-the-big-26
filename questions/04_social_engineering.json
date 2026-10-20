@@ -1,0 +1,85 @@
+{
+  "set_id": "social_engineering",
+  "title": "Social Engineering",
+  "questions": [
+    {
+      "id": "soc01",
+      "type": "multiple_choice",
+      "prompt": "An email from IT says your mailbox is full and demands a click within one hour. The reply-to address is on a different domain. Best move?",
+      "points": 100,
+      "choices": [
+        "Report it and verify through a known channel",
+        "Click to see if it is real",
+        "Reply and ask if it is genuine",
+        "Wait an hour and then click"
+      ],
+      "answer": 0
+    },
+    {
+      "id": "soc02",
+      "type": "select_all",
+      "prompt": "A vendor emails that their bank details changed. Select ALL safe next steps.",
+      "points": 200,
+      "choices": [
+        "Call the vendor on the number already on file",
+        "Reply to the email and ask them to confirm",
+        "Follow your payment-change policy with finance",
+        "Pay the next invoice to the new account"
+      ],
+      "answer": [
+        0,
+        2
+      ]
+    },
+    {
+      "id": "soc03",
+      "type": "match_up",
+      "prompt": "Match each scenario to the attack it describes.",
+      "points": 300,
+      "left": [
+        "Text message with a fake parcel link",
+        "Phone call in the CFO's voice asking for a wire",
+        "Drives labeled Payroll left in a car park",
+        "Stranger with full arms asks you to hold the door"
+      ],
+      "right": [
+        "Baiting",
+        "Tailgating",
+        "Vishing",
+        "Smishing"
+      ],
+      "answer": {
+        "0": 3,
+        "1": 2,
+        "2": 0,
+        "3": 1
+      }
+    },
+    {
+      "id": "soc04",
+      "type": "put_in_order",
+      "prompt": "You get a suspicious email. Put the best-practice response in order. Top happens first.",
+      "points": 400,
+      "items": [
+        "Report it to security",
+        "Do not click anything",
+        "Notice something odd",
+        "Delete the message"
+      ],
+      "answer": [
+        2,
+        1,
+        0,
+        3
+      ]
+    },
+    {
+      "id": "soc05",
+      "type": "numeric",
+      "prompt": "A phishing test sent 200 emails. 30 people clicked and 50 people reported it. What percent of recipients reported it? Digits only.",
+      "points": 500,
+      "answer": 25,
+      "tolerance": 0
+    }
+  ]
+}

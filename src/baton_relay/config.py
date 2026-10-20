@@ -12,6 +12,9 @@ VALID_BATON_PAIRS: frozenset[tuple[int, int]] = frozenset(
     (a, b) for a in range(1, 6) for b in range(a + 1, 6)
 )
 
+# The category board never shows more than this many tiles at once.
+MAX_BOARD_SLOTS = 8
+
 XBOX_BUTTONS: tuple[str, ...] = (
     "A",
     "B",
@@ -379,9 +382,13 @@ def load_config(path: Path) -> AppConfig:
     warmup_count = _as_int(questions_raw.get("warmup_count", 0), "[questions].warmup_count")
     if warmup_count < 0:
         raise ConfigError("[questions].warmup_count: must be >= 0")
-    board_slots = _as_int(questions_raw.get("board_slots", 6), "[questions].board_slots")
+    board_slots = _as_int(
+        questions_raw.get("board_slots", MAX_BOARD_SLOTS), "[questions].board_slots"
+    )
     if board_slots < 1:
         raise ConfigError("[questions].board_slots: must be >= 1")
+    if board_slots > MAX_BOARD_SLOTS:
+        board_slots = MAX_BOARD_SLOTS
     questions_per_pick = _as_int(
         questions_raw.get("questions_per_pick", 5), "[questions].questions_per_pick"
     )

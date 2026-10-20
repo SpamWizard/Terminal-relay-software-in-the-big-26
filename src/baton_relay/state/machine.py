@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum, auto
 from typing import Any, Callable
 
-from baton_relay.config import AppConfig, PersonConfig
+from baton_relay.config import MAX_BOARD_SLOTS, AppConfig, PersonConfig
 from baton_relay.duration import format_duration
 from baton_relay.questions.base import Question, QuestionSet, ScoreResult
 from baton_relay.questions.describe import format_expected, format_submitted
@@ -266,7 +266,7 @@ class GameSession:
         if not on_board and not self.progress.pool:
             pool = list(available)
 
-        slots_n = self.config.questions.board_slots
+        slots_n = min(self.config.questions.board_slots, MAX_BOARD_SLOTS)
         while len(on_board) < slots_n and pool:
             on_board.append(pool.pop(0))
 
@@ -346,7 +346,7 @@ class GameSession:
             sid for sid in self.progress.pool if self._remaining_in_set(sid) > 0
         ]
 
-        slots_n = self.config.questions.board_slots
+        slots_n = min(self.config.questions.board_slots, MAX_BOARD_SLOTS)
         while len(self.progress.board_slots) < slots_n and self.progress.pool:
             nxt = self.progress.pool.pop(0)
             if nxt not in self.progress.board_slots and self._remaining_in_set(nxt) > 0:

@@ -80,7 +80,9 @@ def test_negative_warmup(tmp_path):
 
 
 def test_zero_board_slots(tmp_path):
-    body = BASE.replace("board_slots = 6", "board_slots = 0", 1)
+    import re
+
+    body = re.sub(r"board_slots = \d+", "board_slots = 0", BASE, count=1)
     with pytest.raises(ConfigError, match="board_slots"):
         load_config(_write(tmp_path, body))
 
