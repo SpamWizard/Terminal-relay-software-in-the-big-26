@@ -33,6 +33,27 @@ After a pick, that slot is refilled from unused categories. Timers freeze on the
 | `numeric` | `answer`, `tolerance` |
 | `fill_blank` | same as short_answer |
 | `flag` | `accepted[]` (usually case-sensitive) |
-| `hands_on` | `image`, `ports`, `success` — containers later; flag success works now |
+| `hands_on` | `image` (container name), `ports`, `success` — containers later; flag success works now |
 
-All files are validated at startup; the app refuses to start on errors.
+Every type also accepts optional pictures. The prompt text still shows. `images` is an array of **1 to 8** picture files, tiled in one framed area (1 wide, 2 side by side, 3 across, 2×2, 3 over 2, 3×2, 4 over 3, 4×2). Shorter rows are centered. Paths are relative to the question JSON file. Formats: `png`, `jpg`, `jpeg`, `gif`, `webp`, `bmp`.
+
+A plain string is just the file. An object can add a caption under that picture:
+
+```json
+{
+  "id": "topo1",
+  "type": "multiple_choice",
+  "prompt": "Which picture is a star topology?",
+  "images": [
+    "images/bus.png",
+    { "src": "images/star.png", "caption": "B" }
+  ],
+  "points": 100,
+  "choices": ["A", "B"],
+  "answer": 1
+}
+```
+
+`hands_on.image` is still the container image name. Picture files belong in `images`.
+
+All files are validated at startup; the app refuses to start on errors. Missing pictures, more than 8, or an empty list fail the load.

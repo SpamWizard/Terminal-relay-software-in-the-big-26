@@ -4,23 +4,27 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QColor, QKeyEvent, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
     QComboBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from baton_relay.questions.base import Question
+from baton_relay.questions.images import pictures_for
 from baton_relay.questions.types import (
     FillBlank,
     Flag,
@@ -32,6 +36,36 @@ from baton_relay.questions.types import (
     SelectAll,
     ShortAnswer,
 )
+from baton_relay.ui.image_gallery import ImageGallery
+
+
+class _QuestionScroll(QScrollArea):
+    """Scrolls the picture area and answer controls while Submit stays put."""
+
+    def __init__(self, inner: QWidget, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("questionScroll")
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setWidget(inner)
+        # Stay as tall as the pictures and answers. Extra panel space stays below Submit.
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.setMinimumHeight(140)
+        viewport = self.viewport()
+        viewport.setAutoFillBackground(False)
+        viewport.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        viewport.setObjectName("questionScrollViewport")
+
+    def sizeHint(self) -> QSize:
+        inner = self.widget()
+        if inner is None:
+            return super().sizeHint()
+        hint = inner.sizeHint()
+        return QSize(max(hint.width(), 280), hint.height())
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(200, 140)
 
 
 class QuestionHost(QWidget):
@@ -40,6 +74,8 @@ class QuestionHost(QWidget):
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._body: QWidget | None = None
+        self._gallery: ImageGallery | None = None
+        self._scroll: _QuestionScroll | None = None
         self._collect: Callable[[], Any] | None = None
         self._on_submit: Callable[[Any], None] | None = None
         self._locked = True
@@ -73,10 +109,17 @@ class QuestionHost(QWidget):
         self.submit_btn.setEnabled(not locked)
 
     def clear(self) -> None:
-        if self._body is not None:
+        if self._scroll is not None:
+            self._scroll.setParent(None)
+            self._scroll.deleteLater()
+            self._scroll = None
+            self._body = None
+            self._gallery = None
+        elif self._body is not None:
             self._body.setParent(None)
             self._body.deleteLater()
             self._body = None
+            self._gallery = None
         self._collect = None
         self.prompt.setText("")
         self.feedback.setText("")
@@ -92,7 +135,23 @@ class QuestionHost(QWidget):
         body.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._body = body
         self._collect = collect
-        self._slot.addWidget(body)
+        pictures = pictures_for(question.images)
+        if pictures:
+            gallery = ImageGallery(pictures)
+            self._gallery = gallery
+            wrap = QWidget()
+            wrap.setObjectName("questionScrollBody")
+            wrap_layout = QVBoxLayout(wrap)
+            wrap_layout.setContentsMargins(0, 0, 0, 0)
+            wrap_layout.setSpacing(12)
+            wrap_layout.addWidget(gallery)
+            wrap_layout.addWidget(body)
+            wrap_layout.addStretch(1)
+            scroll = _QuestionScroll(wrap)
+            self._scroll = scroll
+            self._slot.addWidget(scroll)
+        else:
+            self._slot.addWidget(body)
 
     def _submit(self) -> None:
         if self._locked or not self._collect or not self._on_submit:

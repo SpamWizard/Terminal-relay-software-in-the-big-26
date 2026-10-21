@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from baton_relay.config import ScoringConfig
+from baton_relay.questions.images import QuestionImage
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ class Question(ABC):
     points: float
     partial_credit: bool | None = None
     raw: dict[str, Any] | None = None
+    images: list[QuestionImage] | None = None
 
     @abstractmethod
     def score(self, answer: Any, scoring: ScoringConfig) -> ScoreResult:
