@@ -46,6 +46,7 @@ files = [
     "questions/03_identity_access.json",
     "questions/04_social_engineering.json",
     "questions/05_compliance.json",
+    "questions/06_fake_logos.json",
 ]
 redo_missed_at_set_end = true
 warmup_count = 0

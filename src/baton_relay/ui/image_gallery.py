@@ -69,7 +69,12 @@ class ImageTile(QFrame):
     def _fit(self) -> None:
         if self._pixmap.isNull():
             return
-        target = self.picture.size()
+        # showEvent defers _fit with a 0ms timer; the tile may already be gone.
+        try:
+            picture = self.picture
+            target = picture.size()
+        except RuntimeError:
+            return
         if target.width() < 8 or target.height() < 8:
             return
         dpr = self.devicePixelRatioF()
@@ -80,7 +85,10 @@ class ImageTile(QFrame):
             Qt.TransformationMode.SmoothTransformation,
         )
         scaled.setDevicePixelRatio(dpr)
-        self.picture.setPixmap(scaled)
+        try:
+            picture.setPixmap(scaled)
+        except RuntimeError:
+            return
 
 
 class ImageGallery(QFrame):

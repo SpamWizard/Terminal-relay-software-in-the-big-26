@@ -67,13 +67,13 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         border: none;
     }}
     QFrame#imageGallery {{
-        background-color: {mix(bg, "#000000", 0.38)};
+        background-color: #ffffff;
         border: 1px solid {mix(bg, ac, 0.50)};
         border-radius: 14px;
     }}
     QFrame#imageTile {{
-        background-color: {mix(bg, "#000000", 0.62)};
-        border: 1px solid {mix(bg, ac, 0.32)};
+        background-color: #ffffff;
+        border: 1px solid {mix("#ffffff", "#000000", 0.12)};
         border-radius: 10px;
     }}
     QFrame#imageTileFlat {{
@@ -81,7 +81,7 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         border: none;
     }}
     QLabel#imageCaption {{
-        color: {fg};
+        color: #1a1a1a;
         font-size: 14px;
         font-weight: 600;
         background-color: transparent;
