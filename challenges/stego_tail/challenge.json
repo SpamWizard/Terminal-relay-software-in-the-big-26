@@ -1,0 +1,10 @@
+{
+  "id": "stego_tail",
+  "set_id": "stego_tail",
+  "title": "Stego Tail",
+  "type": "desk",
+  "prompt": "Something was appended after logo.png. XOR it (see note.txt) to recover a path, open that file, submit the TR{} inside.",
+  "points": 250,
+  "accepted": ["TR{stego_found}"],
+  "panes": ["files", "terminal"]
+}

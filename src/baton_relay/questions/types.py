@@ -216,6 +216,30 @@ class HandsOn(Question):
         )
 
 
+@register("desk")
+@dataclass
+class Desk(Question):
+    """HC-style challenge: work inside public_dir, submit a flag."""
+
+    accepted: list[str] | None = None
+    case_sensitive: bool = True
+    strip_whitespace: bool = True
+    public_dir: str = ""
+    panes: list[str] | None = None
+    page_file: str | None = None
+
+    def score(self, answer: Any, scoring: ScoringConfig) -> ScoreResult:
+        return Flag(
+            id=self.id,
+            type="flag",
+            prompt=self.prompt,
+            points=self.points,
+            accepted=list(self.accepted or []),
+            case_sensitive=self.case_sensitive,
+            strip_whitespace=self.strip_whitespace,
+        ).score(answer, scoring)
+
+
 def _common(data: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": data["id"],
@@ -309,6 +333,30 @@ def _build_hands_on(data: dict[str, Any]) -> Question:
     )
 
 
+def _build_desk(data: dict[str, Any]) -> Question:
+    panes_raw = data.get("panes") or ["files", "terminal"]
+    if not isinstance(panes_raw, list) or not panes_raw:
+        raise ValueError("desk.panes must be a non-empty list")
+    panes = [str(p) for p in panes_raw]
+    allowed = {"files", "terminal", "page"}
+    bad = [p for p in panes if p not in allowed]
+    if bad:
+        raise ValueError(f"desk.panes unknown: {', '.join(bad)} (allowed: files, terminal, page)")
+    public = str(data.get("public_dir") or "")
+    if not public:
+        raise ValueError("desk.public_dir is required (set by the challenge folder loader)")
+    page_file = data.get("page_file")
+    return Desk(
+        **_common(data),
+        accepted=[str(x) for x in data.get("accepted") or []],
+        case_sensitive=bool(data.get("case_sensitive", True)),
+        strip_whitespace=bool(data.get("strip_whitespace", True)),
+        public_dir=public,
+        panes=panes,
+        page_file=str(page_file) if page_file else None,
+    )
+
+
 register_builder("multiple_choice", _build_multiple_choice)
 register_builder("select_all", _build_select_all)
 register_builder("put_in_order", _build_put_in_order)
@@ -318,3 +366,4 @@ register_builder("numeric", _build_numeric)
 register_builder("fill_blank", _build_fill)
 register_builder("flag", _build_flag)
 register_builder("hands_on", _build_hands_on)
+register_builder("desk", _build_desk)

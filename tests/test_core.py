@@ -14,10 +14,31 @@ from baton_relay.questions.loader import QuestionLoadError, load_all_question_fi
 from baton_relay.questions.registry import ensure_builtin_types_loaded
 from baton_relay.questions.types import MultipleChoice, SelectAll, ShortAnswer
 from baton_relay.state.machine import GameSession, RelayState
+from tests.conftest import tiny_sets
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "config" / "config.toml"
+
+
+def _correct_answer(q):
+    """Right answer payload for whatever type is on the board."""
+    if q.type in {"desk", "flag", "short_answer", "fill_blank"}:
+        return q.accepted[0]
+    if q.type == "multiple_choice":
+        return q.answer
+    if q.type == "select_all":
+        return list(q.answer)
+    if q.type == "put_in_order":
+        return list(q.answer)
+    if q.type == "match_up":
+        return dict(q.answer)
+    if q.type == "numeric":
+        return q.answer
+    if q.type == "hands_on":
+        success = q.success or {}
+        return (success.get("accepted") or ["x"])[0]
+    raise AssertionError(f"no solver for {q.type}")
 
 
 @pytest.fixture
@@ -41,7 +62,8 @@ def test_load_config(config):
     assert config.team_size >= 2
     assert config.people[0].baton_pins == (1, 2)
     assert config.timers.leg_seconds > 0
-    assert config.timers.game_seconds > 0
+    assert config.timers.game_seconds == 1500
+    assert config.timers.leg_runs_while_frozen is False
     assert config.timers.resume_bonus_seconds == 10
     assert config.theme.name == "deep_space"
     assert config.controller.unlock_buttons  # organizer-configurable chord
@@ -49,7 +71,7 @@ def test_load_config(config):
     assert config.controller.bindings["confirm"] == "A"
     assert config.questions.warmup_count == 0
     assert config.questions.board_slots >= 1
-    assert config.questions.questions_per_pick >= 1
+    assert config.questions.questions_per_pick == 1
 
 
 def test_number_expr():
@@ -65,21 +87,11 @@ def test_number_expr():
 def test_load_questions(sets):
     assert len(sets) >= 2
     ids = {s.set_id for s in sets}
-    assert "type_test" in ids
-    assert "potatoes" in ids
+    assert "find_the_line" in ids
+    assert "fake_logos" in ids
     types = {q.type for s in sets for q in s.questions}
-    for needed in (
-        "multiple_choice",
-        "select_all",
-        "put_in_order",
-        "match_up",
-        "short_answer",
-        "numeric",
-        "fill_blank",
-        "flag",
-        "hands_on",
-    ):
-        assert needed in types
+    assert "desk" in types
+    assert "multiple_choice" in types
 
 
 def test_bad_question_file(tmp_path):
@@ -216,18 +228,19 @@ def test_state_machine_baton_flow(config, sets):
     )
 
 
-def test_answer_logs_player(config, sets):
+def test_answer_logs_player(config):
     events: list[tuple[str, dict]] = []
     cfg = _with_warmup(config)
+    quiz = tiny_sets(1, 2)
     session = GameSession(
         cfg,
-        sets,
+        quiz,
         team_name="Nova",
         player_names=["Ada", "Ben", "Cy", "Dee"],
         on_event=lambda n, p: events.append((n, p)),
     )
     session.on_baton_reading(0, source="fake")
-    result = session.submit_answer(3)
+    result = session.submit_answer(1)
     assert result is not None
     answer_events = [p for n, p in events if n == "answer"]
     assert answer_events
@@ -237,8 +250,8 @@ def test_answer_logs_player(config, sets):
     assert payload["team"] == "Nova"
     assert payload["set_title"]
     assert payload["question_prompt"]
-    assert payload["answer_text"] == "D. Right"
-    assert payload["expected_text"] == "D. Right"
+    assert payload["answer_text"] == "B. yes"
+    assert payload["expected_text"] == "B. yes"
     assert payload["points"] == 5
     assert payload["max_points"] == 5
     assert "time_used" in payload
@@ -277,8 +290,7 @@ def test_answer_advances(config, sets):
     session.on_baton_reading(0, source="fake")
     q = session.current_question()
     assert q is not None
-    # First question is multiple_choice; "Right" is index 3
-    result = session.submit_answer(3)
+    result = session.submit_answer(_correct_answer(q))
     assert result is not None
     assert result.correct
     assert session.progress.total_score > 0
@@ -324,11 +336,9 @@ def test_select_category_and_refill(config, sets):
     q = session.current_question()
     assert q is not None
     # Answer correctly for first Q of whichever set was picked
-    if q.type == "multiple_choice":
-        session.submit_answer(q.answer)  # type: ignore[attr-defined]
-    elif q.type == "short_answer":
-        session.submit_answer(q.accepted[0])  # type: ignore[attr-defined]
-    else:
+    try:
+        session.submit_answer(_correct_answer(q))
+    except AssertionError:
         session.skip_question(organizer=True)
     # Back on board with a category (refill or remaining)
     assert session.state == RelayState.CHOOSING_CATEGORY
@@ -343,11 +353,13 @@ def test_warmup_then_board(config, sets):
     assert session.state == RelayState.WAITING_FOR_BATON
     assert session.progress.phase == "warmup"
     session.on_baton_reading(0, source="fake")
-    session.submit_answer(3)  # first MC in type_test
+    q = session.current_question()
+    assert q is not None
+    first_id = sets[0].set_id
+    session.submit_answer(_correct_answer(q))
     assert session.state == RelayState.CHOOSING_CATEGORY
     assert session.progress.phase == "board"
-    # First question of type_test consumed
-    assert session.progress.set_cursors.get("type_test", 0) >= 1
+    assert session.progress.set_cursors.get(first_id, 0) >= 1
 
 
 def test_board_ends_when_categories_exhausted(config, sets):
@@ -428,7 +440,9 @@ def test_team_name_collision_and_resume(config, sets, tmp_path):
         cfg, sets, team_name="Orbit", player_names=["Ada", "Ben", "Cy", "Dee"]
     )
     session.on_baton_reading(0, source="fake")
-    session.submit_answer(3)
+    q = session.current_question()
+    assert q is not None
+    session.submit_answer(_correct_answer(q))
     save_checkpoint(run / "checkpoint.json", session)
     (run / "events.jsonl").write_text(
         '{"event":"game_started","team":"Orbit"}\n', encoding="utf-8"

@@ -1,0 +1,5 @@
+todo:
+- badge printers join the conference GUEST wifi (not staff)
+- from this laptop image, scan the air:  iwlist wlan0 scanning
+- the desk check-in token was left on whichever saved wifi profile matches that guest SSID
+- do not post anything to Discord

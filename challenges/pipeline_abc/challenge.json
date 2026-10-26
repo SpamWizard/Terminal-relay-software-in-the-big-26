@@ -1,0 +1,15 @@
+{
+  "id": "pipeline_abc",
+  "set_id": "pipeline_abc",
+  "title": "Pipeline ABC",
+  "type": "desk",
+  "prompt": "Run a.py, b.py, then c.py. Each prints one path segment. Join them with / and open that file for the flag.",
+  "points": 300,
+  "accepted": [
+    "TR{pipe_found}"
+  ],
+  "panes": [
+    "files",
+    "terminal"
+  ]
+}

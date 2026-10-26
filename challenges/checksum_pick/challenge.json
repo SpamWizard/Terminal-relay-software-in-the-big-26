@@ -1,0 +1,15 @@
+{
+  "id": "checksum_pick",
+  "set_id": "checksum_pick",
+  "title": "Checksum Pick",
+  "type": "desk",
+  "prompt": "Exactly one id in candidates.txt has crc32 hex 426b7e2c. Look that id up in casebook.txt and take the flag from that row.",
+  "points": 200,
+  "accepted": [
+    "TR{correct_horse}"
+  ],
+  "panes": [
+    "files",
+    "terminal"
+  ]
+}

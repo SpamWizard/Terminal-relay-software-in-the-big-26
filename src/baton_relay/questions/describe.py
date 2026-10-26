@@ -6,6 +6,7 @@ from typing import Any
 
 from baton_relay.questions.base import Question
 from baton_relay.questions.types import (
+    Desk,
     FillBlank,
     Flag,
     HandsOn,
@@ -95,7 +96,7 @@ def _format_expected(question: Question) -> str:
         if question.tolerance:
             return f"{question.answer:g} ± {question.tolerance:g}"
         return f"{question.answer:g}"
-    if isinstance(question, (ShortAnswer, FillBlank, Flag)):
+    if isinstance(question, (ShortAnswer, FillBlank, Flag, Desk)):
         return " | ".join(question.accepted or [])
     if isinstance(question, HandsOn):
         success = question.success or {}

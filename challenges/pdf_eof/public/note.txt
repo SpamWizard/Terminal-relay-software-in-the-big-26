@@ -1,0 +1,1 @@
+Trailer after %%EOF is XOR'd with decimal 90 (0x5A). Result is a path.

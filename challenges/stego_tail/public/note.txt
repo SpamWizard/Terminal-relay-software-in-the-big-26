@@ -1,0 +1,2 @@
+Artist said they keyed the trailer with decimal 66.
+XOR every appended byte. Result is a relative path — open it.

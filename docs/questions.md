@@ -34,6 +34,7 @@ After a pick, that slot is refilled from unused categories. Timers freeze on the
 | `fill_blank` | same as short_answer |
 | `flag` | `accepted[]` (usually case-sensitive) |
 | `hands_on` | `image` (container name), `ports`, `success` — containers later; flag success works now |
+| `desk` | HC-style folder challenge: `accepted[]`, `panes` (`files` / `terminal` / `page`), optional `page_file`. Loaded from a challenge directory (see below). |
 
 Every type also accepts optional pictures. The prompt text still shows. `images` is an array of **1 to 8** picture files, tiled in one framed area (1 wide, 2 side by side, 3 across, 2×2, 3 over 2, 3×2, 4 over 3, 4×2). Shorter rows are centered. Paths are relative to the question JSON file. Formats: `png`, `jpg`, `jpeg`, `gif`, `webp`, `bmp`.
 
@@ -57,3 +58,20 @@ A plain string is just the file. An object can add a caption under that picture:
 `hands_on.image` is still the container image name. Picture files belong in `images`.
 
 All files are validated at startup; the app refuses to start on errors. Missing pictures, more than 8, or an empty list fail the load.
+
+## Challenge folders (HC-style)
+
+`[questions].files` may list a directory instead of a JSON file. Layout:
+
+```
+challenges/find_the_line/
+  challenge.json
+  public/          # only folder players can see in the desk
+  private/         # staff only — never mounted into the desk
+```
+
+`challenge.json` can be a normal set (`set_id`, `title`, `questions`) or a compact one-question form (`id`, `type`, `prompt`, `points`, …). Desk challenges must be exactly one question. The loader sets `public_dir` automatically.
+
+The desk UI is a narrow **file-name rail** (no free preview), a dominant **terminal**, an optional rendered **page**, and a flag box. Clicking a file name pastes it into the terminal — players must `cat` / decode / script to work. Baton freeze keeps scrollback; there is no notes box — talk across the handoff.
+
+Do not put the accepted `TR{...}` string in `public/` plaintext. Decoys are fine.

@@ -1,0 +1,13 @@
+cd ~
+ls
+ping 8.8.8.8
+# trying to remember the svc account password
+echo -n oreo | md5sum
+echo -n potato | md5sum
+echo -n baton | md5sum
+# finally stored the hash we need to match:
+# svc_acct md5=d22778374cd88052bf19282a2a698eba
+cd /opt/desk
+cat wordlist.txt
+# note to self: password is ON the wordlist, stop guessing random snacks
+exit

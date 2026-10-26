@@ -1,0 +1,10 @@
+{
+  "id": "broken_check",
+  "set_id": "broken_check",
+  "title": "Broken Check",
+  "type": "desk",
+  "prompt": "check.py is buggy and prints a fake TR{} if you feed it the sliced password. Read the source for the real PASSWORD, then open vault/<PASSWORD>.txt for the real flag.",
+  "points": 300,
+  "accepted": ["TR{broken_vault}"],
+  "panes": ["files", "terminal"]
+}

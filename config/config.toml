@@ -23,9 +23,9 @@ color = "#009E73"
 baton_pins = [1, 4]
 
 [timers]
-leg_seconds = 90
-game_seconds = 2700
-leg_runs_while_frozen = true
+leg_seconds = 100
+game_seconds = 1500
+leg_runs_while_frozen = false
 debounce_ms = 80
 resume_bonus_seconds = 10
 
@@ -41,17 +41,31 @@ redo_multiplier = 0.5
 
 [questions]
 files = [
-    "questions/01_network_basics.json",
-    "questions/02_security_basics.json",
-    "questions/03_identity_access.json",
-    "questions/04_social_engineering.json",
-    "questions/05_compliance.json",
+    "challenges/find_the_line",
+    "challenges/bash_crumbs",
+    "challenges/page_source",
+    "challenges/stego_tail",
+    "challenges/broken_check",
+    "challenges/pcap_dns",
+    "challenges/auth_once",
+    "challenges/zip_comment",
+    "challenges/nested_b64",
+    "challenges/char_codes",
+    "challenges/two_halves",
+    "challenges/rule_crack",
+    "challenges/pdf_eof",
+    "challenges/pipeline_abc",
+    "challenges/probe_temp",
+    "challenges/whitespace",
+    "challenges/checksum_pick",
+    "challenges/map_legend",
+    "challenges/wrong_salt",
     "questions/06_fake_logos.json",
 ]
-redo_missed_at_set_end = true
+redo_missed_at_set_end = false
 warmup_count = 0
 board_slots = 8
-questions_per_pick = 5
+questions_per_pick = 1
 
 [controller]
 enabled = true

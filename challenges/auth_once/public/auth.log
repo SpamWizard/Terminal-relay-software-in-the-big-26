@@ -1,0 +1,10 @@
+sshd: Failed password for root from 10.1.1.9
+sshd: Failed password for admin from 10.1.1.9
+sshd: Failed password for guest from 10.1.1.2
+sshd: Accepted password for relaybot from 10.1.1.40
+sshd: Failed password for relaybot from 10.1.1.41
+sshd: Failed password for root from 10.1.1.9
+sshd: Accepted publickey for deploy from 10.1.1.7
+sshd: Accepted publickey for deploy from 10.1.1.7
+sshd: Failed password for ubuntu from 10.1.1.3
+# deploy succeeded twice — not "once"

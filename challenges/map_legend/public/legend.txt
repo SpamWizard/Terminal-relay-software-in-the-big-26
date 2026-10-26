@@ -1,0 +1,4 @@
+. = empty floor
+Letters A-Z mark stations
+Cells are (row, column) with 1 = top/left
+After you have the letter, check roster.txt

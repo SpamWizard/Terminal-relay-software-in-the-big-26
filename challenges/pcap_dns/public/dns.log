@@ -1,0 +1,10 @@
+# truncated text export — not a real pcap
+12:01:02.100  UDP  10.0.0.5:53122 > 10.0.0.53:53  DNS Q?
+12:01:02.101  query name label[0]=badge
+12:01:02.101  (noise) TTL=64 id=0x4a2c
+12:01:02.102  query name label[2]=local
+12:01:02.103  PTR clutter ignore.me.in-addr.arpa
+12:01:02.104  query name label[1]=ops
+12:01:02.105  A?  (answer omitted)
+# decoy host that is NOT the query target
+# seen later: mail.spam.invalid

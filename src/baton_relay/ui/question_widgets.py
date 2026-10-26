@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 from baton_relay.questions.base import Question
 from baton_relay.questions.images import pictures_for
 from baton_relay.questions.types import (
+    Desk,
     FillBlank,
     Flag,
     HandsOn,
@@ -36,6 +37,7 @@ from baton_relay.questions.types import (
     SelectAll,
     ShortAnswer,
 )
+from baton_relay.ui.desk_widget import DeskSessionStore, DeskWidget, build_desk_widget
 from baton_relay.ui.image_gallery import ImageGallery
 
 
@@ -71,33 +73,42 @@ class _QuestionScroll(QScrollArea):
 class QuestionHost(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("questionHost")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(False)
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._body: QWidget | None = None
         self._gallery: ImageGallery | None = None
         self._scroll: _QuestionScroll | None = None
+        self._desk: DeskWidget | None = None
+        self._desk_store = DeskSessionStore()
         self._collect: Callable[[], Any] | None = None
         self._on_submit: Callable[[Any], None] | None = None
         self._locked = True
+        self._current_qid: str | None = None
+
+        self._layout.setSpacing(10)
 
         self.prompt = QLabel("")
         self.prompt.setWordWrap(True)
-        self.prompt.setObjectName("headline")
+        self.prompt.setObjectName("challengePrompt")
         self._layout.addWidget(self.prompt)
 
         self._slot = QVBoxLayout()
-        self._layout.addLayout(self._slot)
+        self._slot.setContentsMargins(0, 0, 0, 0)
+        self._layout.addLayout(self._slot, 1)
 
-        btn_row = QHBoxLayout()
+        self._btn_row = QHBoxLayout()
         self.submit_btn = QPushButton("SUBMIT")
         self.submit_btn.setObjectName("primary")
         self.submit_btn.clicked.connect(self._submit)
-        btn_row.addWidget(self.submit_btn)
-        btn_row.addStretch(1)
-        self._layout.addLayout(btn_row)
+        self._btn_row.addWidget(self.submit_btn)
+        self._btn_row.addStretch(1)
+        self._layout.addLayout(self._btn_row)
 
         self.feedback = QLabel("")
-        self.feedback.setObjectName("muted")
+        self.feedback.setObjectName("challengeFeedback")
         self._layout.addWidget(self.feedback)
 
     def set_submit_handler(self, handler: Callable[[Any], None]) -> None:
@@ -105,8 +116,15 @@ class QuestionHost(QWidget):
 
     def set_locked(self, locked: bool) -> None:
         self._locked = locked
-        self.setEnabled(not locked)
+        # Keep the host enabled so the freeze overlay is the gate; still disable controls.
         self.submit_btn.setEnabled(not locked)
+        if self._desk is not None:
+            self._desk.set_desk_locked(locked)
+            return
+        if self._body is not None:
+            self._body.setEnabled(not locked)
+        if self._scroll is not None:
+            self._scroll.setEnabled(not locked)
 
     def clear(self) -> None:
         if self._scroll is not None:
@@ -120,16 +138,45 @@ class QuestionHost(QWidget):
             self._body.deleteLater()
             self._body = None
             self._gallery = None
+        self._desk = None
         self._collect = None
         self.prompt.setText("")
         self.feedback.setText("")
+        self.submit_btn.show()
+
+    def clear_desk_sessions(self) -> None:
+        self._desk_store.clear()
 
     def show_question(self, question: Question | None) -> None:
+        prev = self._current_qid
         self.clear()
         if question is None:
+            self._current_qid = None
+            if prev:
+                self._desk_store.clear(prev)
             self.prompt.setText("No more questions.")
             return
+        if prev and prev != question.id:
+            self._desk_store.clear(prev)
+        self._current_qid = question.id
         self.prompt.setText(question.prompt)
+
+        if isinstance(question, Desk):
+            self.prompt.setObjectName("challengePrompt")
+            state = self._desk_store.get(question.id)
+            body, collect, desk = build_desk_widget(question, state, on_submit=self._submit)
+            body.setObjectName("questionBody")
+            body.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            self._body = body
+            self._desk = desk
+            self._collect = collect
+            self._slot.addWidget(body)
+            desk.set_desk_locked(self._locked)
+            self.submit_btn.hide()
+            return
+
+        self.prompt.setObjectName("challengePrompt")
+        self.submit_btn.show()
         body, collect = build_answer_widget(question)
         body.setObjectName("questionBody")
         body.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -152,6 +199,7 @@ class QuestionHost(QWidget):
             self._slot.addWidget(scroll)
         else:
             self._slot.addWidget(body)
+
 
     def _submit(self) -> None:
         if self._locked or not self._collect or not self._on_submit:
