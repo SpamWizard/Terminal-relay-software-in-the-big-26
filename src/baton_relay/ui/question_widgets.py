@@ -113,6 +113,8 @@ class QuestionHost(QWidget):
             self._scroll.setEnabled(not locked)
 
     def clear(self) -> None:
+        if self._desk is not None:
+            self._desk.detach_shell()
         if self._scroll is not None:
             self._scroll.setParent(None)
             self._scroll.deleteLater()

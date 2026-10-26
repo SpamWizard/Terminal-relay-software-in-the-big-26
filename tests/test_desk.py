@@ -58,6 +58,7 @@ def test_short_desk_challenges_solve_clean():
     import base64
     import codecs
     import hashlib
+    import re
     import zipfile
 
     expected = {
@@ -66,6 +67,8 @@ def test_short_desk_challenges_solve_clean():
         "anthem": "TR{not_an_mp3}",
         "unwrap": "TR{three_layers}",
         "wordlist": "TR{lantern}",
+        "hashcat": "TR{spark}",
+        "regex": "TR{kite4}",
         "crackme": "TR{rockme}",
     }
     for folder, flag in expected.items():
@@ -104,6 +107,17 @@ def test_short_desk_challenges_solve_clean():
     assert (ROOT / "challenges" / "wordlist" / "public" / "hash.txt").read_text(encoding="utf-8").strip() == digest
     words = (ROOT / "challenges" / "wordlist" / "public" / "wordlist.txt").read_text(encoding="utf-8").split()
     assert word in words
+
+    spark = "spark"
+    spark_digest = hashlib.md5(spark.encode()).hexdigest()
+    spark_words = (ROOT / "challenges" / "hashcat" / "public" / "wordlist.txt").read_text(encoding="utf-8").split()
+    assert (ROOT / "challenges" / "hashcat" / "public" / "hash.txt").read_text(encoding="utf-8").strip() == spark_digest
+    assert spark in spark_words
+    assert len(spark_words) <= 12
+
+    regex_lines = (ROOT / "challenges" / "regex" / "public" / "lines.txt").read_text(encoding="utf-8").split()
+    assert len(regex_lines) >= 200
+    assert [line for line in regex_lines if re.fullmatch(r"[a-z]+[0-9]", line)] == ["kite4"]
 
     with zipfile.ZipFile(ROOT / "challenges" / "anthem" / "public" / "anthem.mp3") as zf:
         assert zf.read("flag.txt", pwd=b"anthem") == b"TR{not_an_mp3}\n"
@@ -282,14 +296,41 @@ def test_ctrl_v_pastes_flag_into_the_shell(qtbot):
         clip.setText(previous)
 
 
+def _joined_writes(shell) -> list[str]:
+    assert shell._cd_thread is not None
+    shell._cd_thread.join(timeout=2)
+    return [call.args[0] for call in shell._pty.write.call_args_list]
+
+
 def test_cd_is_forced_while_locked():
     shell = TeamShell(distro="relay-test", repo_root=ROOT)
     shell._pty = MagicMock()
     shell._pty.isalive.return_value = True
     shell.locked = True
     shell._copied.add("steghide")
+    shell._cd_pause = 0
     shell.ensure_challenge("steghide", ROOT / "challenges" / "steghide" / "public")
-    shell._pty.write.assert_called_with("cd '/challenges/steghide' && pwd\r")
+    written = "".join(_joined_writes(shell))
+    assert "cd '/challenges/steghide' && pwd\r" in written
+
+
+def test_switching_challenges_leaves_the_previous_folder():
+    """A leftover command or half-typed line must not keep the old directory."""
+    shell = TeamShell(distro="relay-test", repo_root=ROOT)
+    shell._pty = MagicMock()
+    shell._pty.isalive.return_value = True
+    shell._copied.update({"crackme", "regex"})
+    shell._cwd_challenge = "crackme"
+    shell._cd_pause = 0
+    shell.ensure_challenge("regex", ROOT / "challenges" / "regex" / "public")
+    writes = _joined_writes(shell)
+    assert writes[0] == "\x03"
+    assert writes[-1] == " cd '/challenges/regex' && pwd\r"
+
+    # A swallowed cd used to stick: opening the same challenge again does too.
+    shell.ensure_challenge("regex", ROOT / "challenges" / "regex" / "public")
+    again = _joined_writes(shell)
+    assert again[-1] == " cd '/challenges/regex' && pwd\r"
 
 
 def test_load_config_files():

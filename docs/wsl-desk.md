@@ -24,7 +24,7 @@ That writes `images/relay-gold.vhdx` (Kali exports are large — several GB; exp
 
 Do **not** mark that VHDX ReadOnly — WSL will fail with `Access is denied` when attaching team clones. Protect it by never registering the gold file with `wsl`; only team children use `import-in-place`.
 
-Network stays up so players can `sudo apt install …` during a desk challenge. Kali already ships a full toolbox; apt is for extras. The gold build also installs `steghide`, `exiftool`, `john`, `zip`, `unzip`, `xxd`, and `binutils`, and copies every `challenges/*/public` tree to `/challenges/<id>`. Player sudo is limited to `apt` / `apt-get` / `dpkg` (passwordless).
+Network stays up so players can `sudo apt install …` during a desk challenge. Kali already ships a full toolbox; apt is for extras. The gold build also installs `steghide`, `exiftool`, `john`, `hashcat`, `zip`, `unzip`, `xxd`, and `binutils`, and copies every `challenges/*/public` tree to `/challenges/<id>`. Player sudo is limited to `apt` / `apt-get` / `dpkg` (passwordless).
 
 To refresh an existing `images/relay-gold.vhdx` without re-exporting Kali:
 

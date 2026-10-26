@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -18,6 +19,14 @@ from baton_relay.results.log import team_slug
 
 class ShellError(RuntimeError):
     """WSL / linked-clone / bash pipe failure."""
+
+
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b.")
+
+
+def _looks_like_prompt(text: str) -> bool:
+    visible = _ANSI.sub("", text).rstrip()
+    return bool(visible) and visible[-1] in "$#%"
 
 
 def distro_name(team_name: str) -> str:
@@ -260,6 +269,9 @@ class TeamShell:
     transcript: str = ""
     _cwd_challenge: str | None = None
     _copied: set[str] = field(default_factory=set)
+    _cd_token: int = 0
+    _cd_pause: float = 0.8
+    _cd_thread: threading.Thread | None = None
     _pty: Any = None
     _reader: threading.Thread | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
@@ -333,13 +345,66 @@ class TeamShell:
         if challenge_id not in self._copied:
             self._copy_public(challenge_id, public_dir)
             self._copied.add(challenge_id)
-        if self._cwd_challenge != challenge_id:
-            # Visible in the terminal so teammates see the folder switch.
-            # Force it: a baton lock would otherwise swallow the cd and
-            # leave the shell in the previous challenge.
-            folder = challenge_id.replace("'", "")
-            self.write_keys(f"cd '/challenges/{folder}' && pwd\r", force=True)
-            self._cwd_challenge = challenge_id
+        # Always re-enter. A previous cd can be typed into a running program
+        # or a half-finished line and never run, and marking it done would
+        # leave the next visit stuck in the old challenge folder.
+        folder = challenge_id.replace("'", "").replace("/", "")
+        with self._lock:
+            self._cd_token += 1
+            token = self._cd_token
+        worker = threading.Thread(
+            target=self._switch_dir,
+            args=(token, folder),
+            name="relay-cd",
+            daemon=True,
+        )
+        self._cd_thread = worker
+        self._cwd_challenge = challenge_id
+        worker.start()
+
+    def _switch_dir(self, token: int, folder: str) -> None:
+        """Stop leftover input from the previous challenge, then cd.
+
+        Ctrl-C has to finish before the cd. This shell eats one typed
+        character after an interrupt, and a Ctrl-U glued to the front of
+        ``cd`` turns it into ``d`` (``d: command not found``) so the
+        directory never changes. The leading space is the character that
+        gets eaten instead.
+        """
+        try:
+            self.write_keys("\x03", force=True)
+            if self._cd_pause > 0 and not self._wait_for_prompt(token):
+                return
+            if token != self._cd_token:
+                return
+            self.write_keys(f" cd '/challenges/{folder}' && pwd\r", force=True)
+        except ShellError:
+            return
+
+    def _wait_for_prompt(self, token: int) -> bool:
+        """Wait until Ctrl-C's prompt redraw has settled, or the pause elapses."""
+        deadline = time.monotonic() + self._cd_pause
+        baseline = self.transcript
+        previous = baseline
+        stable = 0
+        saw_new = False
+        while time.monotonic() < deadline:
+            if token != self._cd_token:
+                return False
+            time.sleep(0.05)
+            current = self.transcript
+            if current != baseline:
+                saw_new = True
+            if current == previous:
+                stable += 1
+                # The prompt that was already on screen does not count.
+                # Wait until Ctrl-C prints a new one and it stops moving.
+                if saw_new and stable >= 2 and _looks_like_prompt(current):
+                    return True
+            else:
+                previous = current
+                stable = 0
+        return token == self._cd_token
 
     def send_line(self, line: str) -> None:
         """Compatibility helper: type a full line and press Enter."""

@@ -107,6 +107,9 @@ class _TerminalPane(QFrame):
         self._locked = locked
         self.term.set_locked(locked)
 
+    def detach_shell(self) -> None:
+        self.term.detach_shell()
+
     def paste_filename(self, name: str) -> None:
         if self._locked or not name:
             return
@@ -204,13 +207,6 @@ class DeskWidget(QWidget):
         public = Path(question.public_dir)
         panes = list(question.panes or ["files", "terminal"])
 
-        if shell is not None:
-            try:
-                shell.ensure_challenge(question.id, public)
-            except Exception as exc:
-                if shell.transcript == "":
-                    shell.transcript = f"error preparing challenge: {exc}\n"
-
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
@@ -224,6 +220,15 @@ class DeskWidget(QWidget):
         if "terminal" in panes:
             term = _TerminalPane(public, shell)
             self._panes.append(term)
+
+        # Bind the terminal first so the folder switch is visible, then cd.
+        # Doing it the other way round prints the cd into the dying widget.
+        if shell is not None:
+            try:
+                shell.ensure_challenge(question.id, public)
+            except Exception as exc:
+                if shell.transcript == "":
+                    shell.transcript = f"error preparing challenge: {exc}\n"
 
         if "files" in panes:
             files = _FilesPane(
@@ -295,6 +300,12 @@ class DeskWidget(QWidget):
         self.submit_btn.setEnabled(not locked)
         for pane in self._panes:
             pane.set_locked(locked)
+
+    def detach_shell(self) -> None:
+        for pane in self._panes:
+            detach = getattr(pane, "detach_shell", None)
+            if detach is not None:
+                detach()
 
     def collect_flag(self) -> str:
         text = self.flag_edit.text()

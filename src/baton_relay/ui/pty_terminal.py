@@ -95,8 +95,7 @@ class PtyTerminalWidget(QWidget):
         self._flush_timer.timeout.connect(self._flush_pending)
 
     def bind_shell(self, shell: TeamShell | None) -> None:
-        if self._shell is not None:
-            self._shell.on_output = None
+        self.detach_shell()
         self._shell = shell
         self._pending = ""
         self._anchor = None
@@ -106,9 +105,18 @@ class PtyTerminalWidget(QWidget):
         self._stream = pyte.Stream(self._screen)
         if shell is not None:
             # Cross-thread safe: reader calls emit → GUI slot.
-            shell.on_output = lambda text: self._raw_output.emit(text)
+            shell.on_output = self._emit_output
             shell.resize(self._cols, self._rows)
             self.update()
+
+    def detach_shell(self) -> None:
+        """Drop this widget's output callback without touching a newer terminal."""
+        shell = self._shell
+        if shell is not None and shell.on_output == self._emit_output:
+            shell.on_output = None
+
+    def _emit_output(self, text: str) -> None:
+        self._raw_output.emit(text)
 
     def set_locked(self, locked: bool) -> None:
         self._locked = locked

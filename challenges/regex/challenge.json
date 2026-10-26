@@ -1,0 +1,10 @@
+{
+  "id": "regex",
+  "type": "desk",
+  "title": "Regex",
+  "set_id": "regex",
+  "prompt": "lines.txt is a long list of near misses. One line is only letters followed by a single digit. Match that shape with a regex. The flag is TR{that word}. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{kite4}"],
+  "panes": ["files", "terminal"]
+}

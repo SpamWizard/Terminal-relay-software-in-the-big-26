@@ -68,6 +68,30 @@ The password is `lantern`.
 
 Flag: `TR{lantern}`
 
+## Hashcat
+
+`hash.txt` is one MD5. `wordlist.txt` has eight words, so hashcat finishes immediately.
+
+```bash
+hashcat -m 0 -a 0 hash.txt wordlist.txt
+```
+
+The password is `spark`.
+
+Flag: `TR{spark}`
+
+## Regex
+
+`lines.txt` is 400 lines of near misses (two digits, a digit first, a digit in the middle, letters only, uppercase). One line is letters followed by a single digit. Reading the file does not surface it.
+
+```bash
+grep -E '^[a-z]+[0-9]$' lines.txt
+```
+
+The word is `kite4`.
+
+Flag: `TR{kite4}`
+
 ## Crackme
 
 `crackme.py` accepts a password whose reverse is `emkcor`.

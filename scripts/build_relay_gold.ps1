@@ -127,7 +127,7 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 # Kali already ships a full toolbox; keep apt working for anything extra.
 apt-get update
-apt-get install -y sudo ca-certificates steghide exif libimage-exiftool-perl john zip unzip xxd binutils file openssl python3
+apt-get install -y sudo ca-certificates steghide exif libimage-exiftool-perl john hashcat zip unzip xxd binutils file openssl python3
 id -u player >/dev/null 2>&1 || useradd -m -s /bin/bash player
 # john often lands in /usr/sbin, which a player login shell may not search.
 if [ -x /usr/sbin/john ] && [ ! -x /usr/local/bin/john ]; then
@@ -210,6 +210,7 @@ $check = @'
 set -euo pipefail
 command -v exif >/dev/null
 command -v exiftool >/dev/null
+command -v hashcat >/dev/null
 rm -rf /tmp/relay-check
 mkdir -p /tmp/relay-check
 if ! steghide extract -sf /challenges/steghide/cover.jpg -p rockme -xf /tmp/relay-check/steg.txt >/tmp/relay-check/steghide-extract.log 2>&1; then

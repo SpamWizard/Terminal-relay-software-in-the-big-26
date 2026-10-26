@@ -46,6 +46,8 @@ files = [
     "challenges/anthem",
     "challenges/unwrap",
     "challenges/wordlist",
+    "challenges/hashcat",
+    "challenges/regex",
     "challenges/crackme",
     "questions/06_fake_logos.json",
 ]
