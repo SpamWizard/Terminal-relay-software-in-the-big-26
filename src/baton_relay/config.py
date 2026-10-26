@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -129,6 +130,26 @@ class UiConfig:
     switch_sound_volume: float
 
 
+# SaintCon accepts one of these on each board PUT.
+SCOREBOARD_STATUSES: tuple[str, ...] = ("upcoming", "live", "ended", "final")
+# Their API rejects a second push inside 15 seconds.
+SCOREBOARD_MIN_INTERVAL_SECONDS = 15
+SCOREBOARD_MESSAGE_MAX = 140
+SCOREBOARD_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}\Z")
+
+
+@dataclass(frozen=True)
+class ScoreboardConfig:
+    """Public board on saintcon.org. The API key is never stored here."""
+
+    enabled: bool
+    board_id: str
+    status: str
+    frozen: bool
+    message: str
+    interval_seconds: int
+
+
 @dataclass(frozen=True)
 class AppConfig:
     team_size: int
@@ -145,6 +166,7 @@ class AppConfig:
     theme: ThemeConfig
     themes: dict[str, ThemeConfig]
     ui: UiConfig
+    scoreboard: ScoreboardConfig
     config_path: Path
     root_dir: Path
 
@@ -586,6 +608,8 @@ def load_config(path: Path) -> AppConfig:
         switch_sound_volume=switch_vol,
     )
 
+    scoreboard = _scoreboard_config(raw.get("scoreboard", {}))
+
     return AppConfig(
         team_size=size,
         rotation=rotation,
@@ -601,8 +625,76 @@ def load_config(path: Path) -> AppConfig:
         theme=theme,
         themes=theme_presets,
         ui=ui,
+        scoreboard=scoreboard,
         config_path=path,
         root_dir=root_dir,
+    )
+
+
+def _scoreboard_config(section: Any) -> ScoreboardConfig:
+    """Parse [scoreboard]. Missing section means the publisher stays off."""
+    if section is None:
+        section = {}
+    if not isinstance(section, dict):
+        raise ConfigError("[scoreboard]: expected table")
+    enabled = _as_bool(section.get("enabled", False), "[scoreboard].enabled")
+    board_id = _as_str(section.get("id", ""), "[scoreboard].id").strip()
+    status = _as_str(section.get("status", "live"), "[scoreboard].status").strip().lower()
+    frozen = _as_bool(section.get("frozen", False), "[scoreboard].frozen")
+    message = _as_str(section.get("message", ""), "[scoreboard].message")
+    interval = _as_int(
+        section.get("interval_seconds", 60),
+        "[scoreboard].interval_seconds",
+    )
+    if status not in SCOREBOARD_STATUSES:
+        allowed = ", ".join(SCOREBOARD_STATUSES)
+        raise ConfigError(
+            f"[scoreboard].status: must be one of {allowed}, got {status!r}"
+        )
+    if len(message) > SCOREBOARD_MESSAGE_MAX:
+        raise ConfigError(
+            f"[scoreboard].message: at most {SCOREBOARD_MESSAGE_MAX} characters"
+        )
+    if interval < SCOREBOARD_MIN_INTERVAL_SECONDS:
+        raise ConfigError(
+            "[scoreboard].interval_seconds: must be >= "
+            f"{SCOREBOARD_MIN_INTERVAL_SECONDS} (one push per 15s), got {interval}"
+        )
+    if board_id and SCOREBOARD_ID_RE.fullmatch(board_id) is None:
+        raise ConfigError(
+            "[scoreboard].id: use letters, numbers, '_' or '-' only"
+        )
+    if enabled and not board_id:
+        raise ConfigError("[scoreboard].id: required when the scoreboard is enabled")
+    return ScoreboardConfig(
+        enabled=enabled,
+        board_id=board_id,
+        status=status,
+        frozen=frozen,
+        message=message,
+        interval_seconds=interval,
+    )
+
+
+def scoreboard_settings(
+    *,
+    enabled: bool,
+    board_id: str,
+    status: str,
+    frozen: bool,
+    message: str,
+    interval_seconds: int,
+) -> ScoreboardConfig:
+    """Validate scoreboard fields from the in-app editor before writing TOML."""
+    return _scoreboard_config(
+        {
+            "enabled": enabled,
+            "id": board_id,
+            "status": status,
+            "frozen": frozen,
+            "message": message,
+            "interval_seconds": interval_seconds,
+        }
     )
 
 
@@ -741,6 +833,15 @@ def save_config(config: AppConfig, path: Path | None = None) -> None:
             f"correct_fade_out_ms = {ui.correct_fade_out_ms}",
             f"switch_sound = {'true' if ui.switch_sound else 'false'}",
             f"switch_sound_volume = {_toml_number(ui.switch_sound_volume)}",
+            "",
+            "# API key: SAINTCON_SCOREBOARD_KEY or config/scoreboard.key — never stored here.",
+            "[scoreboard]",
+            f"enabled = {'true' if config.scoreboard.enabled else 'false'}",
+            f"id = {_toml_str(config.scoreboard.board_id)}",
+            f"status = {_toml_str(config.scoreboard.status)}",
+            f"frozen = {'true' if config.scoreboard.frozen else 'false'}",
+            f"message = {_toml_str(config.scoreboard.message)}",
+            f"interval_seconds = {config.scoreboard.interval_seconds}",
             "",
         ]
     )

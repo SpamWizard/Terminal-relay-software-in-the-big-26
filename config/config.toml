@@ -134,3 +134,12 @@ correct_hold_ms = 480
 correct_fade_out_ms = 200
 switch_sound = true
 switch_sound_volume = 0.9
+
+# API key: SAINTCON_SCOREBOARD_KEY or config/scoreboard.key — never stored here.
+[scoreboard]
+enabled = false
+id = ""
+status = "live"
+frozen = false
+message = ""
+interval_seconds = 60

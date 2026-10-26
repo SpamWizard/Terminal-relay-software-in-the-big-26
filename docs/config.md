@@ -24,6 +24,7 @@ For short local debug timers, use `config/config.local.toml` (gitignored) if you
 | `[theme]` | `name` selects a preset (default `deep_space`); optional accent/background/foreground overrides |
 | `[themes.<name>]` | Named color presets (deep_space, neon_terminal, amber_grid, violet_pulse, ice, crimson, …) |
 | `[ui]` | correct toast timings; `switch_sound` / `switch_sound_volume` (0–1) for change alert |
+| `[scoreboard]` | SaintCon board id, status, frozen, message, push interval. The API key is not stored here. See `docs/scoreboard.md`. |
 
 Person `color` values tint the whole game UI (background wash, borders, accents) for whoever is up.
 

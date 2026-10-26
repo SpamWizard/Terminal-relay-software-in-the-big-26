@@ -29,6 +29,9 @@ from PySide6.QtWidgets import (
 
 from baton_relay.config import (
     XBOX_BUTTONS,
+    SCOREBOARD_MESSAGE_MAX,
+    SCOREBOARD_MIN_INTERVAL_SECONDS,
+    SCOREBOARD_STATUSES,
     AppConfig,
     ConfigError,
     ControllerConfig,
@@ -44,6 +47,7 @@ from baton_relay.config import (
     VALID_BATON_PAIRS,
     load_config,
     save_config,
+    scoreboard_settings,
 )
 from baton_relay.input.xbox import controller_connected, first_controller_name, poll_pressed_buttons
 
@@ -158,6 +162,7 @@ class ConfigDialog(QDialog):
         self._build_questions_tab()
         self._build_theme_tab()
         self._build_serial_tab()
+        self._build_scoreboard_tab()
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
@@ -430,6 +435,39 @@ class ConfigDialog(QDialog):
         form.addRow("Checkpoint path", self.checkpoint_path)
         self.tabs.addTab(page, "Device")
 
+    def _build_scoreboard_tab(self) -> None:
+        page = QWidget()
+        form = QFormLayout(page)
+        form.setContentsMargins(8, 16, 8, 8)
+        self.sb_enabled = QCheckBox("Push scores to SaintCon while the game is open")
+        form.addRow(self.sb_enabled)
+        self.sb_id = QLineEdit()
+        self.sb_id.setPlaceholderText("board id from the scoreboard URL")
+        form.addRow("Board id", self.sb_id)
+        self.sb_status = QComboBox()
+        self.sb_status.addItems(list(SCOREBOARD_STATUSES))
+        form.addRow("Status", self.sb_status)
+        self.sb_frozen = QCheckBox("Frozen board")
+        form.addRow(self.sb_frozen)
+        self.sb_message = QLineEdit()
+        self.sb_message.setMaxLength(SCOREBOARD_MESSAGE_MAX)
+        self.sb_message.setPlaceholderText("Finals 3 PM, Ballroom B")
+        form.addRow("Message", self.sb_message)
+        self.sb_interval = QSpinBox()
+        self.sb_interval.setRange(SCOREBOARD_MIN_INTERVAL_SECONDS, 3600)
+        self.sb_interval.setSuffix(" s")
+        form.addRow("Push interval", self.sb_interval)
+        hint = QLabel(
+            "Higher points rank first. The same score shares a rank, and the faster "
+            "team is listed first. The API key stays out of this file: set "
+            "SAINTCON_SCOREBOARD_KEY, or put it on one line in config/scoreboard.key. "
+            "Projector page (does not push): relay board serve"
+        )
+        hint.setObjectName("muted")
+        hint.setWordWrap(True)
+        form.addRow(hint)
+        self.tabs.addTab(page, "Board")
+
     def _load_from_config(self, config: AppConfig) -> None:
         self.team_size.setValue(config.team_size)
         self._sync_people_rows()
@@ -517,6 +555,16 @@ class ConfigDialog(QDialog):
         except ValueError:
             self.checkpoint_path.setText(config.paths.checkpoint_path.as_posix())
 
+        board = config.scoreboard
+        self.sb_enabled.setChecked(board.enabled)
+        self.sb_id.setText(board.board_id)
+        status_index = self.sb_status.findText(board.status)
+        if status_index >= 0:
+            self.sb_status.setCurrentIndex(status_index)
+        self.sb_frozen.setChecked(board.frozen)
+        self.sb_message.setText(board.message)
+        self.sb_interval.setValue(board.interval_seconds)
+
     def _build_updated_config(self) -> AppConfig:
         size = self.team_size.value()
         people: list[PersonConfig] = []
@@ -573,6 +621,15 @@ class ConfigDialog(QDialog):
         if not checkpoint.is_absolute():
             checkpoint = (self._config.root_dir / checkpoint).resolve()
 
+        scoreboard = scoreboard_settings(
+            enabled=self.sb_enabled.isChecked(),
+            board_id=self.sb_id.text().strip(),
+            status=self.sb_status.currentText().strip() or "live",
+            frozen=self.sb_frozen.isChecked(),
+            message=self.sb_message.text(),
+            interval_seconds=self.sb_interval.value(),
+        )
+
         return self._config.with_updates(
             team_size=size,
             rotation=tuple(range(size)),
@@ -623,6 +680,7 @@ class ConfigDialog(QDialog):
                 switch_sound=self.switch_sound.isChecked(),
                 switch_sound_volume=self.switch_vol.value(),
             ),
+            scoreboard=scoreboard,
         )
 
     def _save(self) -> None:

@@ -30,6 +30,7 @@ data/checkpoints/*
 
 # Local secrets / machine-specific
 config/config.local.toml
+config/scoreboard.key
 .env
 
 # Exhaustive marathon run log

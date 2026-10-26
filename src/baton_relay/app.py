@@ -42,4 +42,10 @@ def run_app(*, config_path: Path, fake_device: bool = False, quick: bool = False
         print("Use --fake-device if no board is connected.")
     window = MainWindow(config, sets, fake_device=fake_device, quick=quick)
     window.showFullScreen()
+
+    from baton_relay.scoreboard.publish import ScoreboardPusher
+
+    pusher = ScoreboardPusher(config)
+    pusher.start()
+    app.aboutToQuit.connect(pusher.stop)
     return app.exec()
