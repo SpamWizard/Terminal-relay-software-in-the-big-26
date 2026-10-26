@@ -1,0 +1,15 @@
+{
+  "id": "pcap_dns",
+  "set_id": "pcap_dns",
+  "title": "PCAP DNS",
+  "type": "desk",
+  "prompt": "dns.log is a text export of queries. Rebuild the hostname from the label[] lines (in index order), then find that host in inventory.txt. The flag is already written there \u2014 do not invent one.",
+  "points": 200,
+  "accepted": [
+    "TR{dns_badge_desk}"
+  ],
+  "panes": [
+    "files",
+    "terminal"
+  ]
+}

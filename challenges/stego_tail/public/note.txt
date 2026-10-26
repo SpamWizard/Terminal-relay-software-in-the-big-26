@@ -1,3 +1,2 @@
-Artist said they "keyed" the trailer with decimal 66.
-You will need to XOR every appended byte with that value.
-Python in this terminal is fine.
+Artist said they keyed the trailer with decimal 66.
+XOR every appended byte. Result is a relative path — open it.

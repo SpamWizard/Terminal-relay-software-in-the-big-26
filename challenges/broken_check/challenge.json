@@ -3,8 +3,8 @@
   "set_id": "broken_check",
   "title": "Broken Check",
   "type": "desk",
-  "prompt": "check.py is supposed to print TR{sha256(real_password)[:12]} when the password is right. The compare is buggy and you cannot rely on running it as-is. Read the source, figure out the intended token, submit that.",
+  "prompt": "check.py is buggy and prints a fake TR{} if you feed it the sliced password. Read the source for the real PASSWORD, then open vault/<PASSWORD>.txt for the real flag.",
   "points": 300,
-  "accepted": ["TR{418c01e89060}"],
+  "accepted": ["TR{broken_vault}"],
   "panes": ["files", "terminal"]
 }

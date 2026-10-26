@@ -1,8 +1,0 @@
-INTERNAL — do not post to Discord
-
-Badge printers authenticate against the guest SSID.
-Token format for the desk check-in app:
-
-  TR{ first 8 hex chars of sha256(SSID) }
-
-SSID is somewhere in the scan dump. Ignore BSSIDs.

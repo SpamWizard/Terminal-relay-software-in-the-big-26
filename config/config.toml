@@ -46,11 +46,25 @@ files = [
     "challenges/page_source",
     "challenges/stego_tail",
     "challenges/broken_check",
+    "challenges/pcap_dns",
+    "challenges/auth_once",
+    "challenges/zip_comment",
+    "challenges/nested_b64",
+    "challenges/char_codes",
+    "challenges/two_halves",
+    "challenges/rule_crack",
+    "challenges/pdf_eof",
+    "challenges/pipeline_abc",
+    "challenges/probe_temp",
+    "challenges/whitespace",
+    "challenges/checksum_pick",
+    "challenges/map_legend",
+    "challenges/wrong_salt",
     "questions/06_fake_logos.json",
 ]
 redo_missed_at_set_end = false
 warmup_count = 0
-board_slots = 6
+board_slots = 8
 questions_per_pick = 1
 
 [controller]

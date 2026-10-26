@@ -3,7 +3,7 @@
   "set_id": "page_source",
   "title": "Page Source",
   "type": "desk",
-  "prompt": "The page looks empty on purpose. The real token is base64-encoded in the markup. Decode it and wrap as TR{...}.",
+  "prompt": "The page looks empty. A base64 data-token in the markup decodes to a filename. Open that file beside the page and submit the TR{} inside.",
   "points": 200,
   "accepted": ["TR{relay_view_source}"],
   "panes": ["page", "files", "terminal"],

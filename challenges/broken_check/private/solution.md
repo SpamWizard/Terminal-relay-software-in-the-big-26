@@ -1,1 +1,1 @@
-See WRITEUP.md in this folder.
+See WRITEUP.md

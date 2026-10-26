@@ -1,0 +1,15 @@
+{
+  "id": "pdf_eof",
+  "set_id": "pdf_eof",
+  "title": "PDF EOF",
+  "type": "desk",
+  "prompt": "fake.pdf has bytes after %%EOF. note.txt gives the XOR key. Recover a relative path, open it, submit the TR{{}} inside.",
+  "points": 250,
+  "accepted": [
+    "TR{pdf_trailer}"
+  ],
+  "panes": [
+    "files",
+    "terminal"
+  ]
+}

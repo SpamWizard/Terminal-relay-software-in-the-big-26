@@ -1,0 +1,5 @@
+Oct 25 09:01:01 box kernel: something boring
+Oct 25 09:12:44 box nm-applet: associated FreeAirportWiFi (ignore)
+Oct 25 09:13:02 box nm-applet: associated xfinitywifi (ignore)
+Oct 25 10:00:11 box cron: TR{syslog_decoy}
+Oct 25 10:22:08 box cupsd: printer HP-Print-42 idle

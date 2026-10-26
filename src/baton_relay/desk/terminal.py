@@ -19,11 +19,13 @@ _HELP = """Available commands:
   cat / type <file>    print a text file
   head <file> [n]      first n lines (default 20)
   grep / findstr <pat> <file>
+  grep -r <pat> [path] search under a folder (default: .)
   b64 <file|text>      base64-decode a file or string
   sha256 <file|text>   sha256 hex digest
   md5 <file|text>      md5 hex digest
   python <script.py> [args...]
   python -c "code"     one-liner
+  <name> ...           run bin/<name>.py if this challenge ships it
 Paths stay inside this challenge folder."""
 
 
@@ -63,6 +65,75 @@ def _read_text(path: Path, *, limit: int | None = None) -> str:
         return text
     lines = text.splitlines()
     return "\n".join(lines[:limit])
+
+
+def _run_py(root: Path, script: Path, argv_tail: list[str], *, timeout: float) -> TerminalResult:
+    proc = subprocess.run(
+        [sys.executable, str(script), *argv_tail],
+        cwd=str(root),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+    out = (proc.stdout or "") + (proc.stderr or "")
+    return TerminalResult(out.rstrip("\n"), proc.returncode)
+
+
+def _bin_tool(root: Path, name: str) -> Path | None:
+    """Challenge-local fake tool: public/bin/<name>.py"""
+    if not name or "/" in name or "\\" in name or name in {".", ".."}:
+        return None
+    candidate = root / "bin" / f"{name}.py"
+    if candidate.is_file():
+        return candidate
+    return None
+
+
+def _grep(root: Path, cmd: str, args: list[str]) -> TerminalResult:
+    if not args:
+        return TerminalResult(f"usage: {cmd} <pattern> <file>  OR  {cmd} -r <pattern> [path]", 1)
+
+    recursive = False
+    rest = list(args)
+    if rest[0] in {"-r", "-R", "--recursive"}:
+        recursive = True
+        rest = rest[1:]
+    if not rest:
+        return TerminalResult(f"usage: {cmd} -r <pattern> [path]", 1)
+
+    pattern = rest[0]
+    needle = pattern.casefold()
+
+    if recursive:
+        rel = rest[1] if len(rest) > 1 else "."
+        base = resolve_in_public(root, rel)
+        if base.is_file():
+            files = [base]
+        elif base.is_dir():
+            files = sorted(p for p in base.rglob("*") if p.is_file())
+        else:
+            return TerminalResult(f"not found: {rel}", 1)
+        hits: list[str] = []
+        for path in files:
+            try:
+                text = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            rel_path = path.relative_to(root).as_posix()
+            for i, line in enumerate(text.splitlines(), start=1):
+                if needle in line.casefold():
+                    hits.append(f"{rel_path}:{i}:{line}")
+        return TerminalResult("\n".join(hits) if hits else "(no matches)", 0 if hits else 1)
+
+    if len(rest) < 2:
+        return TerminalResult(f"usage: {cmd} <pattern> <file>", 1)
+    rel = rest[1]
+    path = resolve_in_public(root, rel)
+    if not path.is_file():
+        return TerminalResult(f"not a file: {rel}", 1)
+    hits = [line for line in _read_text(path).splitlines() if needle in line.casefold()]
+    return TerminalResult("\n".join(hits) if hits else "(no matches)", 0 if hits else 1)
 
 
 def run_desk_command(public_dir: Path | str, line: str, *, timeout: float = 8.0) -> TerminalResult:
@@ -116,18 +187,7 @@ def run_desk_command(public_dir: Path | str, line: str, *, timeout: float = 8.0)
                 return TerminalResult(f"not a file: {args[0]}", 1)
             return TerminalResult(_read_text(path, limit=n), 0)
         if cmd in {"grep", "findstr"}:
-            if len(args) < 2:
-                return TerminalResult(f"usage: {cmd} <pattern> <file>", 1)
-            pattern, rel = args[0], args[1]
-            path = resolve_in_public(root, rel)
-            if not path.is_file():
-                return TerminalResult(f"not a file: {rel}", 1)
-            hits = [
-                line
-                for line in _read_text(path).splitlines()
-                if pattern.casefold() in line.casefold()
-            ]
-            return TerminalResult("\n".join(hits) if hits else "(no matches)", 0 if hits else 1)
+            return _grep(root, cmd, args)
         if cmd in {"b64", "base64"}:
             if not args:
                 return TerminalResult("usage: b64 <file|text>", 1)
@@ -161,22 +221,19 @@ def run_desk_command(public_dir: Path | str, line: str, *, timeout: float = 8.0)
                     timeout=timeout,
                     check=False,
                 )
-            else:
-                script = resolve_in_public(root, args[0])
-                if not script.is_file():
-                    return TerminalResult(f"not a file: {args[0]}", 1)
-                if script.suffix.casefold() not in {".py", ".pyw"}:
-                    return TerminalResult("only .py scripts are allowed", 1)
-                proc = subprocess.run(
-                    [sys.executable, str(script), *args[1:]],
-                    cwd=str(root),
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                    check=False,
-                )
-            out = (proc.stdout or "") + (proc.stderr or "")
-            return TerminalResult(out.rstrip("\n"), proc.returncode)
+                out = (proc.stdout or "") + (proc.stderr or "")
+                return TerminalResult(out.rstrip("\n"), proc.returncode)
+            script = resolve_in_public(root, args[0])
+            if not script.is_file():
+                return TerminalResult(f"not a file: {args[0]}", 1)
+            if script.suffix.casefold() not in {".py", ".pyw"}:
+                return TerminalResult("only .py scripts are allowed", 1)
+            return _run_py(root, script, args[1:], timeout=timeout)
+
+        tool = _bin_tool(root, argv[0])
+        if tool is not None:
+            return _run_py(root, tool, args, timeout=timeout)
+
         return TerminalResult(
             f"unknown command: {argv[0]}\nType 'help' for the list.",
             1,

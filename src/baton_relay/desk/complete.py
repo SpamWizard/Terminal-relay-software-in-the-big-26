@@ -61,11 +61,20 @@ def complete_line(public_dir: Path | str, line: str) -> CompleteResult:
         else:
             head, prefix = parts[0] + " ", parts[1]
 
-    # First word → commands; later words → files (and .py scripts).
+    # First word → commands (+ challenge bin/<name>.py tools); later words → files.
     first_word = not head.strip()
     if first_word:
         folded = prefix.casefold()
         candidates = [c for c in COMMANDS if c.casefold().startswith(folded)]
+        try:
+            bin_dir = public_root(Path(public_dir)) / "bin"
+            if bin_dir.is_dir():
+                for script in sorted(bin_dir.glob("*.py")):
+                    name = script.stem
+                    if name.casefold().startswith(folded) and name not in candidates:
+                        candidates.append(name)
+        except Exception:
+            pass
     else:
         try:
             root = public_root(Path(public_dir))

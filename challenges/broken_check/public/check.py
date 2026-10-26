@@ -1,4 +1,4 @@
-"""Password check — prints a derived token when the password is right.
+"""Password check — prints a derived token when the (buggy) compare matches.
 
 Usage:
   python check.py <password>
@@ -7,7 +7,7 @@ Usage:
 import hashlib
 import sys
 
-# Real password for the desk station
+# Real password for the desk station — also names the vault file
 PASSWORD = "baton"
 
 # Decoy — this is NOT accepted by scoring
@@ -25,6 +25,7 @@ def main() -> None:
         raise SystemExit(1)
     guess = sys.argv[1].strip()
     # BUG: compares against a slice, so the real password never matches
+    # Intended finish: open vault/PASSWORD.txt
     if guess == PASSWORD[1:]:
         print(token_for(guess))
     else:

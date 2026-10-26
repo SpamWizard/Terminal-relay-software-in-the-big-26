@@ -1,23 +1,21 @@
 # Find The Line — writeup
 
-**Flag:** `TR{6677ac63}`  
+**Flag:** `TR{guest_line_ok}`  
 **Points:** 150  
-**Skills:** reading a dump, ignoring decoys, hashing
+**Skills:** run a challenge tool, read the scan, grep the tree
 
 ## Intent
 
-Force a handoff-friendly two-step: person A finds the right SSID, person B runs the hash. A decoy ESSID and a fake `TR{...}` punish “submit the first thing that looks like a flag.”
+Players must actually run `iwlist` (challenge `bin/iwlist.py`) to see networks — there is no pre-dropped scan dump. Then search the fake laptop for the guest SSID.
 
 ## Solve
 
-1. `cat briefing.txt` — token is `TR{` + first 8 hex of `sha256(SSID)` + `}`.
-2. `cat scan.txt` (or `grep ESSID scan.txt`) — several networks.
-3. Use **SaintconGuest**, not `SaintconStaff-DoNotUse`, not the `# TR{decoy_not_this}` comment.
-4. `sha256 SaintconGuest` → digest starts with `6677ac63`.
-5. Submit `TR{6677ac63}`.
+1. `cat home/ops/sticky.txt` — hint to run `iwlist wlan0 scanning`.
+2. `iwlist wlan0 scanning` → guest ESSID **SaintconGuest** (not staff).
+3. `grep -r SaintconGuest .` → `etc/NetworkManager/system-connections/guest.nmconnection`.
+4. Read that profile → `TR{guest_line_ok}`.
 
 ## Common traps
 
-- Staff SSID
-- Decoy flag in the comment
-- Hashing the whole ESSID line including quotes
+- Staff SSID / staff.nmconnection
+- Submitting a random TR{} from syslog

@@ -1,1 +1,1 @@
-TR{stego_xor_tail}
+TR{stego_found}

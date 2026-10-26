@@ -1,0 +1,15 @@
+{
+  "id": "auth_once",
+  "set_id": "auth_once",
+  "title": "Auth Once",
+  "type": "desk",
+  "prompt": "auth.log: find the username that has exactly one successful login. Then open that user's mail under mailboxes/. The flag is in the message.",
+  "points": 200,
+  "accepted": [
+    "TR{once_is_enough}"
+  ],
+  "panes": [
+    "files",
+    "terminal"
+  ]
+}

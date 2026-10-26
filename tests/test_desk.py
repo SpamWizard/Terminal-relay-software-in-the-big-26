@@ -59,17 +59,26 @@ def test_load_find_the_line_challenge():
     assert len(qset.questions) == 1
     q = qset.questions[0]
     assert isinstance(q, Desk)
-    assert q.score("TR{6677ac63}", SCORING).correct
+    assert q.score("TR{guest_line_ok}", SCORING).correct
     assert not q.score("TR{decoy_not_this}", SCORING).correct
-    assert Path(q.public_dir).joinpath("scan.txt").is_file()
-    # private must not be under public; no plaintext flag sitting in public
-    assert not Path(q.public_dir).joinpath("flag.txt").exists()
-    public_text = "\n".join(
-        p.read_text(encoding="utf-8", errors="ignore")
-        for p in Path(q.public_dir).rglob("*")
-        if p.is_file() and p.suffix.casefold() in {".txt", ".html", ".py", ".md"}
+    pub = Path(q.public_dir)
+    assert not (pub / "scan.txt").exists()
+    assert not (pub / "portal.txt").exists()
+    assert not (pub / "flag.txt").exists()
+    assert not (pub / "tmp" / "iwlist.out").exists()
+    assert (pub / "bin" / "iwlist.py").is_file()
+    scan = run_desk_command(pub, "iwlist wlan0 scanning")
+    assert scan.exit_code == 0
+    assert "SaintconGuest" in scan.output
+    assert "SaintconStaff-DoNotUse" in scan.output
+    found = run_desk_command(pub, "grep -r SaintconGuest .")
+    assert "guest.nmconnection" in found.output
+    profile = run_desk_command(
+        pub, "cat etc/NetworkManager/system-connections/guest.nmconnection"
     )
-    assert "TR{6677ac63}" not in public_text
+    assert "TR{guest_line_ok}" in profile.output
+    # SSID must not sit in a pre-dropped dump or plaintext in bin/iwlist.py
+    assert "SaintconGuest" not in (pub / "bin" / "iwlist.py").read_text(encoding="utf-8")
 
 
 def test_terminal_hash_and_b64(tmp_path: Path):
@@ -95,19 +104,32 @@ def test_tab_complete_command_and_file(tmp_path: Path):
 
 
 def test_load_all_config_challenges():
-    paths = [
-        ROOT / "challenges" / "find_the_line",
-        ROOT / "challenges" / "bash_crumbs",
-        ROOT / "challenges" / "page_source",
-        ROOT / "challenges" / "stego_tail",
-        ROOT / "challenges" / "broken_check",
-        ROOT / "questions" / "06_fake_logos.json",
-    ]
-    sets = load_all_question_files(paths)
-    assert len(sets) == 6
+    from baton_relay.config import load_config
+
+    cfg = load_config(ROOT / "config" / "config.toml")
+    sets = load_all_question_files(cfg.questions.files)
+    assert len(sets) >= 15
     types = {q.type for s in sets for q in s.questions}
     assert "desk" in types
     assert "multiple_choice" in types
+    ids = {s.set_id for s in sets}
+    for needed in (
+        "pcap_dns",
+        "auth_once",
+        "zip_comment",
+        "nested_b64",
+        "char_codes",
+        "two_halves",
+        "rule_crack",
+        "pdf_eof",
+        "pipeline_abc",
+        "probe_temp",
+        "whitespace",
+        "checksum_pick",
+        "map_legend",
+        "wrong_salt",
+    ):
+        assert needed in ids
 
 
 def test_desk_challenge_requires_public(tmp_path: Path):
@@ -139,6 +161,6 @@ def test_wrong_flag_allows_retry(config):
     assert session.progress.phase == "in_pick"
     assert session.current_question() is not None
     assert session.current_question().id == "find_the_line"
-    good = session.submit_answer("TR{6677ac63}")
+    good = session.submit_answer("TR{guest_line_ok}")
     assert good is not None and good.correct
     assert session.state == RelayState.CHOOSING_CATEGORY

@@ -1,0 +1,15 @@
+{
+  "id": "rule_crack",
+  "set_id": "rule_crack",
+  "title": "Rule Crack",
+  "type": "desk",
+  "prompt": "hash.txt is sha256 of Capitalize(wordlist_entry)+\"2026\". Crack the password, then open vault/<password>.txt \u2014 flag is inside.",
+  "points": 250,
+  "accepted": [
+    "TR{rule_unlocked}"
+  ],
+  "panes": [
+    "files",
+    "terminal"
+  ]
+}

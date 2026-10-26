@@ -1,0 +1,15 @@
+{
+  "id": "map_legend",
+  "set_id": "map_legend",
+  "title": "Map Legend",
+  "type": "desk",
+  "prompt": "map.txt is a grid (1-indexed rows down, columns right). What letter is at cell (3,5)? Look that letter up in roster.txt for the flag.",
+  "points": 150,
+  "accepted": [
+    "TR{map_room_r}"
+  ],
+  "panes": [
+    "files",
+    "terminal"
+  ]
+}
