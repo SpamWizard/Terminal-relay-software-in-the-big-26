@@ -45,7 +45,7 @@ from baton_relay.results.log import (
 from baton_relay.state.machine import GameSession, GameSnapshot, PlayerSlot, RelayState
 from baton_relay.ui.category_board import CategoryBoard
 from baton_relay.ui.config_dialog import ConfigDialog
-from baton_relay.ui.correct_burst import CorrectBurst, OverrideFlash
+from baton_relay.ui.correct_burst import CorrectBurst, OverrideFlash, WrongBurst
 from baton_relay.ui.question_widgets import QuestionHost
 from baton_relay.ui.starfield import StarfieldOverlay
 from baton_relay.ui.team_name_dialog import TeamNameConflictDialog
@@ -89,6 +89,14 @@ def _num(value) -> str:
     if isinstance(value, (int, float)):
         return f"{value:g}"
     return str(value)
+
+
+def _points_caption(points: float) -> str:
+    if points > 0:
+        return f"+{points:g} pts"
+    if points < 0:
+        return f"{points:g} pts"
+    return "0 pts"
 
 
 def _clock_of(payload: dict, fallback: str) -> str:
@@ -660,6 +668,7 @@ class GameScreen(QWidget):
         # Full-screen takeover (covers header + stage, not just the middle band)
         self.switch_overlay = SwitchOverlay(config.theme, self)
         self.correct_burst = CorrectBurst(self)
+        self.wrong_burst = WrongBurst(self)
 
     def clear_activity(self) -> None:
         self.activity_log.clear()
@@ -677,9 +686,10 @@ class GameScreen(QWidget):
     def _fit_switch_overlay(self) -> None:
         self.switch_overlay.setGeometry(self.rect())
         self.switch_overlay.raise_()
-        self.correct_burst.setGeometry(self.rect())
-        if self.correct_burst.isVisible():
-            self.correct_burst.raise_()
+        for burst in (self.correct_burst, self.wrong_burst):
+            burst.setGeometry(self.rect())
+            if burst.isVisible():
+                burst.raise_()
 
     def panel_rects_in(self, target: QWidget) -> list[QRect]:
         """Opaque game boxes — stars stay in the gaps around them."""
@@ -701,6 +711,18 @@ class GameScreen(QWidget):
         self.correct_burst.raise_()
         self.correct_burst.play(
             points_text,
+            fade_in_ms=ui.correct_fade_in_ms,
+            hold_ms=ui.correct_hold_ms,
+            fade_out_ms=ui.correct_fade_out_ms,
+        )
+
+    def play_wrong(self, points_text: str = "", *, partial: bool = False) -> None:
+        ui = self.config.ui
+        self.wrong_burst.setGeometry(self.rect())
+        self.wrong_burst.raise_()
+        self.wrong_burst.play(
+            points_text,
+            partial=partial,
             fade_in_ms=ui.correct_fade_in_ms,
             hold_ms=ui.correct_hold_ms,
             fade_out_ms=ui.correct_fade_out_ms,
@@ -915,9 +937,10 @@ class MainWindow(QMainWindow):
             )
             self._device_label = self._serial.status_label
 
-        self._pending_after_correct = False
+        self._pending_after_burst = False
         self._ckpt_ticks = 0
-        self.game_screen.correct_burst.finished.connect(self._after_correct_burst)
+        self.game_screen.correct_burst.finished.connect(self._after_verdict_burst)
+        self.game_screen.wrong_burst.finished.connect(self._after_verdict_burst)
         self.startup.reset()
         QTimer.singleShot(0, self._update_star_holes)
 
@@ -1344,17 +1367,17 @@ class MainWindow(QMainWindow):
         self.game_screen.question_host.show_feedback(
             f"{result.feedback}  (+{result.points:g}/{result.max_points:g})"
         )
+        self._pending_after_burst = True
+        caption = _points_caption(result.points)
         if result.correct:
-            self._pending_after_correct = True
-            self.game_screen.play_correct(f"+{result.points:g} pts")
+            self.game_screen.play_correct(caption)
         else:
-            self._pending_after_correct = False
-            self._render(force_question=True)
+            self.game_screen.play_wrong(caption, partial=result.partial)
 
-    def _after_correct_burst(self) -> None:
-        if not self._pending_after_correct:
+    def _after_verdict_burst(self) -> None:
+        if not self._pending_after_burst:
             return
-        self._pending_after_correct = False
+        self._pending_after_burst = False
         self._render(force_question=True)
 
     def _render(self, force_question: bool = False) -> None:
