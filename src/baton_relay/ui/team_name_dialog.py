@@ -15,7 +15,7 @@ from baton_relay.results.log import PriorTeamRun
 
 
 class TeamNameConflictDialog(QDialog):
-    """WOAH — name already taken. Resume unfinished run, or change the name."""
+    """Name already taken. Resume an unfinished run, or change the name."""
 
     RESUME = 1
     CHANGE = 2
@@ -36,11 +36,11 @@ class TeamNameConflictDialog(QDialog):
         root.setContentsMargins(28, 24, 28, 24)
         root.setSpacing(14)
 
-        whoa = QLabel("WOAH — are you sure?")
-        whoa.setObjectName("headline")
-        whoa.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        whoa.setWordWrap(True)
-        root.addWidget(whoa)
+        headline = QLabel("That name is already in use.")
+        headline.setObjectName("headline")
+        headline.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        headline.setWordWrap(True)
+        root.addWidget(headline)
 
         body = QLabel(f'There\'s already a team called "{team_name}".')
         body.setObjectName("muted")

@@ -1,6 +1,6 @@
-# Challenge writeups
+# Staff writeups
 
-Staff solutions for the board. This folder is not loaded by the game, and nothing here is copied into a team shell.
+Solutions for the board. The game does not load this file, and nothing here is copied into a team shell.
 
 Flags are `TR{...}`.
 
@@ -106,7 +106,9 @@ Flag: `TR{rockme}`
 
 ## Fake Logos
 
-Each question is five logos in a row, labeled A through E. One of them never happened. The answer index in the question file is 0-based.
+Each question is five logos in a row, labeled A through E. One of them never happened. The answer index in `questions/fake_logos.json` is 0-based.
+
+The real marks are in historical order, and not every historical mark is included. Sources: [1000 Logos](https://1000logos.net/), [Logos World](https://logos-world.net/), [Logopedia](https://logos.fandom.com/wiki/Logopedia).
 
 | Question | Points | Answer |
 |----------|--------|--------|

@@ -26,13 +26,13 @@ After a pick, that slot is refilled from unused categories. Timers freeze on the
 | type | Key fields |
 |------|------------|
 | `multiple_choice` | `choices[]`, `answer` (index); optional `images` for picture rounds (Fake Logos) |
-| `desk` | HC-style folder challenge: `accepted[]`, `panes` (`files` / `terminal` / `page`), optional `page_file`. Loaded from a challenge directory. Terminal is a real WSL bash for the team — see [wsl-desk.md](wsl-desk.md). |
+| `desk` | Folder challenge: `accepted[]`, `panes` (`files` / `terminal` / `page`), optional `page_file`. Loaded from a challenge directory. Terminal is a real WSL bash for the team — see [wsl-desk.md](wsl-desk.md). |
 
 Pictures: `images` is an array of **1 to 8** picture files. Paths are relative to the question JSON file. Formats: `png`, `jpg`, `jpeg`, `gif`, `webp`, `bmp`.
 
 All files are validated at startup; the app refuses to start on errors.
 
-## Challenge folders (HC-style)
+## Challenge folders
 
 ```
 challenges/steghide/
@@ -41,11 +41,11 @@ challenges/steghide/
   private/         # staff only — never copied into the distro
 ```
 
-Staff solutions for every board category are in [writeups/README.md](../writeups/README.md). That folder is not a question file and is never shown to players or copied into a team shell.
+Staff solutions for every board category are in [staff/writeups.md](../staff/writeups.md). That file is not a question file, and nothing in it is copied into a team shell.
 
 `challenge.json` can be a normal set or a compact one-question form. Desk challenges must be exactly one question. The loader sets `public_dir` automatically.
 
-The desk UI is a narrow **file-name rail**, a dominant **real TTY terminal** (nano/vim/less work), an optional **page**, and a flag box. Baton lock stops keyboard input; the shell stays up. Talk across the handoff.
+The desk UI is a narrow **file-name rail**, a dominant **real TTY terminal** (nano/vim/less work), an optional **page**, and a flag box. Baton lock stops keyboard input; the shell stays up. Players can talk through the handoff.
 
 Opening a desk challenge runs `cd /challenges/<question id>` in that shell. The question `id` matches the challenge folder name. A fresh golden image already has each `public/` tree at that path, and the tools those challenges use (steghide, exiftool, john, hashcat, zip, xxd, binutils).
 
