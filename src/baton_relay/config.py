@@ -136,6 +136,11 @@ SCOREBOARD_STATUSES: tuple[str, ...] = ("upcoming", "live", "ended", "final")
 SCOREBOARD_MIN_INTERVAL_SECONDS = 15
 SCOREBOARD_MESSAGE_MAX = 140
 SCOREBOARD_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}\Z")
+_PEER_URL_RE = re.compile(
+    r"https?://(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)*)(?::\d{1,5})?\Z",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -148,6 +153,10 @@ class ScoreboardConfig:
     frozen: bool
     message: str
     interval_seconds: int
+    peers: tuple[str, ...]
+    listen_host: str
+    listen_port: int
+    machine: str
 
 
 @dataclass(frozen=True)
@@ -666,6 +675,16 @@ def _scoreboard_config(section: Any) -> ScoreboardConfig:
         )
     if enabled and not board_id:
         raise ConfigError("[scoreboard].id: required when the scoreboard is enabled")
+    peers = _peer_urls(section.get("peers", []))
+    listen_host = _as_str(section.get("listen", "0.0.0.0"), "[scoreboard].listen").strip()
+    if not listen_host or any(ch.isspace() for ch in listen_host):
+        raise ConfigError("[scoreboard].listen: expected a host such as 0.0.0.0")
+    listen_port = _as_int(section.get("listen_port", 8765), "[scoreboard].listen_port")
+    if not 1 <= listen_port <= 65535:
+        raise ConfigError(f"[scoreboard].listen_port: must be 1–65535, got {listen_port}")
+    machine = _as_str(section.get("machine", ""), "[scoreboard].machine").strip()
+    if len(machine) > 40:
+        raise ConfigError("[scoreboard].machine: at most 40 characters")
     return ScoreboardConfig(
         enabled=enabled,
         board_id=board_id,
@@ -673,7 +692,44 @@ def _scoreboard_config(section: Any) -> ScoreboardConfig:
         frozen=frozen,
         message=message,
         interval_seconds=interval,
+        peers=peers,
+        listen_host=listen_host,
+        listen_port=listen_port,
+        machine=machine,
     )
+
+
+def _peer_urls(raw: Any) -> tuple[str, ...]:
+    if raw is None:
+        raw = []
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        raise ConfigError("[scoreboard].peers: expected a list of URLs")
+    peers: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        url = _as_str(item, "[scoreboard].peers").strip().rstrip("/")
+        if not url:
+            continue
+        if _PEER_URL_RE.fullmatch(url) is None or not _peer_port_ok(url):
+            raise ConfigError(
+                f"[scoreboard].peers: expected http://host:port, got {url!r}"
+            )
+        if url not in seen:
+            seen.add(url)
+            peers.append(url)
+    return tuple(peers)
+
+
+def _peer_port_ok(url: str) -> bool:
+    hostpart = url.split("://", 1)[1]
+    if ":" not in hostpart:
+        return True
+    port_text = hostpart.rsplit(":", 1)[1]
+    if not port_text.isdigit():
+        return False
+    return 1 <= int(port_text) <= 65535
 
 
 def scoreboard_settings(
@@ -684,6 +740,10 @@ def scoreboard_settings(
     frozen: bool,
     message: str,
     interval_seconds: int,
+    peers: list[str] | tuple[str, ...] | None = None,
+    listen_host: str = "0.0.0.0",
+    listen_port: int = 8765,
+    machine: str = "",
 ) -> ScoreboardConfig:
     """Validate scoreboard fields from the in-app editor before writing TOML."""
     return _scoreboard_config(
@@ -694,6 +754,10 @@ def scoreboard_settings(
             "frozen": frozen,
             "message": message,
             "interval_seconds": interval_seconds,
+            "peers": list(peers or []),
+            "listen": listen_host,
+            "listen_port": listen_port,
+            "machine": machine,
         }
     )
 
@@ -842,6 +906,17 @@ def save_config(config: AppConfig, path: Path | None = None) -> None:
             f"frozen = {'true' if config.scoreboard.frozen else 'false'}",
             f"message = {_toml_str(config.scoreboard.message)}",
             f"interval_seconds = {config.scoreboard.interval_seconds}",
+            "peers = [",
+        ]
+    )
+    for peer in config.scoreboard.peers:
+        lines.append(f"    {_toml_str(peer)},")
+    lines.extend(
+        [
+            "]",
+            f"listen = {_toml_str(config.scoreboard.listen_host)}",
+            f"listen_port = {config.scoreboard.listen_port}",
+            f"machine = {_toml_str(config.scoreboard.machine)}",
             "",
         ]
     )

@@ -143,3 +143,7 @@ status = "live"
 frozen = false
 message = ""
 interval_seconds = 60
+peers = []
+listen = "0.0.0.0"
+listen_port = 8765
+machine = ""

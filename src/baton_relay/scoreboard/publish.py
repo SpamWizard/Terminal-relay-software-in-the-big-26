@@ -21,7 +21,8 @@ from baton_relay.config import (
     ConfigError,
     load_config,
 )
-from baton_relay.scoreboard.model import board_signature, build_board
+from baton_relay.scoreboard.model import board_signature
+from baton_relay.scoreboard.sync import build_synced_board, lan_ip
 
 BODY_MAX = 64 * 1024
 _HOST = "https://saintcon.org/api/scoreboards/"
@@ -153,7 +154,7 @@ def attempt_push(
     if not board.board_id:
         return _warn(state, "no_id", "scoreboard id is empty")
 
-    payload = build_board(config)
+    payload = build_synced_board(config)
     signature = board_signature(payload)
     elapsed = now - state.last_monotonic if state.ever_pushed else 0.0
     if respect_interval and not should_push(
@@ -267,6 +268,9 @@ class ScoreboardPusher:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._announced = False
+        self._httpd: threading.Thread | None = None
+        self._server = None
+        self._listen_failed = False
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -281,6 +285,11 @@ class ScoreboardPusher:
 
     def stop(self) -> None:
         self._stop.set()
+        server = self._server
+        if server is not None:
+            server.shutdown()
+            server.server_close()
+            self._server = None
 
     def _load(self) -> AppConfig:
         try:
@@ -292,6 +301,7 @@ class ScoreboardPusher:
         while not self._stop.is_set():
             try:
                 config = self._load()
+                self._ensure_listener(config)
                 self._note(config)
                 attempt = attempt_push(
                     config,
@@ -313,9 +323,46 @@ class ScoreboardPusher:
             return
         wait = max(SCOREBOARD_MIN_INTERVAL_SECONDS, config.scoreboard.interval_seconds)
         ident = config.scoreboard.board_id or "(no id yet)"
+        peers = ", ".join(config.scoreboard.peers)
+        extra = f" Peers: {peers}." if peers else ""
         print(
             f"Scoreboard: {ident} — pushing when scores change (at most every {wait}s). "
-            "Room display: relay board serve",
+            f"Room display: http://127.0.0.1:{config.scoreboard.listen_port}.{extra}",
             flush=True,
         )
         self._announced = True
+
+    def _ensure_listener(self, config: AppConfig) -> None:
+        board = config.scoreboard
+        if self._server is not None:
+            return
+        if not board.enabled and not board.peers:
+            return
+        from baton_relay.scoreboard.display import make_server
+
+        try:
+            server = make_server(config, board.listen_host, board.listen_port)
+        except OSError as exc:
+            if not self._listen_failed:
+                print(f"Scoreboard sync is not listening: {exc}", file=sys.stderr, flush=True)
+                self._listen_failed = True
+            return
+        self._server = server
+        thread = threading.Thread(
+            target=server.serve_forever,
+            name="scoreboard-listen",
+            daemon=True,
+        )
+        thread.start()
+        self._httpd = thread
+        port = server.server_address[1]
+        print(
+            f"Scoreboard sync: http://{board.listen_host}:{port}/standings.json",
+            flush=True,
+        )
+        address = lan_ip()
+        if address and board.listen_host in ("0.0.0.0", "::"):
+            print(
+                f"On the other machines set peers = [\"http://{address}:{port}\"]",
+                flush=True,
+            )

@@ -72,12 +72,12 @@ def cmd_board(args: argparse.Namespace) -> int:
 def cmd_board_show(args: argparse.Namespace) -> int:
     import json
 
-    from baton_relay.scoreboard.model import build_board
+    from baton_relay.scoreboard.sync import build_synced_board
 
     config = _load_or_exit(args)
     if config is None:
         return 1
-    text = json.dumps(build_board(config), indent=2, ensure_ascii=False) + "\n"
+    text = json.dumps(build_synced_board(config), indent=2, ensure_ascii=False) + "\n"
     out = getattr(args, "out", None)
     if out:
         Path(out).write_text(text, encoding="utf-8")

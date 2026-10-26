@@ -55,11 +55,18 @@ def collect_standings(
     return _dedupe(found)
 
 
-def build_board(config: AppConfig, *, now: datetime | None = None) -> dict[str, Any]:
+def build_board(
+    config: AppConfig,
+    *,
+    now: datetime | None = None,
+    also: list[TeamStanding] | None = None,
+) -> dict[str, Any]:
     standings = collect_standings(
         config.paths.results_dir,
         game_limit_seconds=float(config.timers.game_seconds),
     )
+    if also:
+        standings = merge_standings([*standings, *also])
     board = config.scoreboard
     return payload_from_standings(
         standings,
@@ -176,6 +183,52 @@ def _detail(standing: TeamStanding) -> str:
         word = "solve" if standing.solved == 1 else "solves"
         bits.append(f"{standing.solved} {word}")
     return " · ".join(bits)
+
+
+def merge_standings(standings: list[TeamStanding]) -> list[TeamStanding]:
+    """One row per team name. Higher points win; a live row wins a tie."""
+    return _dedupe(standings)
+
+
+def standing_to_dict(standing: TeamStanding) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "name": standing.name,
+        "score": standing.score,
+        "solved": standing.solved,
+        "live": standing.live,
+        "roster": list(standing.roster),
+    }
+    if standing.time_used_seconds is not None:
+        body["time_used_seconds"] = standing.time_used_seconds
+    if standing.game_remaining is not None:
+        body["game_remaining"] = standing.game_remaining
+    return body
+
+
+def standing_from_dict(raw: Any) -> TeamStanding | None:
+    if not isinstance(raw, dict):
+        return None
+    name = clip(str(raw.get("name") or ""), NAME_MAX)
+    score = _number(raw.get("score"))
+    if not name or score is None:
+        return None
+    roster_raw = raw.get("roster") if isinstance(raw.get("roster"), list) else []
+    roster = tuple(
+        clip(str(item), NAME_MAX)
+        for item in roster_raw[:8]
+        if str(item).strip()
+    )
+    solved_raw = raw.get("solved")
+    solved = solved_raw if isinstance(solved_raw, int) and not isinstance(solved_raw, bool) else 0
+    return TeamStanding(
+        name=name,
+        score=score,
+        time_used_seconds=_number(raw.get("time_used_seconds")),
+        game_remaining=_number(raw.get("game_remaining")),
+        solved=max(0, min(solved, 500)),
+        live=raw.get("live") is True,
+        roster=roster,
+    )
 
 
 def _dedupe(standings: list[TeamStanding]) -> list[TeamStanding]:

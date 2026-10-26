@@ -457,11 +457,23 @@ class ConfigDialog(QDialog):
         self.sb_interval.setRange(SCOREBOARD_MIN_INTERVAL_SECONDS, 3600)
         self.sb_interval.setSuffix(" s")
         form.addRow("Push interval", self.sb_interval)
+        self.sb_peers = QLineEdit()
+        self.sb_peers.setPlaceholderText("http://192.168.1.20:8765, http://192.168.1.21:8765")
+        form.addRow("Other machines", self.sb_peers)
+        self.sb_listen = QLineEdit()
+        form.addRow("Listen address", self.sb_listen)
+        self.sb_listen_port = QSpinBox()
+        self.sb_listen_port.setRange(1, 65535)
+        form.addRow("Listen port", self.sb_listen_port)
+        self.sb_machine = QLineEdit()
+        self.sb_machine.setMaxLength(40)
+        self.sb_machine.setPlaceholderText("lane 1")
+        form.addRow("This machine", self.sb_machine)
         hint = QLabel(
-            "Higher points rank first. The same score shares a rank, and the faster "
-            "team is listed first. The API key stays out of this file: set "
-            "SAINTCON_SCOREBOARD_KEY, or put it on one line in config/scoreboard.key. "
-            "Projector page (does not push): relay board serve"
+            "Each push replaces the whole SaintCon board, so list the other game PCs. "
+            "This game shares its teams on the listen port and pulls theirs before it pushes. "
+            "Higher points rank first. The API key stays out of this file: set "
+            "SAINTCON_SCOREBOARD_KEY, or put it on one line in config/scoreboard.key."
         )
         hint.setObjectName("muted")
         hint.setWordWrap(True)
@@ -564,6 +576,10 @@ class ConfigDialog(QDialog):
         self.sb_frozen.setChecked(board.frozen)
         self.sb_message.setText(board.message)
         self.sb_interval.setValue(board.interval_seconds)
+        self.sb_peers.setText(", ".join(board.peers))
+        self.sb_listen.setText(board.listen_host)
+        self.sb_listen_port.setValue(board.listen_port)
+        self.sb_machine.setText(board.machine)
 
     def _build_updated_config(self) -> AppConfig:
         size = self.team_size.value()
@@ -621,6 +637,11 @@ class ConfigDialog(QDialog):
         if not checkpoint.is_absolute():
             checkpoint = (self._config.root_dir / checkpoint).resolve()
 
+        peer_list = [
+            part.strip()
+            for part in self.sb_peers.text().replace("\n", ",").split(",")
+            if part.strip()
+        ]
         scoreboard = scoreboard_settings(
             enabled=self.sb_enabled.isChecked(),
             board_id=self.sb_id.text().strip(),
@@ -628,6 +649,10 @@ class ConfigDialog(QDialog):
             frozen=self.sb_frozen.isChecked(),
             message=self.sb_message.text(),
             interval_seconds=self.sb_interval.value(),
+            peers=peer_list,
+            listen_host=self.sb_listen.text().strip() or "0.0.0.0",
+            listen_port=self.sb_listen_port.value(),
+            machine=self.sb_machine.text().strip(),
         )
 
         return self._config.with_updates(

@@ -8,7 +8,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from baton_relay.config import AppConfig, ConfigError, load_config
-from baton_relay.scoreboard.model import build_board
+from baton_relay.scoreboard.sync import build_synced_board, local_standings_payload
 
 _PAGE = """<!DOCTYPE html>
 <html lang="en">
@@ -239,12 +239,19 @@ def make_server(
         def do_GET(self) -> None:  # noqa: N802
             current = _current_config(holder, config, reload)
             path = urllib.parse.urlsplit(self.path).path
+            if path == "/standings.json":
+                body = json.dumps(
+                    local_standings_payload(current),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+                self._send(200, "application/json; charset=utf-8", body)
+                return
             if path == "/board.json":
-                body = json.dumps(build_board(current), ensure_ascii=False).encode("utf-8")
+                body = json.dumps(build_synced_board(current), ensure_ascii=False).encode("utf-8")
                 self._send(200, "application/json; charset=utf-8", body)
                 return
             if path in ("/", "/index.html"):
-                body = page_html(build_board(current)).encode("utf-8")
+                body = page_html(build_synced_board(current)).encode("utf-8")
                 self._send(200, "text/html; charset=utf-8", body)
                 return
             if path == "/favicon.ico":
@@ -281,7 +288,10 @@ def serve_board(config: AppConfig, host: str = "127.0.0.1", port: int = 8765) ->
     shown = "127.0.0.1" if host in ("0.0.0.0", "::") else host
     bound = httpd.server_address[1]
     print(f"Scoreboard display: http://{shown}:{bound}", flush=True)
-    print("This page only reads results. It does not push to SaintCon.", flush=True)
+    print(
+        "This page reads local results and any [scoreboard].peers. It does not push.",
+        flush=True,
+    )
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

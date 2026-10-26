@@ -16,6 +16,7 @@ import pytest
 from baton_relay.cli import main
 from baton_relay.config import ConfigError, PathsConfig, load_config, save_config, scoreboard_settings
 from baton_relay.scoreboard.display import make_server, page_html
+from baton_relay.scoreboard.sync import build_synced_board
 from baton_relay.scoreboard.model import (
     TeamStanding,
     board_signature,
@@ -466,3 +467,147 @@ def test_cli_board_show_and_usage(config, tmp_path: Path, monkeypatch, capsys):
     assert shown["entries"][0]["name"] == "Cable Guy"
     assert main(["board"]) == 2
     assert "projector page" in capsys.readouterr().err
+
+
+def test_peer_url_must_be_a_host_and_port():
+    with pytest.raises(ConfigError, match="peers"):
+        scoreboard_settings(
+            enabled=False,
+            board_id="",
+            status="live",
+            frozen=False,
+            message="",
+            interval_seconds=60,
+            peers=["file:///results"],
+        )
+    ok = scoreboard_settings(
+        enabled=False,
+        board_id="",
+        status="live",
+        frozen=False,
+        message="",
+        interval_seconds=60,
+        peers=["http://10.1.2.3:8765/"],
+        machine="lane 2",
+    )
+    assert ok.peers == ("http://10.1.2.3:8765",)
+    assert ok.machine == "lane 2"
+
+
+def test_two_machines_merge_and_keep_local_standings_separate(config, tmp_path: Path):
+    results_a = tmp_path / "results-a"
+    results_b = tmp_path / "results-b"
+    _summary(results_a, "Alpha", score=10, seconds=30, solved=1, roster=("Ann",))
+    _summary(results_b, "Beta", score=20, seconds=40, solved=2, roster=("Bea",))
+    cfg_b = _board_config(config, results_b, enabled=False).with_updates(root_dir=tmp_path / "b")
+    server_b = make_server(cfg_b, "127.0.0.1", 0, reload=False)
+    thread_b = threading.Thread(target=server_b.serve_forever, daemon=True)
+    thread_b.start()
+    server_a = None
+    try:
+        port_b = server_b.server_address[1]
+        cfg_a = _board_config(
+            config,
+            results_a,
+            enabled=False,
+            peers=[f"http://127.0.0.1:{port_b}"],
+        ).with_updates(root_dir=tmp_path / "a")
+        server_a = make_server(cfg_a, "127.0.0.1", 0, reload=False)
+        thread_a = threading.Thread(target=server_a.serve_forever, daemon=True)
+        thread_a.start()
+        port_a = server_a.server_address[1]
+        with urllib.request.urlopen(f"http://127.0.0.1:{port_a}/standings.json") as resp:
+            local = json.load(resp)
+        with urllib.request.urlopen(f"http://127.0.0.1:{port_a}/board.json") as resp:
+            board = json.load(resp)
+        with urllib.request.urlopen(f"http://127.0.0.1:{port_a}/") as resp:
+            html = resp.read().decode("utf-8")
+    finally:
+        server_b.shutdown()
+        server_b.server_close()
+        if server_a is not None:
+            server_a.shutdown()
+            server_a.server_close()
+    assert [row["name"] for row in local["standings"]] == ["Alpha"]
+    assert [row["name"] for row in board["entries"]] == ["Beta", "Alpha"]
+    assert "Beta" in html and "Alpha" in html
+
+
+def test_dead_peer_keeps_the_last_standings(config, tmp_path: Path):
+    results = tmp_path / "results"
+    _summary(results, "Local", score=3, seconds=10, solved=0, roster=("Lou",))
+    cfg = _board_config(
+        config,
+        results,
+        enabled=False,
+        peers=["http://10.0.0.9:8765"],
+    ).with_updates(root_dir=tmp_path / "root")
+    calls = {"n": 0}
+
+    def fetch(url, timeout):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise OSError("down")
+        return {
+            "machine": "other",
+            "standings": [
+                {
+                    "name": "Remote",
+                    "score": 8,
+                    "solved": 1,
+                    "live": False,
+                    "time_used_seconds": 12,
+                    "roster": ["Sam"],
+                }
+            ],
+        }
+
+    first = build_synced_board(cfg, fetch=fetch, now=NOW)
+    second = build_synced_board(cfg, fetch=fetch, now=NOW)
+    assert {row["name"] for row in first["entries"]} == {"Local", "Remote"}
+    assert {row["name"] for row in second["entries"]} == {"Local", "Remote"}
+
+
+def test_stale_peer_cache_drops_off(config, tmp_path: Path):
+    results = tmp_path / "results"
+    _summary(results, "Local", score=3, seconds=10, solved=0, roster=("Lou",))
+    cfg = _board_config(
+        config,
+        results,
+        enabled=False,
+        peers=["http://10.0.0.9:8765"],
+    ).with_updates(root_dir=tmp_path / "root")
+    old = datetime(2020, 1, 1, tzinfo=timezone.utc)
+
+    def fetch(url, timeout):
+        return {"machine": "other", "standings": [{"name": "Remote", "score": 8, "solved": 0, "live": False}]}
+
+    build_synced_board(cfg, fetch=fetch, now=old)
+
+    def down(url, timeout):
+        raise OSError("down")
+
+    payload = build_synced_board(cfg, fetch=down, now=NOW)
+    assert [row["name"] for row in payload["entries"]] == ["Local"]
+
+
+def test_same_team_on_two_machines_keeps_the_higher_score(config, tmp_path: Path):
+    results = tmp_path / "results"
+    _summary(results, "Alpha", score=4, seconds=10, solved=1, roster=("Ann",))
+    cfg = _board_config(
+        config,
+        results,
+        enabled=False,
+        peers=["http://10.0.0.9:8765"],
+    ).with_updates(root_dir=tmp_path / "root")
+
+    def fetch(url, timeout):
+        return {
+            "machine": "other",
+            "standings": [{"name": "Alpha", "score": 9, "solved": 2, "live": True, "game_remaining": 30}],
+        }
+
+    payload = build_synced_board(cfg, fetch=fetch, now=NOW)
+    assert len(payload["entries"]) == 1
+    assert payload["entries"][0]["score"] == 9
+    assert payload["entries"][0]["detail"].startswith("live")

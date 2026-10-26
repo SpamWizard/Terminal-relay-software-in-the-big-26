@@ -27,6 +27,7 @@ results/*
 !results/.gitkeep
 data/checkpoints/*
 !data/checkpoints/.gitkeep
+data/scoreboard-peers/
 
 # Local secrets / machine-specific
 config/config.local.toml
