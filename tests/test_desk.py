@@ -52,20 +52,17 @@ def test_distro_name_slug():
     assert distro_name("Red Team!").startswith("relay-")
 
 
-def test_locked_shell_drops_lines():
+def test_locked_shell_drops_keys():
     shell = TeamShell(distro="relay-test", repo_root=ROOT)
-    shell._proc = MagicMock()
-    shell._proc.poll.return_value = None
-    shell._proc.stdin = MagicMock()
+    shell._pty = MagicMock()
+    shell._pty.isalive.return_value = True
     shell.locked = True
-    shell.send_line("echo should-not-run")
-    shell._proc.stdin.write.assert_not_called()
-    assert "should-not-run" not in shell.transcript
+    shell.write_keys("echo should-not-run\r")
+    shell._pty.write.assert_not_called()
 
     shell.locked = False
-    shell.send_line("echo hi")
-    shell._proc.stdin.write.assert_called()
-    assert "› echo hi" in shell.transcript
+    shell.write_keys("echo hi\r")
+    shell._pty.write.assert_called_with("echo hi\r")
 
 
 def test_load_config_files():

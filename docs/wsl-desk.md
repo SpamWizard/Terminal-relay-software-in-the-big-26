@@ -1,6 +1,6 @@
 # WSL desk (Kali linked clones)
 
-Desk challenges run a real bash inside a private copy of a **Kali Linux** golden WSL2 disk. The fullscreen relay window is the only console: each line is written to that bash, and its output is pasted back. Baton lock disables typing; bash stays up.
+Desk challenges run a real bash inside a private copy of a **Kali Linux** golden WSL2 disk. The desk terminal is a real TTY (ConPTY) — `nano`, `vim`, `less`, and interactive `apt` work like a normal Linux box. Baton lock stops keyboard input; the shell stays up.
 
 ## Operator setup (once per event PC)
 
@@ -20,7 +20,9 @@ wsl -d kali-linux
 powershell -ExecutionPolicy Bypass -File scripts\build_relay_gold.ps1
 ```
 
-That writes a read-only `images/relay-gold.vhdx` (Kali exports are large — several GB; expect a long first build).
+That writes `images/relay-gold.vhdx` (Kali exports are large — several GB; expect a long first build).
+
+Do **not** mark that VHDX ReadOnly — WSL will fail with `Access is denied` when attaching team clones. Protect it by never registering the gold file with `wsl`; only team children use `import-in-place`.
 
 Network stays up so players can `sudo apt install …` during a desk challenge. Kali already ships a full toolbox; apt is for extras. Player sudo is limited to `apt` / `apt-get` / `dpkg` (passwordless).
 
@@ -30,10 +32,13 @@ Your everyday `Ubuntu` WSL distro (if any) is left alone — only Kali is export
 
 On first start of a team name, the app:
 
-1. `New-VHD -ParentPath images\relay-gold.vhdx -Path data\wsl\<slug>\ext4.vhdx -Differencing`
-2. `wsl --import-in-place relay-<slug> …\ext4.vhdx`
-3. Opens one long-lived `bash` as user `player`
-4. Copies each challenge’s `public/` into `/challenges/<id>/` the first time that challenge opens
+1. Tries a linked (differencing) VHDX clone of `images\relay-gold.vhdx`
+2. If WSL refuses the parent chain (common: `0xc03a0016`), falls back to a **full copy** of the gold disk (~1 GB, once per team)
+3. `wsl --import-in-place relay-<slug> …\ext4.vhdx`
+4. Opens one long-lived `bash` as user `player`
+5. Copies each challenge’s `public/` into `/challenges/<id>/` the first time that challenge opens
+
+First start of a team can take a minute when it has to full-copy. Later resumes reuse the same disk.
 
 `relay reset` unregisters every `relay-*` distro (deletes child disks) and clears `data/wsl/`. It never deletes `images/relay-gold.vhdx`.
 

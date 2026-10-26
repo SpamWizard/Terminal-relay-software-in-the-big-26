@@ -148,11 +148,13 @@ $buildVhdx = Get-ChildItem -Path $WorkDir -Filter "ext4.vhdx" -Recurse -ErrorAct
 if (-not $buildVhdx) { throw "build ext4.vhdx not found under $WorkDir" }
 
 if (Test-Path $Gold) {
-    Set-ItemProperty -Path $Gold -Name IsReadOnly -Value $false
+    # WSL cannot mount a ReadOnly VHDX (E_ACCESSDENIED). Keep gold writable on disk;
+    # never wsl --import / --import-in-place this file itself.
+    attrib -R $Gold 2>$null
     Remove-Item -Force $Gold
 }
 Copy-Item -Force $buildVhdx.FullName $Gold
-Set-ItemProperty -Path $Gold -Name IsReadOnly -Value $true
+attrib -R $Gold 2>$null
 
 Write-Host "Unregistering build distro (keeps $Gold) ..."
 wsl.exe --unregister $WorkDistro | Out-Null
@@ -160,5 +162,6 @@ Remove-Item -Recurse -Force $WorkDir -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "Done. Kali golden parent: $Gold"
-Write-Host "Never register or move this file after teams have linked clones."
+Write-Host "IMPORTANT: Do not mark this VHDX ReadOnly — WSL will refuse to attach clones."
+Write-Host "Never register the gold file with wsl. Only team children get import-in-place."
 Write-Host "Team clones: New-VHD -ParentPath images\relay-gold.vhdx -Differencing ..."

@@ -1,4 +1,4 @@
-"""HC-style challenge desk: file rail, WSL terminal pipe, optional page, flag bar."""
+"""HC-style challenge desk: file rail, real PTY terminal, optional page, flag bar."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import QEvent, Qt, QUrl, Signal
-from PySide6.QtGui import QFont, QKeyEvent, QTextCursor
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QPlainTextEdit,
     QPushButton,
     QSplitter,
     QTextBrowser,
@@ -23,15 +22,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from baton_relay.desk.complete import complete_line
 from baton_relay.desk.sandbox import list_public_files, resolve_in_public
 from baton_relay.desk.shell import TeamShell
 from baton_relay.questions.types import Desk
+from baton_relay.ui.pty_terminal import PtyTerminalWidget
 
 
 @dataclass
 class DeskSessionState:
-    """Per-challenge UI bits (flag + file pick). Transcript lives on TeamShell."""
+    """Per-challenge UI bits (flag + file pick). Terminal state lives on TeamShell."""
 
     selected_file: str | None = None
     flag_text: str = ""
@@ -63,29 +62,8 @@ def _mono(size: int = 12) -> QFont:
     return font
 
 
-class _TerminalInput(QLineEdit):
-    """Line edit that uses Tab for autocomplete instead of focus change."""
-
-    def __init__(self, on_tab: Callable[[], None], parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._on_tab = on_tab
-
-    def event(self, event: QEvent) -> bool:  # noqa: N802
-        if (
-            event.type() == QEvent.Type.KeyPress
-            and isinstance(event, QKeyEvent)
-            and event.key() == Qt.Key.Key_Tab
-            and not event.modifiers()
-        ):
-            self._on_tab()
-            return True
-        return super().event(event)
-
-
 class _TerminalPane(QFrame):
-    """Line box that pipes into the team's long-lived bash."""
-
-    output_chunk = Signal(str)
+    """Full interactive Linux terminal (ConPTY) — nano/vim/apt TUIs work."""
 
     def __init__(
         self,
@@ -109,95 +87,32 @@ class _TerminalPane(QFrame):
         label.setObjectName("deskSection")
         head.addWidget(label)
         head.addStretch(1)
-        tip = QLabel("Linux shell · Tab completes file names · baton out locks typing")
+        tip = QLabel("Real Kali TTY · nano/vim/less work · click a file to paste its name")
         tip.setObjectName("deskHint")
         head.addWidget(tip)
         layout.addLayout(head)
 
-        self.output = QPlainTextEdit()
-        self.output.setReadOnly(True)
-        self.output.setObjectName("deskTerminalOut")
-        self.output.setFont(_mono(12))
-        self.output.setFrameShape(QFrame.Shape.NoFrame)
-        if shell is not None and shell.transcript:
-            self.output.setPlainText(shell.transcript)
-            self.output.moveCursor(QTextCursor.MoveOperation.End)
-        else:
-            self.output.setPlainText(
-                "Team Linux shell. Click a file on the left, or type a command.\n"
-            )
-        layout.addWidget(self.output, 1)
-
-        row = QHBoxLayout()
-        row.setSpacing(8)
-        prompt = QLabel("›")
-        prompt.setObjectName("deskPrompt")
-        row.addWidget(prompt)
-        self.input = _TerminalInput(self._complete)
-        self.input.setObjectName("deskTerminalIn")
-        self.input.setPlaceholderText("command  (Tab to complete)")
-        self.input.setFont(_mono(13))
-        self.input.returnPressed.connect(self._run)
-        row.addWidget(self.input, 1)
-        layout.addLayout(row)
-
-        self.output_chunk.connect(self._on_chunk)
+        self.term = PtyTerminalWidget()
+        self.term.setMinimumHeight(220)
+        layout.addWidget(self.term, 1)
+        self.bind_shell(shell)
 
     def bind_shell(self, shell: TeamShell | None) -> None:
         self._shell = shell
+        self.term.bind_shell(shell)
         if shell is not None:
-            # Replace prior callback so only this pane receives live bytes.
-            shell.on_output = lambda text: self.output_chunk.emit(text)
-            if shell.transcript:
-                self.output.setPlainText(shell.transcript)
-                self.output.moveCursor(QTextCursor.MoveOperation.End)
+            self.term.setFocus()
 
     def set_locked(self, locked: bool) -> None:
         self._locked = locked
-        self.input.setEnabled(not locked)
-        if self._shell is not None:
-            self._shell.set_locked(locked)
+        self.term.set_locked(locked)
 
     def paste_filename(self, name: str) -> None:
         if self._locked or not name:
             return
-        current = self.input.text()
-        if not current.strip():
-            self.input.setText(f"cat {name}")
-        else:
-            self.input.setText(current.rstrip() + " " + name)
-        self.input.setFocus()
-        self.input.end(False)
-
-    def _on_chunk(self, text: str) -> None:
-        cursor = self.output.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertText(text)
-        self.output.setTextCursor(cursor)
-        self.output.ensureCursorVisible()
-
-    def _complete(self) -> None:
-        if self._locked:
-            return
-        result = complete_line(self._public, self.input.text())
-        if result.text != self.input.text():
-            self.input.setText(result.text)
-            self.input.end(False)
-        elif len(result.matches) > 1:
-            self._on_chunk("  ".join(result.matches) + "\n")
-
-    def _run(self) -> None:
-        if self._locked:
-            return
-        line = self.input.text()
-        self.input.clear()
-        if self._shell is None:
-            self._on_chunk("› (no team shell — start a game first)\n")
-            return
-        try:
-            self._shell.send_line(line)
-        except Exception as exc:
-            self._on_chunk(f"error: {exc}\n")
+        # Paste the path as typed text so bash/nano receive it like a real keyboard.
+        self.term.paste_text(name)
+        self.term.setFocus()
 
 
 class _FilesPane(QFrame):
@@ -293,7 +208,6 @@ class DeskWidget(QWidget):
             try:
                 shell.ensure_challenge(question.id, public)
             except Exception as exc:
-                # Still show the desk; terminal will surface the error on first line.
                 if shell.transcript == "":
                     shell.transcript = f"error preparing challenge: {exc}\n"
 
@@ -309,7 +223,6 @@ class DeskWidget(QWidget):
 
         if "terminal" in panes:
             term = _TerminalPane(public, shell)
-            term.bind_shell(shell)
             self._panes.append(term)
 
         if "files" in panes:

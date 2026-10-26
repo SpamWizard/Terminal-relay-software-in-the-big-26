@@ -43,6 +43,6 @@ challenges/hello_shell/
 
 `challenge.json` can be a normal set or a compact one-question form. Desk challenges must be exactly one question. The loader sets `public_dir` automatically.
 
-The desk UI is a narrow **file-name rail**, a dominant **terminal** (piped to the team bash), an optional **page**, and a flag box. Baton lock stops new commands; the shell and transcript stay. Talk across the handoff.
+The desk UI is a narrow **file-name rail**, a dominant **real TTY terminal** (nano/vim/less work), an optional **page**, and a flag box. Baton lock stops keyboard input; the shell stays up. Talk across the handoff.
 
 Do not put the accepted `TR{...}` string in `public/` unless the puzzle is meant to be a straight `cat`.

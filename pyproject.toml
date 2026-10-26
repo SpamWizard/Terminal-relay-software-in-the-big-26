@@ -13,6 +13,8 @@ dependencies = [
     "PySide6>=6.6",
     "pyserial>=3.5",
     "pygame>=2.5",
+    "pywinpty>=2.0",
+    "pyte>=0.8",
 ]
 
 [project.optional-dependencies]

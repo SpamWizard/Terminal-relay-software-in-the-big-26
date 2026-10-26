@@ -1,8 +1,9 @@
 Welcome to the relay desk.
 
-The terminal on the right is a real bash inside your team's Kali WSL linked clone.
-Files on the left are a copy of this challenge's public/ folder.
-You can sudo apt install extra tools if you need them.
+This is a real Kali terminal (TTY). nano, vim, less, and apt all work.
+
+Files on the left are this challenge's public/ folder — click a name to paste it.
+You can:  sudo apt install <package>
 
 Flag for this warm-up:
 

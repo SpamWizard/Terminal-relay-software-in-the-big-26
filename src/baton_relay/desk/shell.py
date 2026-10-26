@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import subprocess
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from baton_relay.results.log import team_slug
 
@@ -74,31 +76,52 @@ def _wsl_exe() -> str:
     return shutil.which("wsl") or shutil.which("wsl.exe") or "wsl.exe"
 
 
+def _decode_wsl_bytes(raw: bytes) -> str:
+    """WSL on Windows often prints UTF-16LE; fall back to UTF-8."""
+    if not raw:
+        return ""
+    if raw[:2] == b"\xff\xfe" or (len(raw) > 2 and raw[1] == 0):
+        return raw.decode("utf-16-le", errors="replace").replace("\x00", "")
+    return raw.decode("utf-8", errors="replace")
+
+
 def _run(args: list[str], *, timeout: float = 120.0) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    proc = subprocess.run(
         args,
         capture_output=True,
-        text=True,
         timeout=timeout,
         check=False,
-        encoding="utf-8",
-        errors="replace",
     )
+    return subprocess.CompletedProcess(
+        args=proc.args,
+        returncode=proc.returncode,
+        stdout=_decode_wsl_bytes(proc.stdout or b""),
+        stderr=_decode_wsl_bytes(proc.stderr or b""),
+    )
+
+
+def _clear_readonly(path: Path) -> None:
+    """WSL refuses to attach ReadOnly VHDX files (MountDisk/E_ACCESSDENIED)."""
+    if not path.is_file():
+        return
+    try:
+        os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+    except OSError:
+        pass
+    if os.name == "nt":
+        subprocess.run(
+            ["attrib", "-R", str(path)],
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
 
 
 def list_relay_distros() -> list[str]:
-    # `wsl -l` writes UTF-16LE on Windows; decode explicitly.
-    proc = subprocess.run(
-        [_wsl_exe(), "-l", "-q"],
-        capture_output=True,
-        timeout=60.0,
-        check=False,
-    )
-    raw = proc.stdout or b""
-    text = raw.decode("utf-16-le", errors="ignore") if raw[:2] == b"\xff\xfe" or b"\x00" in raw[:64] else raw.decode("utf-8", errors="ignore")
+    proc = _run([_wsl_exe(), "-l", "-q"], timeout=60.0)
     names: list[str] = []
-    for line in text.splitlines():
-        name = line.replace("\x00", "").strip()
+    for line in (proc.stdout or "").splitlines():
+        name = line.strip()
         if name.startswith("relay-"):
             names.append(name)
     return names
@@ -122,47 +145,113 @@ def _shutdown_wsl() -> None:
     time.sleep(1.0)
 
 
-def create_linked_clone(repo_root: Path, team_name: str) -> str:
-    """Create a differencing VHDX from the golden parent and import it in place."""
-    name = distro_name(team_name)
-    gold = gold_vhdx_path(repo_root)
-    child = team_vhdx_path(repo_root, team_name)
-    if _distro_registered(name):
-        return name
-    if child.is_file():
-        # Distro registration lost; reattach the same child (do not stack another link).
-        _shutdown_wsl()
-        proc = _run([_wsl_exe(), "--import-in-place", name, str(child)], timeout=180.0)
-        if proc.returncode != 0:
-            raise ShellError(
-                f"import-in-place failed for {name}:\n{(proc.stderr or proc.stdout or '').strip()}"
-            )
-        return name
+def _import_in_place(name: str, child: Path) -> None:
+    _clear_readonly(child)
+    _shutdown_wsl()
+    proc = _run([_wsl_exe(), "--import-in-place", name, str(child.resolve())], timeout=180.0)
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise ShellError(f"import-in-place failed for {name}:\n{detail}")
 
+
+def _create_differencing_child(gold: Path, child: Path) -> None:
     child.parent.mkdir(parents=True, exist_ok=True)
+    _clear_readonly(gold)
     _shutdown_wsl()
     ps = (
         f"$ErrorActionPreference = 'Stop'; "
-        f"New-VHD -ParentPath '{gold}' -Path '{child}' -Differencing -BlockSizeBytes 1MB | Out-Null"
+        f"New-VHD -ParentPath '{gold.resolve()}' -Path '{child.resolve()}' "
+        f"-Differencing -BlockSizeBytes 1MB | Out-Null"
     )
     proc = _run(["powershell", "-NoProfile", "-Command", ps], timeout=120.0)
     if proc.returncode != 0:
         raise ShellError(
             f"New-VHD differencing clone failed:\n{(proc.stderr or proc.stdout or '').strip()}"
         )
-    proc = _run([_wsl_exe(), "--import-in-place", name, str(child)], timeout=180.0)
-    if proc.returncode != 0:
-        if child.is_file():
-            child.unlink(missing_ok=True)
-        raise ShellError(
-            f"import-in-place failed for {name}:\n{(proc.stderr or proc.stdout or '').strip()}"
+    _clear_readonly(child)
+
+
+def _create_full_copy_child(gold: Path, child: Path) -> None:
+    """Full copy of the golden VHDX (reliable with WSL import-in-place)."""
+    child.parent.mkdir(parents=True, exist_ok=True)
+    _clear_readonly(gold)
+    if child.is_file():
+        _clear_readonly(child)
+        child.unlink()
+    shutil.copy2(gold, child)
+    _clear_readonly(child)
+
+
+def _remove_child(child: Path) -> None:
+    if child.is_file():
+        _clear_readonly(child)
+        child.unlink(missing_ok=True)
+
+
+def create_linked_clone(repo_root: Path, team_name: str) -> str:
+    """Create a team disk from the golden parent and import it in place.
+
+    Tries a Hyper-V differencing (linked) clone first. WSL often refuses those
+    because HCS cannot open the parent VHDX (0xc03a0016). In that case we fall
+    back to a full copy of the gold disk — slower/larger, but works.
+    """
+    name = distro_name(team_name)
+    gold = gold_vhdx_path(repo_root)
+    child = team_vhdx_path(repo_root, team_name)
+    _clear_readonly(gold)
+    if _distro_registered(name):
+        return name
+    if child.is_file():
+        # Distro registration lost; reattach the same child (do not stack another link).
+        try:
+            _import_in_place(name, child)
+            return name
+        except ShellError:
+            _remove_child(child)
+
+    used_differencing = False
+    try:
+        _create_differencing_child(gold, child)
+        used_differencing = True
+    except ShellError:
+        _remove_child(child)
+        try:
+            _create_full_copy_child(gold, child)
+        except OSError as copy_exc:
+            raise ShellError(f"Could not create team disk (full copy failed): {copy_exc}") from copy_exc
+
+    try:
+        _import_in_place(name, child)
+    except ShellError as exc:
+        detail = str(exc).casefold()
+        parent_denied = (
+            used_differencing
+            and (
+                "parent virtual hard disk" in detail
+                or "chain of virtual hard disks" in detail
+                or "0xc03a0016" in detail
+            )
         )
+        _remove_child(child)
+        if not parent_denied:
+            raise
+        # Differencing child is useless to WSL — copy the whole gold disk instead.
+        try:
+            _create_full_copy_child(gold, child)
+            _import_in_place(name, child)
+        except (OSError, ShellError) as copy_exc:
+            _remove_child(child)
+            raise ShellError(
+                "WSL cannot use a linked (differencing) clone of the golden image "
+                "(no access to the parent VHDX). Full copy also failed.\n"
+                f"{copy_exc}"
+            ) from copy_exc
     return name
 
 
 @dataclass
 class TeamShell:
-    """One bash per team. GUI writes lines; a reader thread delivers stdout."""
+    """One interactive bash per team over a real ConPTY (nano/vim/apt TUI work)."""
 
     distro: str
     repo_root: Path
@@ -171,60 +260,72 @@ class TeamShell:
     transcript: str = ""
     _cwd_challenge: str | None = None
     _copied: set[str] = field(default_factory=set)
-    _proc: subprocess.Popen[bytes] | None = None
+    _pty: Any = None
     _reader: threading.Thread | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
+    _cols: int = 80
+    _rows: int = 24
 
     def start(self) -> None:
-        if self._proc is not None and self._proc.poll() is None:
+        if self._pty is not None and self._pty.isalive():
             return
-        # Non-interactive bash: the GUI owns the prompt. Keep a login so PATH is sane.
-        self._proc = subprocess.Popen(
+        try:
+            from winpty import PtyProcess
+        except ImportError as exc:
+            raise ShellError(
+                "pywinpty is required for the interactive desk terminal.\n"
+                "Install with: pip install pywinpty"
+            ) from exc
+
+        # Real TTY so nano/less/apt behave like a normal Linux box.
+        # Pass argv as a list — a quoted cmdline makes winpty look for a bogus exe name.
+        wsl = _wsl_exe()
+        self._pty = PtyProcess.spawn(
             [
-                _wsl_exe(),
+                wsl,
                 "-d",
                 self.distro,
                 "-u",
                 "player",
                 "--",
                 "bash",
-                "--noprofile",
-                "--norc",
-                "-c",
-                "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
-                "export HOME=/home/player; cd \"$HOME\"; exec bash --noprofile --norc",
+                "-l",
             ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            bufsize=0,
+            dimensions=(self._rows, self._cols),
         )
-        self._reader = threading.Thread(target=self._read_loop, name="relay-bash-out", daemon=True)
+        self._reader = threading.Thread(target=self._read_loop, name="relay-pty-out", daemon=True)
         self._reader.start()
-        # Quiet boot: drop bash's empty first prompt noise by sending a no-op.
-        self._write_raw(":\n")
 
     def close(self) -> None:
-        proc = self._proc
-        self._proc = None
-        if proc is None:
+        pty = self._pty
+        self._pty = None
+        if pty is None:
             return
         try:
-            if proc.stdin and not proc.stdin.closed:
-                proc.stdin.close()
-        except OSError:
-            pass
-        try:
-            proc.terminate()
-            proc.wait(timeout=5)
-        except (OSError, subprocess.TimeoutExpired):
+            if pty.isalive():
+                pty.write("\x04")  # Ctrl-D best-effort
+                pty.terminate(force=True)
+        except Exception:
             try:
-                proc.kill()
-            except OSError:
+                pty.terminate(force=True)
+            except Exception:
                 pass
 
     def set_locked(self, locked: bool) -> None:
         self.locked = locked
+
+    def resize(self, cols: int, rows: int) -> None:
+        cols = max(20, int(cols))
+        rows = max(8, int(rows))
+        self._cols = cols
+        self._rows = rows
+        pty = self._pty
+        if pty is None or not pty.isalive():
+            return
+        try:
+            pty.setwinsize(rows, cols)
+        except Exception:
+            pass
 
     def ensure_challenge(self, challenge_id: str, public_dir: Path) -> None:
         """Copy public/ once into the distro, then cd there."""
@@ -233,48 +334,75 @@ class TeamShell:
             self._copy_public(challenge_id, public_dir)
             self._copied.add(challenge_id)
         if self._cwd_challenge != challenge_id:
-            # Visible in the transcript so teammates see the folder switch.
-            self.send_line(f"cd /challenges/{challenge_id} && pwd")
+            # Visible in the terminal so teammates see the folder switch.
+            self.write_keys(f"cd /challenges/{challenge_id} && pwd\r")
             self._cwd_challenge = challenge_id
 
     def send_line(self, line: str) -> None:
-        if self.locked:
-            return
+        """Compatibility helper: type a full line and press Enter."""
         text = (line or "").rstrip("\r\n")
-        self._append_transcript(f"› {text}\n")
-        self._write_raw(text + "\n")
+        self.write_keys(text + "\r")
 
-    def _write_raw(self, data: str) -> None:
-        proc = self._proc
-        if proc is None or proc.stdin is None or proc.poll() is not None:
+    def write_keys(self, data: str) -> None:
+        """Send raw keystrokes to the PTY (blocked while baton is out)."""
+        if self.locked or not data:
+            return
+        pty = self._pty
+        if pty is None or not pty.isalive():
             raise ShellError(f"bash for {self.distro} is not running")
-        raw = data.encode("utf-8", errors="replace")
         with self._lock:
-            proc.stdin.write(raw)
-            proc.stdin.flush()
+            pty.write(data)
 
     def _read_loop(self) -> None:
-        proc = self._proc
-        if proc is None or proc.stdout is None:
+        pty = self._pty
+        if pty is None:
             return
+        # Coalesce tiny ConPTY reads before crossing to the GUI thread.
+        pending = ""
+        last_emit = 0.0
         while True:
-            chunk = proc.stdout.read(1)
-            if not chunk:
-                break
             try:
-                text = chunk.decode("utf-8", errors="replace")
+                if not pty.isalive():
+                    break
+                chunk = pty.read(4096)
+            except EOFError:
+                break
             except Exception:
+                break
+            if not chunk:
+                if pending and self.on_output is not None:
+                    try:
+                        self.on_output(pending)
+                    except Exception:
+                        pass
+                    pending = ""
+                time.sleep(0.01)
                 continue
+            text = chunk if isinstance(chunk, str) else chunk.decode("utf-8", errors="replace")
             self._append_transcript(text)
-            if self.on_output is not None:
-                try:
-                    self.on_output(text)
-                except Exception:
-                    pass
+            pending += text
+            now = time.monotonic()
+            # Flush at least every ~16ms or when buffer gets large.
+            if len(pending) >= 2048 or (now - last_emit) >= 0.016:
+                if self.on_output is not None:
+                    try:
+                        self.on_output(pending)
+                    except Exception:
+                        pass
+                pending = ""
+                last_emit = now
+        if pending and self.on_output is not None:
+            try:
+                self.on_output(pending)
+            except Exception:
+                pass
 
     def _append_transcript(self, text: str) -> None:
         with self._lock:
             self.transcript += text
+            # Cap memory so day-long events don't balloon.
+            if len(self.transcript) > 400_000:
+                self.transcript = self.transcript[-300_000:]
 
     def _copy_public(self, challenge_id: str, public_dir: Path) -> None:
         root = Path(public_dir).resolve()
