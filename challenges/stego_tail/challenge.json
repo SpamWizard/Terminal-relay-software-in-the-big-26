@@ -1,0 +1,10 @@
+{
+  "id": "stego_tail",
+  "set_id": "stego_tail",
+  "title": "Stego Tail",
+  "type": "desk",
+  "prompt": "Something was appended after logo.png. It is not plaintext. Read the note for how to recover it.",
+  "points": 250,
+  "accepted": ["TR{stego_xor_tail}"],
+  "panes": ["files", "terminal"]
+}

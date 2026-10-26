@@ -938,6 +938,7 @@ class MainWindow(QMainWindow):
             self._device_label = self._serial.status_label
 
         self._pending_after_burst = False
+        self._burst_advances = True
         self._ckpt_ticks = 0
         self.game_screen.correct_burst.finished.connect(self._after_verdict_burst)
         self.game_screen.wrong_burst.finished.connect(self._after_verdict_burst)
@@ -1364,10 +1365,17 @@ class MainWindow(QMainWindow):
         result = self.session.submit_answer(answer)
         if not result:
             return
-        self.game_screen.question_host.show_feedback(
-            f"{result.feedback}  (+{result.points:g}/{result.max_points:g})"
-        )
+        if result.correct:
+            self.game_screen.question_host.show_feedback(
+                f"{result.feedback}  (+{result.points:g}/{result.max_points:g})"
+            )
+        else:
+            self.game_screen.question_host.show_feedback(
+                f"{result.feedback} — try again"
+                + (f"  ({result.points:g})" if result.points else "")
+            )
         self._pending_after_burst = True
+        self._burst_advances = result.correct
         caption = _points_caption(result.points)
         if result.correct:
             self.game_screen.play_correct(caption)
@@ -1378,7 +1386,9 @@ class MainWindow(QMainWindow):
         if not self._pending_after_burst:
             return
         self._pending_after_burst = False
-        self._render(force_question=True)
+        # Wrong answer: refresh score/timers only — keep the same desk/question.
+        self._render(force_question=bool(getattr(self, "_burst_advances", True)))
+        self._save_checkpoint()
 
     def _render(self, force_question: bool = False) -> None:
         if not self.session:

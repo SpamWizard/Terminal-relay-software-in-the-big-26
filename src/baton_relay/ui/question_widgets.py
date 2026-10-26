@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 from baton_relay.questions.base import Question
 from baton_relay.questions.images import pictures_for
 from baton_relay.questions.types import (
+    Desk,
     FillBlank,
     Flag,
     HandsOn,
@@ -36,6 +37,7 @@ from baton_relay.questions.types import (
     SelectAll,
     ShortAnswer,
 )
+from baton_relay.ui.desk_widget import DeskSessionStore, DeskWidget, build_desk_widget
 from baton_relay.ui.image_gallery import ImageGallery
 
 
@@ -76,9 +78,12 @@ class QuestionHost(QWidget):
         self._body: QWidget | None = None
         self._gallery: ImageGallery | None = None
         self._scroll: _QuestionScroll | None = None
+        self._desk: DeskWidget | None = None
+        self._desk_store = DeskSessionStore()
         self._collect: Callable[[], Any] | None = None
         self._on_submit: Callable[[Any], None] | None = None
         self._locked = True
+        self._current_qid: str | None = None
 
         self.prompt = QLabel("")
         self.prompt.setWordWrap(True)
@@ -105,8 +110,15 @@ class QuestionHost(QWidget):
 
     def set_locked(self, locked: bool) -> None:
         self._locked = locked
-        self.setEnabled(not locked)
+        # Keep the host enabled so the freeze overlay is the gate; still disable controls.
         self.submit_btn.setEnabled(not locked)
+        if self._desk is not None:
+            self._desk.set_desk_locked(locked)
+            return
+        if self._body is not None:
+            self._body.setEnabled(not locked)
+        if self._scroll is not None:
+            self._scroll.setEnabled(not locked)
 
     def clear(self) -> None:
         if self._scroll is not None:
@@ -120,16 +132,40 @@ class QuestionHost(QWidget):
             self._body.deleteLater()
             self._body = None
             self._gallery = None
+        self._desk = None
         self._collect = None
         self.prompt.setText("")
         self.feedback.setText("")
 
+    def clear_desk_sessions(self) -> None:
+        self._desk_store.clear()
+
     def show_question(self, question: Question | None) -> None:
+        prev = self._current_qid
         self.clear()
         if question is None:
+            self._current_qid = None
+            if prev:
+                self._desk_store.clear(prev)
             self.prompt.setText("No more questions.")
             return
+        if prev and prev != question.id:
+            self._desk_store.clear(prev)
+        self._current_qid = question.id
         self.prompt.setText(question.prompt)
+
+        if isinstance(question, Desk):
+            state = self._desk_store.get(question.id)
+            body, collect, desk = build_desk_widget(question, state)
+            body.setObjectName("questionBody")
+            body.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            self._body = body
+            self._desk = desk
+            self._collect = collect
+            self._slot.addWidget(body)
+            desk.set_desk_locked(self._locked)
+            return
+
         body, collect = build_answer_widget(question)
         body.setObjectName("questionBody")
         body.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -152,6 +188,7 @@ class QuestionHost(QWidget):
             self._slot.addWidget(scroll)
         else:
             self._slot.addWidget(body)
+
 
     def _submit(self) -> None:
         if self._locked or not self._collect or not self._on_submit:

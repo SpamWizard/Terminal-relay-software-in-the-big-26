@@ -120,9 +120,91 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
     }}
     QLabel#headline {{
         color: {fg};
-        font-size: 28px;
+        font-size: 22px;
         font-weight: 600;
         background-color: transparent;
+        padding: 4px 2px 10px 2px;
+    }}
+    QFrame#deskRail, QFrame#deskPanel, QFrame#deskFlagBar {{
+        background-color: {mix(bg, "#000000", 0.18)};
+        border: 1px solid {mix(bg, ac, 0.28)};
+        border-radius: 12px;
+    }}
+    QLabel#deskSection {{
+        color: {ac};
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        background-color: transparent;
+    }}
+    QLabel#deskHint {{
+        color: {muted};
+        font-size: 11px;
+        background-color: transparent;
+    }}
+    QLabel#deskPrompt {{
+        color: {ac};
+        font-size: 18px;
+        font-weight: 700;
+        background-color: transparent;
+        padding: 0 2px;
+    }}
+    QListWidget#deskFileList {{
+        background-color: transparent;
+        border: none;
+        color: {fg};
+        font-size: 14px;
+        font-family: "Cascadia Mono", "Consolas", monospace;
+        outline: none;
+        padding: 2px;
+    }}
+    QListWidget#deskFileList::item {{
+        padding: 8px 10px;
+        border-radius: 8px;
+        margin: 1px 0;
+    }}
+    QListWidget#deskFileList::item:selected {{
+        background-color: {mix(bg, ac, 0.28)};
+        color: {fg};
+    }}
+    QListWidget#deskFileList::item:hover {{
+        background-color: {hover};
+    }}
+    QPlainTextEdit#deskTerminalOut {{
+        background-color: {mix(bg, "#000000", 0.35)};
+        border: 1px solid {mix(bg, ac, 0.18)};
+        border-radius: 10px;
+        color: {fg};
+        padding: 12px 14px;
+        font-size: 13px;
+        selection-background-color: {mix(bg, ac, 0.35)};
+    }}
+    QLineEdit#deskTerminalIn, QLineEdit#deskFlagIn {{
+        background-color: {mix(bg, "#000000", 0.30)};
+        border: 1px solid {mix(bg, ac, 0.32)};
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 15px;
+        min-height: 22px;
+    }}
+    QLineEdit#deskTerminalIn:focus, QLineEdit#deskFlagIn:focus {{
+        border: 1px solid {ac};
+    }}
+    QTextBrowser#deskPage {{
+        background-color: {mix(bg, "#ffffff", 0.04)};
+        border: 1px solid {mix(bg, ac, 0.18)};
+        border-radius: 10px;
+        color: {fg};
+        padding: 8px;
+    }}
+    QSplitter#deskSplitter::handle {{
+        background: transparent;
+    }}
+    QSplitter#deskSplitter::handle:horizontal {{
+        width: 8px;
+    }}
+    QSplitter#deskSplitter::handle:vertical {{
+        height: 8px;
     }}
     QLabel#timerBig {{
         color: {ac};

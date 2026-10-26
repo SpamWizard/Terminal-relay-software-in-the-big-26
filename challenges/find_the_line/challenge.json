@@ -1,0 +1,10 @@
+{
+  "id": "find_the_line",
+  "set_id": "find_the_line",
+  "title": "Find The Line",
+  "type": "desk",
+  "prompt": "Ops left a briefing and a wifi scan dump. The flag is TR{X} where X is the first 8 hex chars of sha256(SSID). Find the conference SSID, then hash it.",
+  "points": 150,
+  "accepted": ["TR{6677ac63}"],
+  "panes": ["files", "terminal"]
+}

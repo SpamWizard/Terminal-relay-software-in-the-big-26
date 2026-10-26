@@ -1,0 +1,21 @@
+# iwlist fake dump
+Cell 01 - Address: AA-AA-AA-AA-AA-01
+          ESSID:"FreeAirportWiFi"
+          Quality=20/70
+Cell 02 - Address: AA-AA-AA-AA-AA-02
+          ESSID:"xfinitywifi"
+          Quality=18/70
+Cell 03 - Address: AA-AA-AA-AA-AA-03
+          ESSID:"AndroidAP_8821"
+          Quality=12/70
+Cell 04 - Address: AA-AA-AA-AA-AA-04
+          ESSID:"SaintconGuest"
+          Quality=55/70
+Cell 05 - Address: AA-AA-AA-AA-AA-05
+          ESSID:"SaintconStaff-DoNotUse"
+          Quality=40/70
+Cell 06 - Address: AA-AA-AA-AA-AA-06
+          ESSID:"HP-Print-42"
+          Quality=10/70
+# decoy token that is NOT the flag
+# TR{decoy_not_this}

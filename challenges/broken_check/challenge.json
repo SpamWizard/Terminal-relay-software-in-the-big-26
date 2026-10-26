@@ -1,0 +1,10 @@
+{
+  "id": "broken_check",
+  "set_id": "broken_check",
+  "title": "Broken Check",
+  "type": "desk",
+  "prompt": "check.py is supposed to print TR{sha256(real_password)[:12]} when the password is right. The compare is buggy and you cannot rely on running it as-is. Read the source, figure out the intended token, submit that.",
+  "points": 300,
+  "accepted": ["TR{418c01e89060}"],
+  "panes": ["files", "terminal"]
+}

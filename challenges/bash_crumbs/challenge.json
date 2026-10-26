@@ -1,0 +1,10 @@
+{
+  "id": "bash_crumbs",
+  "set_id": "bash_crumbs",
+  "title": "Bash Crumbs",
+  "type": "desk",
+  "prompt": "Shell history from a volunteer laptop. They hashed a service password and never wrote it down in cleartext. Crack it. Flag is TR{password}.",
+  "points": 250,
+  "accepted": ["TR{flipper}"],
+  "panes": ["files", "terminal"]
+}

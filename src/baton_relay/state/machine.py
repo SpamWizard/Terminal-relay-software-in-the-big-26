@@ -764,7 +764,13 @@ class GameSession:
                 redo=is_redo,
             ),
         )
-        self._advance_after_answer()
+        # Wrong / partial: stay on the same question so teams can keep trying.
+        # Correct (or skip) advances.
+        if result.correct:
+            self.last_message = result.feedback or "Correct."
+            self._advance_after_answer()
+        else:
+            self.last_message = (result.feedback or "Incorrect") + " — try again."
         self._emit()
         return result
 

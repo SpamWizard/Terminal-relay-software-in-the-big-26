@@ -88,7 +88,9 @@ def test_zero_board_slots(tmp_path):
 
 
 def test_zero_questions_per_pick(tmp_path):
-    body = BASE.replace("questions_per_pick = 5", "questions_per_pick = 0", 1)
+    import re
+
+    body = re.sub(r"questions_per_pick = \d+", "questions_per_pick = 0", BASE, count=1)
     with pytest.raises(ConfigError, match="questions_per_pick"):
         load_config(_write(tmp_path, body))
 

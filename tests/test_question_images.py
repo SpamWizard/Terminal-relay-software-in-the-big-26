@@ -87,9 +87,11 @@ def test_gallery_rows_cover_one_through_eight():
         assert rows == sorted(rows, reverse=True)
 
 
-def test_repo_questions_stay_text_only():
+def test_repo_text_sets_have_no_images():
     root = Path(__file__).resolve().parents[1] / "questions"
     for path in sorted(root.glob("*.json")):
+        if path.name.startswith("06_"):
+            continue  # Fake Logos is intentionally pictured
         for question in load_question_file(path).questions:
             assert question.images is None
 

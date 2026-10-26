@@ -1,0 +1,11 @@
+{
+  "id": "page_source",
+  "set_id": "page_source",
+  "title": "Page Source",
+  "type": "desk",
+  "prompt": "The page looks empty on purpose. The real token is base64-encoded in the markup. Decode it and wrap as TR{...}.",
+  "points": 200,
+  "accepted": ["TR{relay_view_source}"],
+  "panes": ["page", "files", "terminal"],
+  "page_file": "index.html"
+}

@@ -93,9 +93,12 @@ def test_redo_multiplier_on_pick(config):
     session.on_baton_reading(0, source="fake")
     sid = session.progress.board_slots[0]
     session.select_category(sid)
-    # Wrong then correct on first; wrong on second → redo queue
-    session.submit_answer(0)  # wrong
-    session.submit_answer(0)  # wrong again for q2
+    # Wrong stays on q1; correct advances; skip q2 → redo queue for the skip
+    assert session.submit_answer(0) is not None  # wrong — stay
+    assert session.progress.pick_remaining == 2
+    assert session.submit_answer(1) is not None  # correct q1
+    assert session.progress.pick_remaining == 1
+    session.skip_question()  # miss q2 → redo if enabled
     assert session.progress.in_redo or session.state == RelayState.CHOOSING_CATEGORY
     if session.progress.in_redo:
         assert session.state == RelayState.ACTIVE
@@ -112,16 +115,16 @@ def test_score_replace_on_reanswer(config):
         warmup_count=0,
         questions_per_pick=1,
         board_slots=1,
-        redo_missed_at_set_end=True,
+        redo_missed_at_set_end=False,
     )
     session.on_baton_reading(0, source="fake")
     session.select_category(session.progress.board_slots[0])
     session.submit_answer(0)
     score_after_wrong = session.progress.total_score
-    # Enter redo
-    if session.progress.in_redo:
-        session.submit_answer(1)
-        assert session.progress.total_score > score_after_wrong
+    # Still on the same question — correct replaces the wrong score
+    assert session.progress.phase == "in_pick"
+    session.submit_answer(1)
+    assert session.progress.total_score > score_after_wrong
 
 
 def test_board_wrong_baton(config):
