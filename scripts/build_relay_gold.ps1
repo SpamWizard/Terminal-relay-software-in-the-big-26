@@ -1,6 +1,12 @@
-# Build images/relay-gold.vhdx from Kali Linux — read-only parent for team linked clones.
+# Build images/relay-gold.vhdx from Kali Linux - read-only parent for team linked clones.
 # Prerequisites: WSL2, Kali WSL installed once, New-VHD (Hyper-V PowerShell tools).
 # Run from an elevated PowerShell if feature enables are still pending.
+#
+# -SeedOnly refreshes an existing golden image (packages + /challenges) without
+# re-exporting Kali. Team disks already cloned stay on the old image until reset.
+param(
+    [switch]$SeedOnly
+)
 #
 # Install Kali first (once):
 #   wsl --install -d kali-linux
@@ -64,37 +70,56 @@ if ($existing -contains $WorkDistro) {
     $existing = @(Get-WslDistroNames)
 }
 
-# Prefer exporting from an installed Kali; else install kali-linux.
-$stock = $existing | Where-Object { $_ -match $StockPattern } | Select-Object -First 1
-if (-not $stock) {
-    Write-Host "No Kali distro listed yet; installing kali-linux ..."
-    wsl.exe --install -d kali-linux --no-launch
-    Write-Host @"
+if ($SeedOnly) {
+    if (-not (Test-Path $Gold)) {
+        throw "Golden image missing: $Gold. Run this script once without -SeedOnly."
+    }
+    Write-Host "SeedOnly: copying the existing golden image (no Kali re-export)."
+    wsl.exe --shutdown
+    Start-Sleep -Seconds 2
+    $workVhdx = Join-Path $WorkDir "ext4.vhdx"
+    if (Test-Path $workVhdx) {
+        attrib -R $workVhdx 2>$null
+        Remove-Item -Force $workVhdx
+    }
+    Copy-Item -Force $Gold $workVhdx
+    attrib -R $workVhdx 2>$null
+    Write-Host "Importing build distro $WorkDistro in place ..."
+    wsl.exe --import-in-place $WorkDistro $workVhdx
+    if ($LASTEXITCODE -ne 0) { throw "import-in-place failed for $WorkDistro" }
+} else {
+    # Prefer exporting from an installed Kali; else install kali-linux.
+    $stock = $existing | Where-Object { $_ -match $StockPattern } | Select-Object -First 1
+    if (-not $stock) {
+        Write-Host "No Kali distro listed yet; installing kali-linux ..."
+        wsl.exe --install -d kali-linux --no-launch
+        Write-Host @"
 
 If Kali still needs first-time setup, open another window, run:
   wsl -d kali-linux
 Then exit and re-run this script.
 
 "@
-    $existing = @(Get-WslDistroNames)
-    $stock = $existing | Where-Object { $_ -match $StockPattern } | Select-Object -First 1
-    if (-not $stock) {
-        throw "No Kali distro found. Run: wsl --install -d kali-linux   then wsl -d kali-linux (finish setup), then re-run this script."
+        $existing = @(Get-WslDistroNames)
+        $stock = $existing | Where-Object { $_ -match $StockPattern } | Select-Object -First 1
+        if (-not $stock) {
+            throw "No Kali distro found. Run: wsl --install -d kali-linux   then wsl -d kali-linux (finish setup), then re-run this script."
+        }
     }
+
+    Write-Host "Using stock distro: $stock"
+    Write-Host "Note: Kali exports are large (often several GB). This can take a while."
+
+    $Tar = Join-Path $WorkDir "kali-export.tar"
+    Write-Host "Exporting $stock -> $Tar ..."
+    wsl.exe --shutdown
+    wsl.exe --export $stock $Tar
+    if (-not (Test-Path $Tar)) { throw "export failed" }
+
+    Write-Host "Importing build distro $WorkDistro ..."
+    wsl.exe --import $WorkDistro $WorkDir $Tar --version 2
+    Remove-Item -Force $Tar -ErrorAction SilentlyContinue
 }
-
-Write-Host "Using stock distro: $stock"
-Write-Host "Note: Kali exports are large (often several GB). This can take a while."
-
-$Tar = Join-Path $WorkDir "kali-export.tar"
-Write-Host "Exporting $stock -> $Tar ..."
-wsl.exe --shutdown
-wsl.exe --export $stock $Tar
-if (-not (Test-Path $Tar)) { throw "export failed" }
-
-Write-Host "Importing build distro $WorkDistro ..."
-wsl.exe --import $WorkDistro $WorkDir $Tar --version 2
-Remove-Item -Force $Tar -ErrorAction SilentlyContinue
 
 Write-Host "Configuring player user, sudo apt, wsl.conf (network open for apt) ..."
 $setup = @'
@@ -102,9 +127,13 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 # Kali already ships a full toolbox; keep apt working for anything extra.
 apt-get update
-apt-get install -y sudo ca-certificates
+apt-get install -y sudo ca-certificates steghide libimage-exiftool-perl john zip unzip xxd binutils file openssl python3
 id -u player >/dev/null 2>&1 || useradd -m -s /bin/bash player
-# Passwordless apt only — players install tools during the match when needed.
+# john often lands in /usr/sbin, which a player login shell may not search.
+if [ -x /usr/sbin/john ] && [ ! -x /usr/local/bin/john ]; then
+  ln -sfn /usr/sbin/john /usr/local/bin/john
+fi
+# Passwordless apt only - players install tools during the match when needed.
 echo 'player ALL=(root) NOPASSWD: /usr/bin/apt, /usr/bin/apt-get, /usr/bin/dpkg' >/etc/sudoers.d/player-apt
 chmod 440 /etc/sudoers.d/player-apt
 mkdir -p /challenges
@@ -130,15 +159,91 @@ $setupPath = Join-Path $WorkDir "setup.sh"
 $utf8 = New-Object System.Text.UTF8Encoding $false
 $setupUnix = ($setup -replace "`r`n", "`n") -replace "`r", "`n"
 [System.IO.File]::WriteAllText($setupPath, $setupUnix, $utf8)
-$full = [System.IO.Path]::GetFullPath($setupPath)
-$drive = $full.Substring(0, 1).ToLowerInvariant()
-$unixSetup = "/mnt/$drive/" + (($full.Substring(3)) -replace "\\", "/")
-Write-Host "Running setup via $unixSetup"
-wsl.exe -d $WorkDistro -u root -- bash -c "true" | Out-Null
-& wsl.exe -d $WorkDistro -u root -- bash $unixSetup
+# Deliver setup.sh through \\wsl$. SeedOnly images have automount turned off,
+# so /mnt/c is not there. A fresh Kali import still has the share.
+Write-Host "Running setup inside $WorkDistro"
+wsl.exe -d $WorkDistro -u root -- bash -c "mkdir -p /tmp"
+if ($LASTEXITCODE -ne 0) { throw "could not start $WorkDistro" }
+$wslTmp = "\\wsl$\$WorkDistro\tmp"
+$deadline = (Get-Date).AddSeconds(40)
+while (-not (Test-Path $wslTmp)) {
+    if ((Get-Date) -gt $deadline) { throw "\\wsl$\$WorkDistro\tmp is not reachable" }
+    Start-Sleep -Milliseconds 250
+}
+Copy-Item -Force $setupPath (Join-Path $wslTmp "setup.sh")
+wsl.exe -d $WorkDistro -u root -- bash /tmp/setup.sh
 if ($LASTEXITCODE -ne 0) {
     throw "gold setup script failed inside $WorkDistro (exit $LASTEXITCODE)"
 }
+
+Write-Host "Copying challenges/*/public into /challenges/<id> ..."
+$share = "\\wsl$\$WorkDistro\challenges"
+$deadline = (Get-Date).AddSeconds(40)
+while (-not (Test-Path $share)) {
+    if ((Get-Date) -gt $deadline) { throw "\\wsl$\$WorkDistro\challenges is not reachable" }
+    Start-Sleep -Milliseconds 250
+}
+Get-ChildItem (Join-Path $RepoRoot "challenges") -Directory | ForEach-Object {
+    $pub = Join-Path $_.FullName "public"
+    if (-not (Test-Path $pub)) { return }
+    $id = $_.Name
+    $metaPath = Join-Path $_.FullName "challenge.json"
+    if (Test-Path $metaPath) {
+        $meta = Get-Content -Raw -Path $metaPath | ConvertFrom-Json
+        if ($meta.id) { $id = [string]$meta.id }
+    }
+    if ($id -notmatch '^[A-Za-z0-9_-]+$') { throw "refusing challenge id: $id" }
+    $dest = Join-Path $share $id
+    if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+    New-Item -ItemType Directory -Force -Path $dest | Out-Null
+    Copy-Item -Path (Join-Path $pub "*") -Destination $dest -Recurse -Force
+    Write-Host "  /challenges/$id"
+}
+wsl.exe -d $WorkDistro -u root -- bash -c "chown -R player:player /challenges"
+if ($LASTEXITCODE -ne 0) { throw "chown /challenges failed" }
+
+# Embed the steghide payload if this cover is still the plain JPEG, then
+# prove each short challenge actually solves. Clean up so the image does
+# not ship a cracked pot file or an extracted flag.
+$checkPath = Join-Path $WorkDir "check.sh"
+$check = @'
+set -euo pipefail
+rm -rf /tmp/relay-check
+mkdir -p /tmp/relay-check
+if ! steghide extract -sf /challenges/steghide/cover.jpg -p rockme -xf /tmp/relay-check/steg.txt >/tmp/relay-check/steghide-extract.log 2>&1; then
+  printf '%s\n' 'TR{hidden_in_the_jpeg}' > /tmp/relay-check/payload.txt
+  steghide embed -cf /challenges/steghide/cover.jpg -ef /tmp/relay-check/payload.txt -p rockme -f </dev/null
+  steghide extract -sf /challenges/steghide/cover.jpg -p rockme -xf /tmp/relay-check/steg.txt </dev/null
+fi
+grep -qx 'TR{hidden_in_the_jpeg}' /tmp/relay-check/steg.txt
+python3 - <<'PY'
+import base64, codecs, pathlib
+photo = pathlib.Path("/challenges/photo_note/photo.jpg").read_bytes()
+start = photo.find(b"\xff\xfe")
+length = int.from_bytes(photo[start + 2:start + 4], "big")
+comment = photo[start + 4:start + 2 + length]
+assert base64.b64decode(comment) == b"TR{comment_section}", comment
+secret = pathlib.Path("/challenges/unwrap/secret.txt").read_text().strip()
+layer = bytes.fromhex(base64.b64decode(secret).decode())
+assert codecs.decode(layer.decode(), "rot13") == "TR{three_layers}"
+PY
+unzip -P anthem -o /challenges/anthem/anthem.mp3 -d /tmp/relay-check/anthem >/tmp/relay-check/unzip.log
+grep -qx 'TR{not_an_mp3}' /tmp/relay-check/anthem/flag.txt
+cp /challenges/wordlist/hash.txt /challenges/wordlist/wordlist.txt /tmp/relay-check/
+john --pot=/tmp/relay-check/john.pot --format=raw-md5 --wordlist=/tmp/relay-check/wordlist.txt /tmp/relay-check/hash.txt
+john --pot=/tmp/relay-check/john.pot --show --format=raw-md5 /tmp/relay-check/hash.txt | grep -q lantern
+python3 /challenges/crackme/crackme.py rockme | grep -qx correct
+rm -rf /tmp/relay-check /root/.john /home/player/.john
+find /challenges \( -name '*.pot' -o -name '*.rec' -o -name 'john.log' -o -name '*.john' \) -delete
+chown -R player:player /challenges
+'@
+$checkUnix = ($check -replace "`r`n", "`n") -replace "`r", "`n"
+[System.IO.File]::WriteAllText($checkPath, $checkUnix, $utf8)
+Copy-Item -Force $checkPath (Join-Path $wslTmp "check.sh")
+Write-Host "Checking that each short challenge solves ..."
+wsl.exe -d $WorkDistro -u root -- bash /tmp/check.sh
+if ($LASTEXITCODE -ne 0) { throw "challenge check failed inside $WorkDistro" }
+Copy-Item -Force "\\wsl$\$WorkDistro\challenges\steghide\cover.jpg" (Join-Path $RepoRoot "challenges\steghide\public\cover.jpg")
 
 Write-Host "Exporting configured disk to $Gold ..."
 wsl.exe --shutdown
@@ -147,13 +252,16 @@ $buildVhdx = Get-ChildItem -Path $WorkDir -Filter "ext4.vhdx" -Recurse -ErrorAct
     Select-Object -First 1
 if (-not $buildVhdx) { throw "build ext4.vhdx not found under $WorkDir" }
 
+# Copy aside first so a failed copy cannot delete the only golden image.
+$goldNew = "$Gold.new"
+Copy-Item -Force $buildVhdx.FullName $goldNew
 if (Test-Path $Gold) {
     # WSL cannot mount a ReadOnly VHDX (E_ACCESSDENIED). Keep gold writable on disk;
     # never wsl --import / --import-in-place this file itself.
     attrib -R $Gold 2>$null
     Remove-Item -Force $Gold
 }
-Copy-Item -Force $buildVhdx.FullName $Gold
+Move-Item -Force $goldNew $Gold
 attrib -R $Gold 2>$null
 
 Write-Host "Unregistering build distro (keeps $Gold) ..."
@@ -162,6 +270,6 @@ Remove-Item -Recurse -Force $WorkDir -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "Done. Kali golden parent: $Gold"
-Write-Host "IMPORTANT: Do not mark this VHDX ReadOnly — WSL will refuse to attach clones."
+Write-Host "IMPORTANT: Do not mark this VHDX ReadOnly - WSL will refuse to attach clones."
 Write-Host "Never register the gold file with wsl. Only team children get import-in-place."
 Write-Host "Team clones: New-VHD -ParentPath images\relay-gold.vhdx -Differencing ..."

@@ -335,7 +335,10 @@ class TeamShell:
             self._copied.add(challenge_id)
         if self._cwd_challenge != challenge_id:
             # Visible in the terminal so teammates see the folder switch.
-            self.write_keys(f"cd /challenges/{challenge_id} && pwd\r")
+            # Force it: a baton lock would otherwise swallow the cd and
+            # leave the shell in the previous challenge.
+            folder = challenge_id.replace("'", "")
+            self.write_keys(f"cd '/challenges/{folder}' && pwd\r", force=True)
             self._cwd_challenge = challenge_id
 
     def send_line(self, line: str) -> None:
@@ -343,9 +346,9 @@ class TeamShell:
         text = (line or "").rstrip("\r\n")
         self.write_keys(text + "\r")
 
-    def write_keys(self, data: str) -> None:
+    def write_keys(self, data: str, *, force: bool = False) -> None:
         """Send raw keystrokes to the PTY (blocked while baton is out)."""
-        if self.locked or not data:
+        if (self.locked and not force) or not data:
             return
         pty = self._pty
         if pty is None or not pty.isalive():

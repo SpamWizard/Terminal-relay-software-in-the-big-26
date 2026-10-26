@@ -45,4 +45,6 @@ challenges/hello_shell/
 
 The desk UI is a narrow **file-name rail**, a dominant **real TTY terminal** (nano/vim/less work), an optional **page**, and a flag box. Baton lock stops keyboard input; the shell stays up. Talk across the handoff.
 
+Opening a desk challenge runs `cd /challenges/<question id>` in that shell. The question `id` matches the challenge folder name. A fresh golden image already has each `public/` tree at that path, and the tools those challenges use (steghide, exiftool, john, zip, xxd, binutils).
+
 Do not put the accepted `TR{...}` string in `public/` unless the puzzle is meant to be a straight `cat`.

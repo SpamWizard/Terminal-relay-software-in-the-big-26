@@ -1,0 +1,10 @@
+{
+  "id": "crackme",
+  "type": "desk",
+  "title": "Crackme",
+  "set_id": "crackme",
+  "prompt": "Read crackme.py. The flag is TR{the password that passes the check}. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{rockme}"],
+  "panes": ["files", "terminal"]
+}

@@ -1,0 +1,2 @@
+Tool: steghide
+Passphrase: rockme

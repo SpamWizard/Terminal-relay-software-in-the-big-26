@@ -65,6 +65,69 @@ def test_locked_shell_drops_keys():
     shell._pty.write.assert_called_with("echo hi\r")
 
 
+def test_short_desk_challenges_solve_clean():
+    """Each short challenge accepts its flag, and public/ does not contain it."""
+    import base64
+    import codecs
+    import hashlib
+    import zipfile
+
+    expected = {
+        "steghide": "TR{hidden_in_the_jpeg}",
+        "photo_note": "TR{comment_section}",
+        "anthem": "TR{not_an_mp3}",
+        "unwrap": "TR{three_layers}",
+        "wordlist": "TR{lantern}",
+        "crackme": "TR{rockme}",
+    }
+    for folder, flag in expected.items():
+        qset = load_challenge_dir(ROOT / "challenges" / folder)
+        q = qset.questions[0]
+        assert isinstance(q, Desk)
+        assert q.id == folder
+        assert qset.set_id == folder
+        assert q.score(flag, SCORING).correct
+        assert not q.score("TR{nope}", SCORING).correct
+        pub = Path(q.public_dir)
+        for path in pub.rglob("*"):
+            if path.is_file() and flag.encode() in path.read_bytes():
+                raise AssertionError(f"{path} contains the flag")
+
+    photo = (ROOT / "challenges" / "photo_note" / "public" / "photo.jpg").read_bytes()
+    start = photo.find(b"\xff\xfe")
+    assert start == 2
+    length = int.from_bytes(photo[start + 2 : start + 4], "big")
+    comment = photo[start + 4 : start + 2 + length]
+    assert base64.b64decode(comment) == b"TR{comment_section}"
+
+    secret = (ROOT / "challenges" / "unwrap" / "public" / "secret.txt").read_text(encoding="utf-8").strip()
+    layer = base64.b64decode(secret)
+    layer = bytes.fromhex(layer.decode("ascii"))
+    assert codecs.decode(layer.decode("ascii"), "rot13") == "TR{three_layers}"
+
+    word = "lantern"
+    digest = hashlib.md5(word.encode()).hexdigest()
+    assert (ROOT / "challenges" / "wordlist" / "public" / "hash.txt").read_text(encoding="utf-8").strip() == digest
+    words = (ROOT / "challenges" / "wordlist" / "public" / "wordlist.txt").read_text(encoding="utf-8").split()
+    assert word in words
+
+    with zipfile.ZipFile(ROOT / "challenges" / "anthem" / "public" / "anthem.mp3") as zf:
+        assert zf.read("flag.txt", pwd=b"anthem") == b"TR{not_an_mp3}\n"
+
+    source = (ROOT / "challenges" / "crackme" / "public" / "crackme.py").read_text(encoding="utf-8")
+    assert 'pw[::-1] == "emkcor"' in source
+
+
+def test_cd_is_forced_while_locked():
+    shell = TeamShell(distro="relay-test", repo_root=ROOT)
+    shell._pty = MagicMock()
+    shell._pty.isalive.return_value = True
+    shell.locked = True
+    shell._copied.add("steghide")
+    shell.ensure_challenge("steghide", ROOT / "challenges" / "steghide" / "public")
+    shell._pty.write.assert_called_with("cd '/challenges/steghide' && pwd\r")
+
+
 def test_load_config_files():
     from baton_relay.config import load_config
     from baton_relay.questions.loader import load_all_question_files

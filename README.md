@@ -32,7 +32,7 @@ With the fake baton, click the game window, then press control `1`–`6` to put 
 
 ## Content
 
-- **Desk challenges** under `challenges/` — real Linux shell per team (linked clone of `images/relay-gold.vhdx`).
+- **Desk challenges** under `challenges/` — real Linux shell per team (linked clone of `images/relay-gold.vhdx`). The shell `cd`s to `/challenges/<id>` for the challenge you open. Short ones: Steghide, Photo Note, Anthem, Unwrap, Wordlist, Crackme.
 - **Fake Logos** — picture multiple-choice in `questions/06_fake_logos.json`.
 
 Default game length is 25 minutes. Baton freeze keeps the terminal transcript; teammates talk across the handoff.

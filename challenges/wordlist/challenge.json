@@ -1,0 +1,10 @@
+{
+  "id": "wordlist",
+  "type": "desk",
+  "title": "Wordlist",
+  "set_id": "wordlist",
+  "prompt": "hash.txt is one MD5. Crack it with john --format=raw-md5 --wordlist=wordlist.txt. The flag is TR{the password}. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{lantern}"],
+  "panes": ["files", "terminal"]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "photo_note",
+  "type": "desk",
+  "title": "Photo Note",
+  "set_id": "photo_note",
+  "prompt": "photo.jpg has a note in the file itself. strings or exiftool will show it. The note is base64 — decode it and submit the flag. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{comment_section}"],
+  "panes": ["files", "terminal"]
+}

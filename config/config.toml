@@ -42,6 +42,12 @@ redo_multiplier = 0.5
 [questions]
 files = [
     "challenges/hello_shell",
+    "challenges/steghide",
+    "challenges/photo_note",
+    "challenges/anthem",
+    "challenges/unwrap",
+    "challenges/wordlist",
+    "challenges/crackme",
     "questions/06_fake_logos.json",
 ]
 redo_missed_at_set_end = false
