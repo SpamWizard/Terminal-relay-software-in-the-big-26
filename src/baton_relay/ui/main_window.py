@@ -813,12 +813,17 @@ class GameScreen(QWidget):
         else:
             self.right_stack.setCurrentWidget(self.question_host)
             locked = snap.state != RelayState.ACTIVE
+            if snap.bypass_baton and snap.progress.phase != "board":
+                locked = False
             self.question_host.set_locked(locked)
             if question_changed:
                 self.question_host.show_question(question)
 
         person_label = _player_label(expected)
-        if snap.state == RelayState.CHOOSING_CATEGORY:
+        if snap.bypass_baton:
+            self._prev_switch_key = None
+            self.switch_overlay.clear()
+        elif snap.state == RelayState.CHOOSING_CATEGORY:
             self._prev_switch_key = None
             self.switch_overlay.clear()
         elif snap.state == RelayState.WAITING_FOR_BATON:
@@ -883,6 +888,7 @@ class MainWindow(QMainWindow):
         sets: list[QuestionSet],
         *,
         fake_device: bool = True,
+        quick: bool = False,
     ) -> None:
         super().__init__()
         self.config = config
@@ -957,6 +963,8 @@ class MainWindow(QMainWindow):
         self.game_screen.wrong_burst.finished.connect(self._after_verdict_burst)
         self.startup.reset()
         QTimer.singleShot(0, self._update_star_holes)
+        if quick:
+            self._quick_start()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -1007,7 +1015,11 @@ class MainWindow(QMainWindow):
             self.showNormal()
             return
 
-        if self._fake and self.stack.currentWidget() is self.game_screen:
+        if (
+            self._fake
+            and self.stack.currentWidget() is self.game_screen
+            and not (self.session and self.session.bypass_baton)
+        ):
             locked = not self.session or self.session.questions_locked()
             ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
             text = event.text()
@@ -1191,6 +1203,11 @@ class MainWindow(QMainWindow):
         self.session.set_device_status(self._device_label)
         self._last_qid = None
 
+    def _quick_start(self) -> None:
+        """Skip the name screen and open category selection with a player seated."""
+        names = [person.label for person in self.config.people]
+        self._begin_new_game("Quick", names, bypass_baton=True)
+
     def _show_game(self) -> None:
         self._save_checkpoint()
         self.stack.setCurrentWidget(self.game_screen)
@@ -1248,7 +1265,13 @@ class MainWindow(QMainWindow):
         )
         self._show_game()
 
-    def _begin_new_game(self, team_name: str, player_names: list) -> None:
+    def _begin_new_game(
+        self,
+        team_name: str,
+        player_names: list,
+        *,
+        bypass_baton: bool = False,
+    ) -> None:
         self.run_dir = new_run_dir(self.config.paths.results_dir, team_name)
         self.event_log = EventLog(self.run_dir / "events.jsonl")
         self.game_screen.clear_activity()
@@ -1259,6 +1282,7 @@ class MainWindow(QMainWindow):
                 team_name=team_name,
                 player_names=list(player_names),
                 on_event=self._on_session_event,
+                bypass_baton=bypass_baton,
             )
         )
         assert self.session is not None

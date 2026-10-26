@@ -57,6 +57,47 @@ def _with_warmup(config, warmup_count: int = 9999, **q_kwargs):
     return config.with_updates(questions=q)
 
 
+def test_quick_bypass_opens_category_selection(config):
+    cfg = _with_warmup(config, 0, questions_per_pick=1)
+    session = GameSession(
+        cfg,
+        tiny_sets(3, 2),
+        team_name="Quick",
+        player_names=["A", "B", "C"],
+        bypass_baton=True,
+    )
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert session.current_person_index == session.expected_person_index
+    assert session.board_categories()
+
+    session.on_baton_reading(None, source="fake")
+    assert session.state == RelayState.CHOOSING_CATEGORY
+
+    sid = session.progress.board_slots[0]
+    assert session.select_category(sid) is True
+    assert session.state == RelayState.ACTIVE
+    assert session.questions_locked() is False
+
+    session.on_baton_reading(None, source="fake")
+    assert session.state == RelayState.ACTIVE
+
+    session.leg_remaining = 0.01
+    session.tick(1)
+    assert session.state == RelayState.ACTIVE
+    assert session.current_person_index == session.expected_person_index
+
+    session.on_device_disconnected()
+    assert session.state == RelayState.ACTIVE
+
+    session.submit_answer(1)
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert session.current_person_index is not None
+    nxt = session.progress.board_slots[0]
+    assert session.select_category(nxt) is True
+    assert session.state == RelayState.ACTIVE
+    assert session.questions_locked() is False
+
+
 def test_load_config(config):
     assert config.team_size == len(config.people)
     assert config.team_size >= 2

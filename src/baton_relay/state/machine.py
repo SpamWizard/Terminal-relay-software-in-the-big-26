@@ -70,6 +70,7 @@ class GameSnapshot:
     device_status: str
     roster: tuple[PlayerSlot, ...]
     last_resume_bonus: float
+    bypass_baton: bool = False
 
 
 Listener = Callable[[GameSnapshot], None]
@@ -86,6 +87,7 @@ class GameSession:
         team_name: str = "",
         player_names: list[str] | None = None,
         on_event: Callable[[str, dict[str, Any]], None] | None = None,
+        bypass_baton: bool = False,
     ) -> None:
         if not sets:
             raise ValueError("at least one question set is required")
@@ -93,6 +95,7 @@ class GameSession:
         self.sets = sets
         self._sets_by_id = {s.set_id: s for s in sets}
         self.team_name = team_name
+        self.bypass_baton = bypass_baton
         self._on_event = on_event or (lambda *_: None)
 
         names = list(player_names or [])
@@ -128,6 +131,8 @@ class GameSession:
 
         if config.questions.warmup_count <= 0:
             self._enter_board(initial=True)
+        if self.bypass_baton:
+            self._ensure_testing_seat()
 
     # --- observers ---
 
@@ -158,6 +163,7 @@ class GameSession:
             device_status=self.device_status,
             roster=self.roster,
             last_resume_bonus=self.last_resume_bonus,
+            bypass_baton=self.bypass_baton,
         )
 
     def _emit(self) -> None:
@@ -242,6 +248,8 @@ class GameSession:
         return max(0, len(s.questions) - cursor)
 
     def questions_locked(self) -> bool:
+        if self.bypass_baton and self.progress.phase != "board":
+            return False
         return self.state != RelayState.ACTIVE
 
     # --- board ---
@@ -286,6 +294,8 @@ class GameSession:
             titles=titles,
             initial=initial,
         )
+        if self.bypass_baton:
+            self._ensure_testing_seat()
         if not initial:
             self._emit()
 
@@ -317,6 +327,8 @@ class GameSession:
             questions=pick_n,
         )
 
+        if self.bypass_baton:
+            self.current_person_index = self.expected_person_index
         if self.current_person_index is not None:
             self.state = RelayState.ACTIVE
             if not self.timers_started:
@@ -363,6 +375,7 @@ class GameSession:
         self.progress.phase = "board"
         self.state = RelayState.CHOOSING_CATEGORY
         self.last_message = "Choose a category."
+        self._ensure_testing_seat()
         self._event(
             "board_opened",
             categories=list(self.progress.board_slots),
@@ -372,9 +385,19 @@ class GameSession:
 
     # --- input: baton ---
 
+    def _ensure_testing_seat(self) -> None:
+        """Keep the player who is up seated, without leaving the category screen."""
+        if not self.bypass_baton or self.state == RelayState.PAUSED_SCORE:
+            return
+        self.wrong_baton = False
+        self.current_person_index = self.expected_person_index
+        if self.state in (RelayState.CHOOSING_CATEGORY, RelayState.ACTIVE):
+            return
+        self._activate(self.expected_person_index, source="quick", resume=False)
+
     def on_baton_reading(self, person_index: int | None, *, source: str = "baton") -> None:
         """person_index is seat index, or None for unknown / empty."""
-        if self.state == RelayState.PAUSED_SCORE:
+        if self.bypass_baton or self.state == RelayState.PAUSED_SCORE:
             return
 
         if self.state == RelayState.CHOOSING_CATEGORY:
@@ -465,7 +488,7 @@ class GameSession:
             return
 
     def on_device_disconnected(self) -> None:
-        if self.state in (RelayState.DISCONNECTED, RelayState.PAUSED_SCORE):
+        if self.bypass_baton or self.state in (RelayState.DISCONNECTED, RelayState.PAUSED_SCORE):
             return
         self._pre_disconnect_state = self.state
         self.state = RelayState.DISCONNECTED
@@ -572,8 +595,19 @@ class GameSession:
         self.rotation_pos = (self.rotation_pos + 1) % len(self.config.rotation)
         self.current_person_index = None
         self.leg_remaining = float(self.config.timers.leg_seconds)
-        # Stay on board if choosing; otherwise wait for next baton
-        if self.progress.phase == "board":
+        # Stay on board if choosing; otherwise wait for next baton.
+        # Quick testing keeps whoever is up seated, so a handoff never asks for a baton.
+        if self.bypass_baton:
+            self.current_person_index = self.expected_person_index
+            self.wrong_baton = False
+            if self.progress.phase == "board":
+                self.state = RelayState.CHOOSING_CATEGORY
+                self.last_message = "Choose a category."
+            else:
+                self.state = RelayState.ACTIVE
+                who = self.player_display(self.expected_person_index)
+                self.last_message = f"{who} active. Team {self.team_name}."
+        elif self.progress.phase == "board":
             self.state = RelayState.CHOOSING_CATEGORY
             self.last_message = (
                 f"SWITCH — {self.player_display(self.expected_person_index)} "

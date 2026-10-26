@@ -1,4 +1,4 @@
-"""CLI entrypoints: `relay run`, `relay probe`, `relay reset`."""
+"""CLI entrypoints: `relay run`, `relay quick`, `relay probe`, `relay reset`."""
 
 from __future__ import annotations
 
@@ -20,7 +20,18 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     return run_app(
         config_path=Path(args.config),
-        fake_device=args.fake_device,
+        fake_device=args.fake_device or args.quick,
+        quick=args.quick,
+    )
+
+
+def cmd_quick(args: argparse.Namespace) -> int:
+    from baton_relay.app import run_app
+
+    return run_app(
+        config_path=Path(args.config),
+        fake_device=True,
+        quick=True,
     )
 
 
@@ -55,7 +66,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Simulate batons with keyboard (1-6 insert, P pull out, U unknown). "
         "Default is RP2040 USB serial from [serial] in config.",
     )
+    run_p.add_argument(
+        "--quick",
+        action="store_true",
+        help="Skip the name screen and open category selection with a player already in. "
+        "Same as `relay quick`. Implies --fake-device.",
+    )
     run_p.set_defaults(func=cmd_run)
+
+    quick_p = sub.add_parser(
+        "quick",
+        help="Skip names and open category selection (player already seated)",
+    )
+    quick_p.set_defaults(func=cmd_quick)
 
     probe_p = sub.add_parser(
         "probe",
@@ -80,7 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
-    if not raw or raw[0] not in ("run", "probe", "reset"):
+    if not raw or raw[0] not in ("run", "probe", "reset", "quick"):
         raw = ["run", *raw]
     args = parser.parse_args(raw)
     return args.func(args)

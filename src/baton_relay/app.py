@@ -9,7 +9,7 @@ from baton_relay.config import ConfigError, load_config
 from baton_relay.questions.loader import QuestionLoadError, load_all_question_files
 
 
-def run_app(*, config_path: Path, fake_device: bool = False) -> int:
+def run_app(*, config_path: Path, fake_device: bool = False, quick: bool = False) -> int:
     try:
         config = load_config(config_path)
     except ConfigError as exc:
@@ -26,6 +26,12 @@ def run_app(*, config_path: Path, fake_device: bool = False) -> int:
 
     from baton_relay.ui.main_window import MainWindow
 
+    if quick:
+        fake_device = True
+        names = ", ".join(person.label for person in config.people)
+        print(f"Quick start: team Quick, players {names}.")
+        print("Category selection is up. No baton, ever.")
+
     app = QApplication(sys.argv)
     app.setApplicationName("Terminal Relay")
     if fake_device:
@@ -34,6 +40,6 @@ def run_app(*, config_path: Path, fake_device: bool = False) -> int:
         port = config.serial.port
         print(f"Baton input: RP2040 serial (port={port!r}, baud={config.serial.baud})")
         print("Use --fake-device if no board is connected.")
-    window = MainWindow(config, sets, fake_device=fake_device)
+    window = MainWindow(config, sets, fake_device=fake_device, quick=quick)
     window.showFullScreen()
     return app.exec()
