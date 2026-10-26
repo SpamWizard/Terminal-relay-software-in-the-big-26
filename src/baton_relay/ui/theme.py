@@ -453,6 +453,48 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         font-size: 20px;
         font-weight: 600;
     }}
+    QFrame#wrongToast {{
+        background-color: {rgba(mix(bg, "#ff6b6b", 0.22), 0.95)};
+        border: 2px solid #ff6b6b;
+        border-radius: 8px;
+        min-width: 320px;
+    }}
+    QLabel#wrongTitle {{
+        color: #ff6b6b;
+        background: transparent;
+        font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+        font-size: 56px;
+        font-weight: 800;
+        letter-spacing: 8px;
+    }}
+    QLabel#wrongSub {{
+        color: {fg};
+        background: transparent;
+        font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+        font-size: 20px;
+        font-weight: 600;
+    }}
+    QFrame#partialToast {{
+        background-color: {rgba(mix(bg, "#ff9f1a", 0.22), 0.95)};
+        border: 2px solid #ff9f1a;
+        border-radius: 8px;
+        min-width: 320px;
+    }}
+    QLabel#partialTitle {{
+        color: #ff9f1a;
+        background: transparent;
+        font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+        font-size: 56px;
+        font-weight: 800;
+        letter-spacing: 8px;
+    }}
+    QLabel#partialSub {{
+        color: {fg};
+        background: transparent;
+        font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+        font-size: 20px;
+        font-weight: 600;
+    }}
     QFrame#overrideToast {{
         background-color: rgba(40, 18, 8, 0.96);
         border: 3px solid #ff9f1a;

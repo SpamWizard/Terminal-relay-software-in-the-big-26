@@ -1,4 +1,4 @@
-"""Centered toasts: correct-answer burst and organizer override flash."""
+"""Centered toasts: answer bursts and organizer override flash."""
 
 from __future__ import annotations
 
@@ -138,6 +138,56 @@ class CorrectBurst(_ToastBase):
     ) -> None:
         self._play_anim(
             "CORRECT",
+            points_text,
+            fade_in_ms=fade_in_ms,
+            hold_ms=hold_ms,
+            fade_out_ms=fade_out_ms,
+        )
+
+
+class WrongBurst(_ToastBase):
+    """Same fade as a correct answer, in red — or amber when the answer was only partial."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(
+            parent,
+            card_name="wrongToast",
+            title_name="wrongTitle",
+            sub_name="wrongSub",
+            default_title="WRONG",
+        )
+
+    def play(
+        self,
+        points_text: str = "",
+        *,
+        partial: bool = False,
+        fade_in_ms: int = 160,
+        hold_ms: int = 480,
+        fade_out_ms: int = 200,
+    ) -> None:
+        if partial:
+            card, title_name, sub_name, title = (
+                "partialToast",
+                "partialTitle",
+                "partialSub",
+                "PARTIAL",
+            )
+        else:
+            card, title_name, sub_name, title = (
+                "wrongToast",
+                "wrongTitle",
+                "wrongSub",
+                "WRONG",
+            )
+        self.card.setObjectName(card)
+        self.label.setObjectName(title_name)
+        self.sub.setObjectName(sub_name)
+        for widget in (self.card, self.label, self.sub):
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
+        self._play_anim(
+            title,
             points_text,
             fade_in_ms=fade_in_ms,
             hold_ms=hold_ms,
