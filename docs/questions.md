@@ -64,7 +64,7 @@ All files are validated at startup; the app refuses to start on errors. Missing 
 `[questions].files` may list a directory instead of a JSON file. Layout:
 
 ```
-challenges/find_the_line/
+challenges/bash_crumbs/
   challenge.json
   public/          # only folder players can see in the desk
   private/         # staff only — never mounted into the desk

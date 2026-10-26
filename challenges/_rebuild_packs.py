@@ -16,68 +16,6 @@ def write(path: Path, text: str) -> None:
 
 
 def main() -> None:
-    # find_the_line
-    ssid = "SaintconGuest"
-    flag = f"TR{{{hashlib.sha256(ssid.encode()).hexdigest()[:8]}}}"
-    d = ROOT / "find_the_line"
-    write(
-        d / "challenge.json",
-        f"""{{
-  "id": "find_the_line",
-  "set_id": "find_the_line",
-  "title": "Find The Line",
-  "type": "desk",
-  "prompt": "Ops left a briefing and a wifi scan dump. The flag is TR{{X}} where X is the first 8 hex chars of sha256(SSID). Find the conference SSID, then hash it.",
-  "points": 150,
-  "accepted": ["{flag}"],
-  "panes": ["files", "terminal"]
-}}
-""",
-    )
-    notes = d / "public" / "notes.txt"
-    if notes.exists():
-        notes.unlink()
-    write(
-        d / "public" / "briefing.txt",
-        """INTERNAL — do not post to Discord
-
-Badge printers authenticate against the guest SSID.
-Token format for the desk check-in app:
-
-  TR{ first 8 hex chars of sha256(SSID) }
-
-SSID is somewhere in the scan dump. Ignore BSSIDs.
-""",
-    )
-    write(
-        d / "public" / "scan.txt",
-        """# iwlist fake dump
-Cell 01 - Address: AA-AA-AA-AA-AA-01
-          ESSID:"FreeAirportWiFi"
-          Quality=20/70
-Cell 02 - Address: AA-AA-AA-AA-AA-02
-          ESSID:"xfinitywifi"
-          Quality=18/70
-Cell 03 - Address: AA-AA-AA-AA-AA-03
-          ESSID:"AndroidAP_8821"
-          Quality=12/70
-Cell 04 - Address: AA-AA-AA-AA-AA-04
-          ESSID:"SaintconGuest"
-          Quality=55/70
-Cell 05 - Address: AA-AA-AA-AA-AA-05
-          ESSID:"SaintconStaff-DoNotUse"
-          Quality=40/70
-Cell 06 - Address: AA-AA-AA-AA-AA-06
-          ESSID:"HP-Print-42"
-          Quality=10/70
-# decoy token that is NOT the flag
-# TR{decoy_not_this}
-""",
-    )
-    write(d / "private" / "flag.txt", flag + "\n")
-    write(d / "private" / "solution.md", f"SSID {ssid} → {flag}\n")
-    print("find_the_line", flag)
-
     # bash_crumbs
     pwd_word = "flipper"
     md5 = hashlib.md5(pwd_word.encode(), usedforsecurity=False).hexdigest()

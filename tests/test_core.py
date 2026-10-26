@@ -128,7 +128,7 @@ def test_number_expr():
 def test_load_questions(sets):
     assert len(sets) >= 2
     ids = {s.set_id for s in sets}
-    assert "find_the_line" in ids
+    assert "bash_crumbs" in ids
     assert "fake_logos" in ids
     types = {q.type for s in sets for q in s.questions}
     assert "desk" in types
