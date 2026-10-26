@@ -1,9 +1,0 @@
-[connection]
-id=floor-staff
-type=wifi
-
-[wifi]
-ssid=SaintconStaff-DoNotUse
-
-[wifi-security]
-# token=TR{staff_do_not_use}

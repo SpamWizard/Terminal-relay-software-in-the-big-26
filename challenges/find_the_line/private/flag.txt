@@ -1,1 +1,0 @@
-TR{guest_line_ok}

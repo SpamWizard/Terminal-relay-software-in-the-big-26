@@ -11,7 +11,6 @@ from baton_relay.desk.sandbox import SandboxError, resolve_in_public
 from baton_relay.desk.terminal import run_desk_command
 from baton_relay.questions.loader import QuestionLoadError, load_all_question_files, load_challenge_dir
 from baton_relay.questions.registry import ensure_builtin_types_loaded
-from baton_relay.questions.types import Desk
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,34 +50,6 @@ def test_terminal_python_script(tmp_path: Path):
     result = run_desk_command(pub, "python hi.py")
     assert result.exit_code == 0
     assert "ok" in result.output
-
-
-def test_load_find_the_line_challenge():
-    qset = load_challenge_dir(ROOT / "challenges" / "find_the_line")
-    assert qset.set_id == "find_the_line"
-    assert len(qset.questions) == 1
-    q = qset.questions[0]
-    assert isinstance(q, Desk)
-    assert q.score("TR{guest_line_ok}", SCORING).correct
-    assert not q.score("TR{decoy_not_this}", SCORING).correct
-    pub = Path(q.public_dir)
-    assert not (pub / "scan.txt").exists()
-    assert not (pub / "portal.txt").exists()
-    assert not (pub / "flag.txt").exists()
-    assert not (pub / "tmp" / "iwlist.out").exists()
-    assert (pub / "bin" / "iwlist.py").is_file()
-    scan = run_desk_command(pub, "iwlist wlan0 scanning")
-    assert scan.exit_code == 0
-    assert "SaintconGuest" in scan.output
-    assert "SaintconStaff-DoNotUse" in scan.output
-    found = run_desk_command(pub, "grep -r SaintconGuest .")
-    assert "guest.nmconnection" in found.output
-    profile = run_desk_command(
-        pub, "cat etc/NetworkManager/system-connections/guest.nmconnection"
-    )
-    assert "TR{guest_line_ok}" in profile.output
-    # SSID must not sit in a pre-dropped dump or plaintext in bin/iwlist.py
-    assert "SaintconGuest" not in (pub / "bin" / "iwlist.py").read_text(encoding="utf-8")
 
 
 def test_terminal_hash_and_b64(tmp_path: Path):
@@ -153,14 +124,14 @@ def test_wrong_flag_allows_retry(config):
         cfg, sets, team_name="Retry", player_names=["A", "B", "C"]
     )
     assert session.state == RelayState.CHOOSING_CATEGORY
-    sid = next(s for s in session.progress.board_slots if s == "find_the_line")
+    sid = next(s for s in session.progress.board_slots if s == "bash_crumbs")
     session.select_category(sid)
     session.on_baton_reading(0, source="fake")
     bad = session.submit_answer("TR{nope}")
     assert bad is not None and not bad.correct
     assert session.progress.phase == "in_pick"
     assert session.current_question() is not None
-    assert session.current_question().id == "find_the_line"
-    good = session.submit_answer("TR{guest_line_ok}")
+    assert session.current_question().id == "bash_crumbs"
+    good = session.submit_answer("TR{crumbs_service}")
     assert good is not None and good.correct
     assert session.state == RelayState.CHOOSING_CATEGORY

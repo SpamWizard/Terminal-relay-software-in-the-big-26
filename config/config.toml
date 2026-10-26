@@ -41,7 +41,6 @@ redo_multiplier = 0.5
 
 [questions]
 files = [
-    "challenges/find_the_line",
     "challenges/bash_crumbs",
     "challenges/page_source",
     "challenges/stego_tail",
