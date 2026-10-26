@@ -48,6 +48,6 @@ With the fake baton, click the game window, press `1`–`6` to insert a baton, a
 
 `[questions].files` in `config/config.toml` lists the board. Each entry is one category: a JSON file or a challenge folder.
 
-Desk categories: Steghide, Photo Note, Anthem, Unwrap, Wordlist, Hashcat, Regex, Crackme, Telenet. Picture category: Fake Logos (`questions/fake_logos.json`).
+Desk categories: Steghide, Photo Note, Anthem, Unwrap, Wordlist, Hashcat, Regex, Crackme, Telenet, XOR Pair, One Byte, Repeat Key. Picture category: Fake Logos (`questions/fake_logos.json`).
 
 Default game length is 25 minutes. Pulling the baton pauses the leg timer and leaves the terminal transcript in place.
