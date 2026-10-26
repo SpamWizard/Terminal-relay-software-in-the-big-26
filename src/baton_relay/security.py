@@ -1,7 +1,7 @@
-"""Organizer password helpers (reserved — CONFIG lock not wired yet).
+"""Organizer password helpers.
 
-Dev hashes use the `argon2$dev$` prefix. Swap for real Argon2id before any
-event that needs a real password gate.
+Dev hashes use the `argon2$dev$` prefix. They are a stand-in, not Argon2id.
+The config screen stores `password_hash` and does not ask for it.
 """
 
 from __future__ import annotations

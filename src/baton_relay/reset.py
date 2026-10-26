@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from baton_relay.config import ConfigError, load_config
+from baton_relay.desk.shell import unregister_relay_distros
 
 
 def _archive_file(path: Path, archive_dir: Path, prefix: str) -> Path | None:
@@ -15,7 +16,6 @@ def _archive_file(path: Path, archive_dir: Path, prefix: str) -> Path | None:
     archive_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     dest = archive_dir / f"{prefix}_{stamp}_{path.name}"
-    # Avoid collisions if reset is called twice in the same second
     n = 1
     while dest.exists():
         dest = archive_dir / f"{prefix}_{stamp}_{n}_{path.name}"
@@ -50,7 +50,6 @@ def reset_machine(config_path: Path) -> int:
                 ckpt = run_dir / "checkpoint.json"
                 finished = (run_dir / "summary.json").is_file()
                 if finished and ckpt.is_file():
-                    # Stale checkpoint after a finished run
                     archived = _archive_file(ckpt, archive_dir, "stale")
                     if archived is not None:
                         print(f"Archived stale checkpoint → {archived}")
@@ -64,6 +63,17 @@ def reset_machine(config_path: Path) -> int:
     if moved == 0:
         print("No checkpoints to archive.")
 
-    print("Container cleanup: skipped (not implemented yet).")
+    # Unregister relay-* team distros (deletes child vhdx). Never touch relay-gold.vhdx.
+    removed = unregister_relay_distros()
+    if removed:
+        print("Unregistered WSL team distros: " + ", ".join(removed))
+    else:
+        print("No relay-* WSL distros to unregister.")
+
+    wsl_data = config.paths.results_dir.parent / "data" / "wsl"
+    if wsl_data.is_dir():
+        shutil.rmtree(wsl_data, ignore_errors=True)
+        print(f"Removed {wsl_data}")
+
     print("Reset complete. Ready for next team.")
     return 0

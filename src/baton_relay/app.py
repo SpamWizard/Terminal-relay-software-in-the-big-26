@@ -6,7 +6,9 @@ import sys
 from pathlib import Path
 
 from baton_relay.config import ConfigError, load_config
+from baton_relay.desk.shell import ShellError, require_desk_runtime
 from baton_relay.questions.loader import QuestionLoadError, load_all_question_files
+from baton_relay.questions.types import Desk
 
 
 def run_app(*, config_path: Path, fake_device: bool = False, quick: bool = False) -> int:
@@ -21,6 +23,15 @@ def run_app(*, config_path: Path, fake_device: bool = False, quick: bool = False
     except QuestionLoadError as exc:
         print(f"ERROR: bad question file: {exc}", file=sys.stderr)
         return 1
+
+    needs_desk = any(isinstance(q, Desk) for s in sets for q in s.questions)
+    if needs_desk:
+        repo_root = config.paths.results_dir.parent
+        try:
+            require_desk_runtime(repo_root)
+        except ShellError as exc:
+            print(f"ERROR: desk challenges need a working WSL setup:\n{exc}", file=sys.stderr)
+            return 1
 
     from PySide6.QtWidgets import QApplication
 

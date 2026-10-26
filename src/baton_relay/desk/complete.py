@@ -1,4 +1,4 @@
-"""Tab completion for the desk terminal line."""
+"""Tab completion for file names under the challenge public folder (Windows-side rail)."""
 
 from __future__ import annotations
 
@@ -6,27 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from baton_relay.desk.sandbox import list_public_files, public_root
-
-COMMANDS = (
-    "help",
-    "pwd",
-    "ls",
-    "dir",
-    "cat",
-    "type",
-    "head",
-    "grep",
-    "findstr",
-    "b64",
-    "base64",
-    "sha256",
-    "sha256sum",
-    "md5",
-    "md5sum",
-    "python",
-    "python3",
-    "py",
-)
 
 
 @dataclass(frozen=True)
@@ -48,9 +27,8 @@ def _common_prefix(items: list[str]) -> str:
 
 
 def complete_line(public_dir: Path | str, line: str) -> CompleteResult:
-    """Complete the last token of a command line (commands or public files)."""
+    """Complete the last path token from public/ file names."""
     text = line
-    # Token is everything after the last whitespace (keep leading command intact).
     if text.endswith(" ") or text == "":
         prefix = ""
         head = text
@@ -61,36 +39,25 @@ def complete_line(public_dir: Path | str, line: str) -> CompleteResult:
         else:
             head, prefix = parts[0] + " ", parts[1]
 
-    # First word → commands (+ challenge bin/<name>.py tools); later words → files.
-    first_word = not head.strip()
-    if first_word:
-        folded = prefix.casefold()
-        candidates = [c for c in COMMANDS if c.casefold().startswith(folded)]
-        try:
-            bin_dir = public_root(Path(public_dir)) / "bin"
-            if bin_dir.is_dir():
-                for script in sorted(bin_dir.glob("*.py")):
-                    name = script.stem
-                    if name.casefold().startswith(folded) and name not in candidates:
-                        candidates.append(name)
-        except Exception:
-            pass
-    else:
-        try:
-            root = public_root(Path(public_dir))
-            names = list_public_files(root)
-        except Exception:
-            names = []
-        folded = prefix.casefold()
-        candidates = [n for n in names if n.casefold().startswith(folded)]
+    try:
+        root = public_root(Path(public_dir))
+        names = list_public_files(root)
+        bin_dir = root / "bin"
+        if bin_dir.is_dir():
+            for script in sorted(bin_dir.glob("*.py")):
+                stem = script.stem
+                if stem not in names:
+                    names.append(stem)
+    except Exception:
+        names = []
 
-    if not candidates:
-        return CompleteResult(text=text, matches=())
-
-    if len(candidates) == 1:
-        return CompleteResult(text=head + candidates[0] + (" " if first_word else ""), matches=tuple(candidates))
-
-    shared = _common_prefix(candidates)
+    folded = prefix.casefold()
+    matches = [n for n in names if n.casefold().startswith(folded)]
+    if not matches:
+        return CompleteResult(text)
+    if len(matches) == 1:
+        return CompleteResult(head + matches[0])
+    shared = _common_prefix(matches)
     if shared and len(shared) > len(prefix):
-        return CompleteResult(text=head + shared, matches=tuple(candidates))
-    return CompleteResult(text=text, matches=tuple(candidates))
+        return CompleteResult(head + shared, tuple(matches))
+    return CompleteResult(text, tuple(matches))

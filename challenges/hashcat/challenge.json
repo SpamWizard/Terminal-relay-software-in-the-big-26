@@ -1,0 +1,10 @@
+{
+  "id": "hashcat",
+  "type": "desk",
+  "title": "Hashcat",
+  "set_id": "hashcat",
+  "prompt": "hash.txt is one MD5. Crack it with hashcat and wordlist.txt. The wordlist is only a few words, so it finishes right away. The flag is TR{the password}. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{spark}"],
+  "panes": ["files", "terminal"]
+}

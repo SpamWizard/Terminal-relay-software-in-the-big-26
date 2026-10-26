@@ -1,4 +1,0 @@
-A  station=alpha   note=TR{not_a}
-B  station=bravo   note=noise
-R  station=relay   note=TR{map_room_r}
-S  station=south   note=TR{wrong_letter}

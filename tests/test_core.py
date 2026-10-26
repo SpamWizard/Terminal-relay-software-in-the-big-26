@@ -12,7 +12,7 @@ from baton_relay.input.decode import decode_pins
 from baton_relay.input.base import ReadingKind
 from baton_relay.questions.loader import QuestionLoadError, load_all_question_files
 from baton_relay.questions.registry import ensure_builtin_types_loaded
-from baton_relay.questions.types import MultipleChoice, SelectAll, ShortAnswer
+from baton_relay.questions.types import Desk, MultipleChoice
 from baton_relay.state.machine import GameSession, RelayState
 from tests.conftest import tiny_sets
 
@@ -23,21 +23,10 @@ CONFIG = ROOT / "config" / "config.toml"
 
 def _correct_answer(q):
     """Right answer payload for whatever type is on the board."""
-    if q.type in {"desk", "flag", "short_answer", "fill_blank"}:
+    if q.type == "desk":
         return q.accepted[0]
     if q.type == "multiple_choice":
         return q.answer
-    if q.type == "select_all":
-        return list(q.answer)
-    if q.type == "put_in_order":
-        return list(q.answer)
-    if q.type == "match_up":
-        return dict(q.answer)
-    if q.type == "numeric":
-        return q.answer
-    if q.type == "hands_on":
-        success = q.success or {}
-        return (success.get("accepted") or ["x"])[0]
     raise AssertionError(f"no solver for {q.type}")
 
 
@@ -98,6 +87,32 @@ def test_quick_bypass_opens_category_selection(config):
     assert session.questions_locked() is False
 
 
+def test_quick_skip_and_board_cycle(config):
+    cfg = _with_warmup(config, 0, questions_per_pick=1, board_slots=1)
+    sets = tiny_sets(3, 2)
+    session = GameSession(cfg, sets, team_name="Quick", bypass_baton=True)
+    shown = session.progress.board_slots[0]
+    waiting = list(session.progress.pool)
+    assert waiting
+    assert session.cycle_board() is True
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert session.progress.board_slots[0] == waiting[0]
+    assert shown in session.progress.pool
+
+    sid = session.progress.board_slots[0]
+    assert session.select_category(sid) is True
+    skipped = session.current_question().id
+    session.skip_question(organizer=False)
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert session.current_question() is None
+    assert skipped in session.progress.missed_ids
+
+    locked = GameSession(cfg, sets, team_name="Live")
+    before = list(locked.progress.board_slots)
+    assert locked.cycle_board() is False
+    assert locked.progress.board_slots == before
+
+
 def test_load_config(config):
     assert config.team_size == len(config.people)
     assert config.team_size >= 2
@@ -128,7 +143,7 @@ def test_number_expr():
 def test_load_questions(sets):
     assert len(sets) >= 2
     ids = {s.set_id for s in sets}
-    assert "bash_crumbs" in ids
+    assert "steghide" in ids
     assert "fake_logos" in ids
     types = {q.type for s in sets for q in s.questions}
     assert "desk" in types
@@ -209,33 +224,19 @@ def test_scoring_mc():
     assert q.score(0, scoring).points == 0
 
 
-def test_scoring_select_all_partial():
-    q = SelectAll(
-        id="a",
-        type="select_all",
+def test_scoring_desk_flag():
+    q = Desk(
+        id="d",
+        type="desk",
         prompt="p",
-        points=10,
-        partial_credit=True,
-        choices=["a", "b", "c"],
-        answer=[0, 1],
+        points=50,
+        accepted=["TR{ok}"],
+        public_dir="/tmp",
+        panes=["files", "terminal"],
     )
     scoring = ScoringConfig(True, 0, 0.5)
-    partial = q.score([0], scoring)
-    assert partial.partial
-    assert partial.points == 5.0
-
-
-def test_short_answer_casefold():
-    q = ShortAnswer(
-        id="a",
-        type="short_answer",
-        prompt="p",
-        points=5,
-        accepted=["Hello"],
-        case_sensitive=False,
-    )
-    scoring = ScoringConfig(True, 0, 0.5)
-    assert q.score("  hello ", scoring).correct
+    assert q.score("TR{ok}", scoring).correct
+    assert not q.score("nope", scoring).correct
 
 
 def test_state_machine_baton_flow(config, sets):
@@ -359,6 +360,92 @@ def test_board_timers_frozen(config, sets):
     assert session.game_remaining == game_before
     assert session.leg_remaining == leg_before
     assert notes == []
+
+
+def test_board_button_is_visible_only_inside_a_category(qtbot, config):
+    from PySide6.QtCore import Qt
+
+    from baton_relay.ui.main_window import GameScreen
+
+    cfg = _with_warmup(config, 0, questions_per_pick=2, board_slots=3)
+    session = GameSession(
+        cfg,
+        tiny_sets(3, 2),
+        team_name="Quick",
+        player_names=["A", "B", "C"],
+        bypass_baton=True,
+    )
+    screen = GameScreen(cfg)
+    qtbot.addWidget(screen)
+    screen.show()
+    hits: list[str] = []
+    screen.bind_return_to_board(lambda: hits.append("back"))
+
+    def paint() -> None:
+        snap = session.snapshot()
+        screen.render(
+            snap,
+            True,
+            session.current_question(),
+            board_categories=session.board_categories(),
+        )
+
+    paint()
+    assert not screen.board_btn.isVisible()
+    sid = session.progress.board_slots[0]
+    assert session.select_category(sid)
+    paint()
+    assert screen.board_btn.isVisible()
+    qtbot.mouseClick(screen.board_btn, Qt.MouseButton.LeftButton)
+    assert hits == ["back"]
+
+
+def test_return_to_board_restores_the_category(config):
+    cfg = _with_warmup(config, 0, questions_per_pick=2, board_slots=3)
+    session = GameSession(
+        cfg,
+        tiny_sets(3, 2),
+        team_name="Quick",
+        player_names=["A", "B", "C"],
+        bypass_baton=True,
+    )
+    sid = session.progress.board_slots[0]
+    assert session.select_category(sid)
+    q = session.current_question()
+    assert q is not None
+    session.submit_answer(_correct_answer(q))
+    assert session.progress.phase == "in_pick"
+    score = session.progress.total_score
+    assert score > 0
+
+    assert session.return_to_board() is True
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert session.progress.phase == "board"
+    assert sid in session.progress.board_slots
+    assert session.progress.total_score == score
+    assert session.return_to_board() is False
+
+    assert session.select_category(sid)
+    nxt = session.current_question()
+    assert nxt is not None
+    assert nxt.id != q.id
+
+
+def test_return_to_board_while_waiting_for_baton(config):
+    cfg = _with_warmup(config, 0, questions_per_pick=1, board_slots=2)
+    session = GameSession(
+        cfg, tiny_sets(2, 1), team_name="Test", player_names=["Ada", "Ben", "Cy", "Dee"]
+    )
+    sid = session.progress.board_slots[0]
+    assert session.select_category(sid)
+    assert session.state == RelayState.WAITING_FOR_BATON
+    qid = session.current_question().id
+    assert session.return_to_board() is True
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert sid in session.progress.board_slots
+    session.on_baton_reading(0, source="fake")
+    assert session.select_category(sid)
+    assert session.current_question().id == qid
 
 
 def test_select_category_and_refill(config, sets):

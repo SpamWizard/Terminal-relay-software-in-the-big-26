@@ -1,0 +1,10 @@
+{
+  "id": "anthem",
+  "type": "desk",
+  "title": "Anthem",
+  "set_id": "anthem",
+  "prompt": "anthem.mp3 will not play. Find out what the file actually is. The password is anthem. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{not_an_mp3}"],
+  "panes": ["files", "terminal"]
+}

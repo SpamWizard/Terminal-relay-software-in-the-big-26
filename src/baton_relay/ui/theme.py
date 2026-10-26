@@ -159,6 +159,21 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         background-color: transparent;
         padding: 0 6px;
     }}
+    QPushButton#boardBack {{
+        background-color: transparent;
+        color: {fg};
+        border: 1px solid {mix(fg, bg, 0.45)};
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        padding: 4px 12px;
+        max-height: 30px;
+    }}
+    QPushButton#boardBack:hover {{
+        border-color: {ac};
+        color: {ac};
+    }}
     QLabel#statusStateWarn {{
         color: #ff6b6b;
         font-size: 12px;

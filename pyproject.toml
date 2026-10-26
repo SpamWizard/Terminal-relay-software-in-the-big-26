@@ -13,6 +13,8 @@ dependencies = [
     "PySide6>=6.6",
     "pyserial>=3.5",
     "pygame>=2.5",
+    "pywinpty>=2.0",
+    "pyte>=0.8",
 ]
 
 [project.optional-dependencies]
@@ -20,10 +22,6 @@ dev = [
     "pytest>=8.0",
     "pytest-qt>=4.4",
 ]
-containers = [
-    "docker>=7.0",
-]
-
 [project.scripts]
 relay = "baton_relay.cli:main"
 
@@ -31,7 +29,7 @@ relay = "baton_relay.cli:main"
 packages = ["src/baton_relay"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/baton_relay", "config", "questions", "challenges", "docs", "firmware", "tests", "README.md"]
+include = ["src/baton_relay", "config", "questions", "challenges", "docs", "firmware", "scripts", "staff", "tests", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

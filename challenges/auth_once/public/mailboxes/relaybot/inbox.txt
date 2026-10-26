@@ -1,4 +1,0 @@
-Subject: door badge handoff
-
-Use this at the desk:
-TR{once_is_enough}

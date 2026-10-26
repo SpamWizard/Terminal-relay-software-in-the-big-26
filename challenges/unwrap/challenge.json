@@ -1,0 +1,10 @@
+{
+  "id": "unwrap",
+  "type": "desk",
+  "title": "Unwrap",
+  "set_id": "unwrap",
+  "prompt": "Unwrap secret.txt. Three layers, each one obvious from how it looks. Hint: when you shift letters, include lowercase. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{three_layers}"],
+  "panes": ["files", "terminal"]
+}

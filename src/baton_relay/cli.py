@@ -70,13 +70,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--quick",
         action="store_true",
         help="Skip the name screen and open category selection with a player already in. "
-        "Same as `relay quick`. Implies --fake-device.",
+        "Skip (F6) jumps to another category. Same as `relay quick`. Implies --fake-device.",
     )
     run_p.set_defaults(func=cmd_run)
 
     quick_p = sub.add_parser(
         "quick",
-        help="Skip names and open category selection (player already seated)",
+        help="Skip names and open the board. Skip (F6) jumps to another category",
     )
     quick_p.set_defaults(func=cmd_quick)
 

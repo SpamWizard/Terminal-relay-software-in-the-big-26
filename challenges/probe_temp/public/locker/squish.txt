@@ -1,2 +1,0 @@
-hit distance 0
-TR{warm_enough}

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Callable
 
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QKeyEvent, QTextOption
+from PySide6.QtGui import QKeyEvent, QKeySequence, QShortcut, QTextOption
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from baton_relay.audio import play_switch_chime
 from baton_relay.config import AppConfig, load_config
+from baton_relay.desk.shell import ShellError, TeamShell, open_team_shell
 from baton_relay.duration import format_duration
 from baton_relay.input.base import BatonReading, ReadingKind
 from baton_relay.input.fake import FakeBatonSource
@@ -29,6 +30,7 @@ from baton_relay.input.serial_source import SerialBatonSource
 from baton_relay.input.xbox import XboxController
 from baton_relay.questions.base import QuestionSet
 from baton_relay.questions.loader import load_all_question_files
+from baton_relay.questions.types import Desk
 from baton_relay.results.checkpoint import (
     checkpoint_path_for,
     load_checkpoint,
@@ -517,6 +519,11 @@ class SwitchOverlay(QFrame):
         self.roster_label.setWordWrap(True)
         box_l.addWidget(self.roster_label)
 
+        self.board_btn = QPushButton("Board")
+        self.board_btn.setObjectName("boardBack")
+        self.board_btn.hide()
+        box_l.addWidget(self.board_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
         outer.addWidget(self.box, alignment=Qt.AlignmentFlag.AlignCenter)
         outer.addStretch(1)
         self.hide()
@@ -582,6 +589,8 @@ class GameScreen(QWidget):
         self.setObjectName("gameScreen")
         self._person_accent = config.theme.accent
         self._prev_switch_key: tuple[str, int] | None = None
+        self._on_board_back: Callable[[], None] | None = None
+        self._on_skip: Callable[[], None] | None = None
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 10, 16, 12)
         root.setSpacing(8)
@@ -609,6 +618,20 @@ class GameScreen(QWidget):
         self.state_label = QLabel("WAITING")
         self.state_label.setObjectName("statusState")
         strip.addWidget(self.state_label)
+
+        self.board_btn = QPushButton("Board")
+        self.board_btn.setObjectName("boardBack")
+        self.board_btn.setToolTip("Leave this category and pick another")
+        self.board_btn.clicked.connect(self._request_board)
+        self.board_btn.hide()
+        strip.addWidget(self.board_btn)
+
+        self.skip_btn = QPushButton("Skip")
+        self.skip_btn.setObjectName("boardBack")
+        self.skip_btn.setToolTip("Skip this and pick another (F6)")
+        self.skip_btn.clicked.connect(self._request_skip)
+        self.skip_btn.hide()
+        strip.addWidget(self.skip_btn)
 
         strip.addStretch(1)
 
@@ -669,6 +692,7 @@ class GameScreen(QWidget):
         root.addWidget(self.stage, 1)
 
         self.switch_overlay = SwitchOverlay(config.theme, self)
+        self.switch_overlay.board_btn.clicked.connect(self._request_board)
         self.correct_burst = CorrectBurst(self)
         self.wrong_burst = WrongBurst(self)
 
@@ -706,6 +730,20 @@ class GameScreen(QWidget):
 
     def bind_category_choose(self, handler: Callable[[str], None]) -> None:
         self.category_board.set_choose_handler(handler)
+
+    def bind_return_to_board(self, handler: Callable[[], None]) -> None:
+        self._on_board_back = handler
+
+    def bind_skip(self, handler: Callable[[], None]) -> None:
+        self._on_skip = handler
+
+    def _request_board(self) -> None:
+        if self._on_board_back is not None:
+            self._on_board_back()
+
+    def _request_skip(self) -> None:
+        if self._on_skip is not None:
+            self._on_skip()
 
     def play_correct(self, points_text: str = "") -> None:
         ui = self.config.ui
@@ -786,6 +824,20 @@ class GameScreen(QWidget):
             self.state_label.setObjectName("statusState")
         self.state_label.style().unpolish(self.state_label)
         self.state_label.style().polish(self.state_label)
+        show_board = snap.progress.phase == "in_pick" and not snap.progress.finished
+        self.board_btn.setVisible(show_board)
+        self.switch_overlay.board_btn.setVisible(show_board)
+        show_skip = False
+        if snap.bypass_baton and not snap.progress.finished:
+            if snap.progress.phase == "board":
+                show_skip = bool(snap.progress.pool)
+                self.skip_btn.setText("More")
+                self.skip_btn.setToolTip("Show categories that are waiting (F6)")
+            elif snap.state != RelayState.PAUSED_SCORE:
+                show_skip = True
+                self.skip_btn.setText("Skip")
+                self.skip_btn.setToolTip("Skip this and pick another (F6). Board leaves it so you can come back.")
+        self.skip_btn.setVisible(show_skip)
 
         msg = (snap.last_message or "").strip()
         # Don't duplicate the challenge prompt / routine "try again" under the desk.
@@ -900,6 +952,9 @@ class MainWindow(QMainWindow):
         self._last_qid: str | None = None
         self._fake: FakeBatonSource | None = None
         self._serial: SerialBatonSource | None = None
+        self._team_shell: TeamShell | None = None
+        # results/ lives at the repo root.
+        self._repo_root = config.paths.results_dir.parent
 
         self.setWindowTitle("Terminal Relay")
         self.resize(1280, 800)
@@ -915,6 +970,12 @@ class MainWindow(QMainWindow):
         self.game_screen = GameScreen(config)
         self.game_screen.bind_submit(self._on_submit)
         self.game_screen.bind_category_choose(self._on_category_choose)
+        self.game_screen.bind_return_to_board(self._on_return_to_board)
+        self.game_screen.bind_skip(self._quick_skip)
+        self._skip_shortcut = QShortcut(QKeySequence(Qt.Key.Key_F6), self)
+        self._skip_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._skip_shortcut.activated.connect(self._quick_skip)
+        self._skip_shortcut.setEnabled(quick)
         self.score_screen = ScoreScreen()
         self.score_screen.next_team.connect(self._next_team)
 
@@ -980,7 +1041,34 @@ class MainWindow(QMainWindow):
         if self._fake is not None:
             self._fake.stop()
         self._xbox.stop()
+        self._close_team_shell()
         super().closeEvent(event)
+
+    def _sets_need_desk(self) -> bool:
+        return any(isinstance(q, Desk) for s in self.sets for q in s.questions)
+
+    def _close_team_shell(self) -> None:
+        if self._team_shell is not None:
+            self._team_shell.close()
+            self._team_shell = None
+        self.game_screen.question_host.set_team_shell(None)
+
+    def _open_team_shell(self, team_name: str) -> None:
+        self._close_team_shell()
+        if not self._sets_need_desk():
+            return
+        try:
+            self._team_shell = open_team_shell(self._repo_root, team_name)
+        except ShellError as exc:
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.critical(
+                self,
+                "Team shell",
+                f"Could not open the WSL team shell:\n\n{exc}",
+            )
+            raise
+        self.game_screen.question_host.set_team_shell(self._team_shell)
 
     def _flash_override(self, title: str, sub: str = "") -> None:
         self._override_flash.setGeometry(self.rect())
@@ -1250,6 +1338,12 @@ class MainWindow(QMainWindow):
         )
         assert self.session is not None
         assert self.event_log is not None
+        try:
+            self._open_team_shell(self.session.team_name)
+        except ShellError:
+            self._close_team_shell()
+            self.startup.name_edit.setFocus()
+            return
 
         self.event_log.emit(
             "run_resumed",
@@ -1272,6 +1366,11 @@ class MainWindow(QMainWindow):
         *,
         bypass_baton: bool = False,
     ) -> None:
+        try:
+            self._open_team_shell(team_name)
+        except ShellError:
+            self._close_team_shell()
+            return
         self.run_dir = new_run_dir(self.config.paths.results_dir, team_name)
         self.event_log = EventLog(self.run_dir / "events.jsonl")
         self.game_screen.clear_activity()
@@ -1396,6 +1495,30 @@ class MainWindow(QMainWindow):
             self._render(force_question=True)
             self._save_checkpoint()
 
+    def _on_return_to_board(self) -> None:
+        if not self.session:
+            return
+        if self.session.return_to_board():
+            self._render(force_question=True)
+            self._save_checkpoint()
+
+    def _quick_skip(self) -> None:
+        """Quick testing only: skip the open question, or page the board."""
+        if not self.session or not self.session.bypass_baton:
+            return
+        if self.stack.currentWidget() is not self.game_screen:
+            return
+        if self.session.progress.phase == "board":
+            if self.session.cycle_board():
+                self._render(force_question=True)
+                self._save_checkpoint()
+            return
+        if self.session.current_question() is None:
+            return
+        self.session.skip_question(organizer=False)
+        self._render(force_question=True)
+        self._save_checkpoint()
+
     def _on_submit(self, answer) -> None:
         if not self.session:
             return
@@ -1446,6 +1569,8 @@ class MainWindow(QMainWindow):
         self._update_star_holes()
 
     def _next_team(self) -> None:
+        self._close_team_shell()
+        self.game_screen.question_host.clear_desk_sessions()
         self.session = None
         self.event_log = None
         self.run_dir = None

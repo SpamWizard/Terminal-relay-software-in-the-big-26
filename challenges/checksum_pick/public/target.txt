@@ -1,1 +1,0 @@
-crc32 hex (unsigned) must equal: 426b7e2c

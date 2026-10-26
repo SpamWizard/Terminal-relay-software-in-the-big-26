@@ -1,4 +1,4 @@
-"""Load and validate question JSON files and HC challenge folders at startup."""
+"""Load and validate question JSON files and challenge folders at startup."""
 
 from __future__ import annotations
 

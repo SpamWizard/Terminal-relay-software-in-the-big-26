@@ -1,12 +1,12 @@
 # Question format reference
 
-Question sets are JSON files listed in `[questions].files`. **Each file is one Jeopardy-style board category** — the `title` is what players click on the board (e.g. `Potatoes.json` → title `"Potatoes"`).
+Question sets are JSON files or challenge folders listed in `[questions].files`. **Each entry is one Jeopardy-style board category** — the `title` is what players click on the board.
 
 ```json
 {
-  "set_id": "potatoes",
-  "title": "Potatoes",
-  "questions": [ { "id": "p1", "type": "multiple_choice", "prompt": "...", "points": 10, ... } ]
+  "set_id": "fake_logos",
+  "title": "Fake Logos",
+  "questions": [ { "id": "g1", "type": "multiple_choice", "prompt": "...", "images": [...], "points": 10, ... } ]
 }
 ```
 
@@ -25,53 +25,28 @@ After a pick, that slot is refilled from unused categories. Timers freeze on the
 
 | type | Key fields |
 |------|------------|
-| `multiple_choice` | `choices[]`, `answer` (index) |
-| `select_all` | `choices[]`, `answer` (index array) |
-| `put_in_order` | `items[]`, `answer` (index order) |
-| `match_up` | `left[]`, `right[]`, `answer` `{ "0": 1, ... }` |
-| `short_answer` | `accepted[]`, `case_sensitive`, `strip_whitespace` |
-| `numeric` | `answer`, `tolerance` |
-| `fill_blank` | same as short_answer |
-| `flag` | `accepted[]` (usually case-sensitive) |
-| `hands_on` | `image` (container name), `ports`, `success` — containers later; flag success works now |
-| `desk` | HC-style folder challenge: `accepted[]`, `panes` (`files` / `terminal` / `page`), optional `page_file`. Loaded from a challenge directory (see below). |
+| `multiple_choice` | `choices[]`, `answer` (index); optional `images` for picture rounds (Fake Logos) |
+| `desk` | Folder challenge: `accepted[]`, `panes` (`files` / `terminal` / `page`), optional `page_file`. Loaded from a challenge directory. Terminal is a real WSL bash for the team — see [wsl-desk.md](wsl-desk.md). |
 
-Every type also accepts optional pictures. The prompt text still shows. `images` is an array of **1 to 8** picture files, tiled in one framed area (1 wide, 2 side by side, 3 across, 2×2, 3 over 2, 3×2, 4 over 3, 4×2). Shorter rows are centered. Paths are relative to the question JSON file. Formats: `png`, `jpg`, `jpeg`, `gif`, `webp`, `bmp`.
+Pictures: `images` is an array of **1 to 8** picture files. Paths are relative to the question JSON file. Formats: `png`, `jpg`, `jpeg`, `gif`, `webp`, `bmp`.
 
-A plain string is just the file. An object can add a caption under that picture:
+All files are validated at startup; the app refuses to start on errors.
 
-```json
-{
-  "id": "topo1",
-  "type": "multiple_choice",
-  "prompt": "Which picture is a star topology?",
-  "images": [
-    "images/bus.png",
-    { "src": "images/star.png", "caption": "B" }
-  ],
-  "points": 100,
-  "choices": ["A", "B"],
-  "answer": 1
-}
-```
-
-`hands_on.image` is still the container image name. Picture files belong in `images`.
-
-All files are validated at startup; the app refuses to start on errors. Missing pictures, more than 8, or an empty list fail the load.
-
-## Challenge folders (HC-style)
-
-`[questions].files` may list a directory instead of a JSON file. Layout:
+## Challenge folders
 
 ```
-challenges/bash_crumbs/
+challenges/steghide/
   challenge.json
-  public/          # only folder players can see in the desk
-  private/         # staff only — never mounted into the desk
+  public/          # copied into the team's WSL disk on first open
+  private/         # staff only — never copied into the distro
 ```
 
-`challenge.json` can be a normal set (`set_id`, `title`, `questions`) or a compact one-question form (`id`, `type`, `prompt`, `points`, …). Desk challenges must be exactly one question. The loader sets `public_dir` automatically.
+Staff solutions for every board category are in [staff/writeups.md](../staff/writeups.md). That file is not a question file, and nothing in it is copied into a team shell.
 
-The desk UI is a narrow **file-name rail** (no free preview), a dominant **terminal**, an optional rendered **page**, and a flag box. Clicking a file name pastes it into the terminal — players must `cat` / decode / script to work. Baton freeze keeps scrollback; there is no notes box — talk across the handoff.
+`challenge.json` can be a normal set or a compact one-question form. Desk challenges must be exactly one question. The loader sets `public_dir` automatically.
 
-Do not put the accepted `TR{...}` string in `public/` plaintext. Decoys are fine.
+The desk UI is a narrow **file-name rail**, a dominant **real TTY terminal** (nano/vim/less work), an optional **page**, and a flag box. Baton lock stops keyboard input; the shell stays up. Players can talk through the handoff.
+
+Opening a desk challenge runs `cd /challenges/<question id>` in that shell. The question `id` matches the challenge folder name. A fresh golden image already has each `public/` tree at that path, and the tools those challenges use (steghide, exiftool, john, hashcat, zip, xxd, binutils).
+
+Do not put the accepted `TR{...}` string in `public/` unless the puzzle is meant to be a straight `cat`.

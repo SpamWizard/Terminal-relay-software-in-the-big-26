@@ -1,6 +1,0 @@
-# svc accounts — grep the cracked password
-oreo     role=snack   token=TR{snack_decoy}
-potato   role=legacy  token=TR{potato_nope}
-baton    role=relay   token=TR{baton_nope}
-flipper  role=svc     token=TR{crumbs_service}
-mint     role=unused  token=TR{mint_noise}
