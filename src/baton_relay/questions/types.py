@@ -62,7 +62,7 @@ class MultipleChoice(Question):
 @register("desk")
 @dataclass
 class Desk(Question):
-    """HC-style challenge: work inside a WSL copy of public_dir, submit a flag."""
+    """Desk challenge: work in a WSL copy of public_dir and submit a flag."""
 
     accepted: list[str] | None = None
     case_sensitive: bool = True

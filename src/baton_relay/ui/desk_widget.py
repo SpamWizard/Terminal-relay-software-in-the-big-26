@@ -1,4 +1,4 @@
-"""HC-style challenge desk: file rail, real PTY terminal, optional page, flag bar."""
+"""Desk challenge: file rail, real PTY terminal, optional page, flag bar."""
 
 from __future__ import annotations
 

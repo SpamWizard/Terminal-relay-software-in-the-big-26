@@ -1,4 +1,4 @@
-# Build images/relay-gold.vhdx from Kali Linux - read-only parent for team linked clones.
+# Build images/relay-gold.vhdx from Kali Linux. Golden parent for team linked clones.
 # Prerequisites: WSL2, Kali WSL installed once, New-VHD (Hyper-V PowerShell tools).
 # Run from an elevated PowerShell if feature enables are still pending.
 #

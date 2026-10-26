@@ -29,7 +29,7 @@ relay = "baton_relay.cli:main"
 packages = ["src/baton_relay"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/baton_relay", "config", "questions", "challenges", "docs", "firmware", "tests", "README.md"]
+include = ["src/baton_relay", "config", "questions", "challenges", "docs", "firmware", "scripts", "staff", "tests", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -9,9 +9,7 @@ results/<team_slug>/<UTC_timestamp>/
   summary.json      # written at end
 ```
 
-Team names must be unique. Re-entering a name that already has results shows a
-**WOAH** dialog — unfinished runs with a checkpoint can **Resume**; finished
-(or non-resumable) names must be changed (no automatic `#1` / `#2` suffixes).
+Team names must be unique. Re-entering a name that already has results opens a dialog. An unfinished run with a checkpoint can be resumed. A finished name has to be changed. The app does not add `#1` / `#2` suffixes.
 
 ## events.jsonl
 

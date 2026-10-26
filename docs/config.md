@@ -2,9 +2,7 @@
 
 Config file: TOML at `config/config.toml` (override with `--config`).
 
-Prefer the in-app **CONFIG** screen on launch — edits save to `config.toml` and apply without a text editor.
-
-For short local debug timers, use `config/config.local.toml` (gitignored) if you add a loader override later, or edit `leg_seconds` temporarily in-app.
+Prefer the in-app **CONFIG** screen on launch. Edits save to `config.toml` and apply without a text editor. Short debug timers are set there, or by editing `leg_seconds` in the file. `config/config.local.toml` is gitignored; the app does not load it.
 
 ## Sections
 
@@ -16,9 +14,9 @@ For short local debug timers, use `config/config.local.toml` (gitignored) if you
 | `[scoring]` | partial_credit, wrong_answer_penalty, redo_multiplier |
 | `[questions]` | files (each file = board category), warmup_count, board_slots, questions_per_pick, redo_missed_at_set_end |
 | `[controller]` | Xbox: enabled, device_name, inactivity_lock_seconds, unlock_hold_ms, unlock_buttons, `[controller.bindings]` |
-| `[organizer]` | password_hash — reserved (CONFIG lock not wired yet) |
+| `[organizer]` | `password_hash`, stored only; the app does not prompt for it |
 | `[questions].files` | JSON sets and/or challenge folders (`challenges/...`) |
-| `[timers].leg_runs_while_frozen` | `false` pauses the leg during baton handoff (HC-style default) |
+| `[timers].leg_runs_while_frozen` | `false` pauses the leg during a baton handoff |
 | `[paths]` | results_dir, checkpoint_path (mirror of the active run checkpoint) |
 | `[theme]` | `name` selects a preset (default `deep_space`); optional accent/background/foreground overrides |
 | `[themes.<name>]` | Named color presets (deep_space, neon_terminal, amber_grid, violet_pulse, ice, crimson, …) |
@@ -28,4 +26,4 @@ Person `color` values tint the whole game UI (background wash, borders, accents)
 
 Timer values may be plain numbers (`180`) or arithmetic strings (`"3*60"`, `"45*60"`).
 
-Team name and player names are **not** in config — entered on the launch screen. Player numbers are assigned in entry order (`#1`, `#2`, …). Reusing a team name pops a WOAH dialog (resume unfinished, or change the name — no auto `#1`/`#2` suffixes).
+Team name and player names are entered on the launch screen, not in this file. Player numbers follow entry order (`#1`, `#2`, …). Reusing a team name opens a dialog: an unfinished run can be resumed, and a finished name has to be changed. The app does not add `#1` / `#2` suffixes.
