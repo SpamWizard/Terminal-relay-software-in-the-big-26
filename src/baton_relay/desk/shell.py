@@ -360,9 +360,9 @@ class TeamShell:
         pty = self._pty
         if pty is None:
             return
-        # Coalesce tiny ConPTY reads before crossing to the GUI thread.
-        pending = ""
-        last_emit = 0.0
+        # Hand each read to the GUI before blocking again. pty.read() waits
+        # for the next byte, so holding a chunk here hides command output
+        # until the next key — usually Ctrl+C. The widget already coalesces paints.
         while True:
             try:
                 if not pty.isalive():
@@ -373,30 +373,15 @@ class TeamShell:
             except Exception:
                 break
             if not chunk:
-                if pending and self.on_output is not None:
-                    try:
-                        self.on_output(pending)
-                    except Exception:
-                        pass
-                    pending = ""
                 time.sleep(0.01)
                 continue
             text = chunk if isinstance(chunk, str) else chunk.decode("utf-8", errors="replace")
             self._append_transcript(text)
-            pending += text
-            now = time.monotonic()
-            # Flush at least every ~16ms or when buffer gets large.
-            if len(pending) >= 2048 or (now - last_emit) >= 0.016:
-                if self.on_output is not None:
-                    try:
-                        self.on_output(pending)
-                    except Exception:
-                        pass
-                pending = ""
-                last_emit = now
-        if pending and self.on_output is not None:
+            callback = self.on_output
+            if callback is None:
+                continue
             try:
-                self.on_output(pending)
+                callback(text)
             except Exception:
                 pass
 

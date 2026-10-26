@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -116,6 +117,46 @@ def test_short_desk_challenges_solve_clean():
 
     source = (ROOT / "challenges" / "crackme" / "public" / "crackme.py").read_text(encoding="utf-8")
     assert 'pw[::-1] == "emkcor"' in source
+
+
+def test_command_output_is_not_held_until_next_key():
+    """A burst that arrives just after a flush must show before the next read blocks."""
+    shell = TeamShell(distro="relay-test", repo_root=ROOT)
+    saw_block = threading.Event()
+    release = threading.Event()
+    chunks = ["\x1b[1;70Hecho hi\x1b[2;9H", "hi\r\n"]
+
+    def read(_size):
+        if chunks:
+            return chunks.pop(0)
+        saw_block.set()
+        assert release.wait(timeout=2)
+        raise EOFError
+
+    shell._pty = MagicMock()
+    shell._pty.isalive.return_value = True
+    shell._pty.read.side_effect = read
+    shown: list[str] = []
+    shell.on_output = shown.append
+
+    # 1ms steps: the old reader held this burst because it was inside 16ms
+    # of the previous flush, then blocked until the next key.
+    clock = {"t": 100.0}
+
+    def monotonic():
+        clock["t"] += 0.001
+        return clock["t"]
+
+    with patch("baton_relay.desk.shell.time.monotonic", monotonic):
+        thread = threading.Thread(target=shell._read_loop, daemon=True)
+        thread.start()
+        assert saw_block.wait(timeout=2), "reader never reached the blocking read"
+        try:
+            assert shown == ["\x1b[1;70Hecho hi\x1b[2;9H", "hi\r\n"]
+        finally:
+            release.set()
+            thread.join(timeout=2)
+    assert not thread.is_alive()
 
 
 def test_cd_is_forced_while_locked():
