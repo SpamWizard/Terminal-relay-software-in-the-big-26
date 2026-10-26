@@ -100,6 +100,12 @@ def test_short_desk_challenges_solve_clean():
     length = int.from_bytes(photo[start + 2 : start + 4], "big")
     comment = photo[start + 4 : start + 2 + length]
     assert base64.b64decode(comment) == b"TR{comment_section}"
+    exif_at = photo.find(b"\xff\xe1")
+    assert exif_at > start
+    exif_len = int.from_bytes(photo[exif_at + 2 : exif_at + 4], "big")
+    exif_segment = photo[exif_at + 4 : exif_at + 2 + exif_len]
+    assert exif_segment.startswith(b"Exif\x00\x00")
+    assert comment in exif_segment
 
     secret = (ROOT / "challenges" / "unwrap" / "public" / "secret.txt").read_text(encoding="utf-8").strip()
     layer = base64.b64decode(secret)
@@ -157,6 +163,136 @@ def test_command_output_is_not_held_until_next_key():
             release.set()
             thread.join(timeout=2)
     assert not thread.is_alive()
+
+
+def test_tab_is_sent_to_the_shell(qtbot):
+    """Tab completes in bash; it must not move focus to the flag field."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QLineEdit, QVBoxLayout, QWidget
+
+    from baton_relay.ui.pty_terminal import PtyTerminalWidget
+
+    root = QWidget()
+    layout = QVBoxLayout(root)
+    other = QLineEdit()
+    term = PtyTerminalWidget()
+    layout.addWidget(term)
+    layout.addWidget(other)
+    qtbot.addWidget(root)
+
+    shell = TeamShell(distro="relay-test", repo_root=ROOT)
+    shell._pty = MagicMock()
+    shell._pty.isalive.return_value = True
+    term.bind_shell(shell)
+    root.show()
+    term.setFocus()
+    qtbot.waitUntil(term.hasFocus)
+
+    qtbot.keyClick(term, Qt.Key.Key_Tab)
+    shell._pty.write.assert_called_with("\t")
+    assert term.hasFocus()
+
+
+def test_shell_paste_strips_one_trailing_newline():
+    from baton_relay.ui.pty_terminal import shell_paste_text
+
+    assert shell_paste_text("TR{rockme}\n") == "TR{rockme}"
+    assert shell_paste_text("TR{rockme}\r\n") == "TR{rockme}"
+    assert shell_paste_text("one\ntwo") == "one\rtwo"
+
+
+def test_double_click_copies_flag_for_the_answer_box(qtbot):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtWidgets import QApplication, QLineEdit
+
+    from baton_relay.ui.pty_terminal import PtyTerminalWidget
+
+    term = PtyTerminalWidget()
+    flag = QLineEdit()
+    qtbot.addWidget(term)
+    qtbot.addWidget(flag)
+    term.resize(800, 300)
+    term.show()
+    flag.show()
+    qtbot.waitUntil(lambda: term._cell_w >= 6)
+    term._stream.feed("see TR{rockme} now\r\n")
+    line = term._screen.display[0]
+    col = line.index("T")
+    clip = QApplication.clipboard()
+    previous = clip.text()
+    try:
+        qtbot.mouseDClick(
+            term,
+            Qt.MouseButton.LeftButton,
+            pos=QPoint(col * term._cell_w + term._cell_w // 2, term._cell_h // 2),
+        )
+        assert term._selection_text() == "TR{rockme}"
+        assert clip.text() == "TR{rockme}"
+
+        flag.setFocus()
+        qtbot.waitUntil(flag.hasFocus)
+        qtbot.keyClick(flag, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier)
+        assert flag.text() == "TR{rockme}"
+    finally:
+        clip.setText(previous)
+
+
+def test_ctrl_c_copies_selection_and_otherwise_interrupts(qtbot):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    from baton_relay.ui.pty_terminal import PtyTerminalWidget
+
+    term = PtyTerminalWidget()
+    qtbot.addWidget(term)
+    term.resize(800, 300)
+    term.show()
+    shell = TeamShell(distro="relay-test", repo_root=ROOT)
+    shell._pty = MagicMock()
+    shell._pty.isalive.return_value = True
+    term.bind_shell(shell)
+    term._stream.feed("TR{rockme}\r\n")
+    term._select_word_at(0, 0)
+    term.setFocus()
+    qtbot.waitUntil(term.hasFocus)
+    clip = QApplication.clipboard()
+    previous = clip.text()
+    try:
+        qtbot.keyClick(term, Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier)
+        assert clip.text() == "TR{rockme}"
+        shell._pty.write.assert_not_called()
+
+        term._anchor = None
+        term._caret = None
+        qtbot.keyClick(term, Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier)
+        shell._pty.write.assert_called_with("\x03")
+    finally:
+        clip.setText(previous)
+
+
+def test_ctrl_v_pastes_flag_into_the_shell(qtbot):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    from baton_relay.ui.pty_terminal import PtyTerminalWidget
+
+    term = PtyTerminalWidget()
+    qtbot.addWidget(term)
+    term.show()
+    shell = TeamShell(distro="relay-test", repo_root=ROOT)
+    shell._pty = MagicMock()
+    shell._pty.isalive.return_value = True
+    term.bind_shell(shell)
+    term.setFocus()
+    qtbot.waitUntil(term.hasFocus)
+    clip = QApplication.clipboard()
+    previous = clip.text()
+    try:
+        clip.setText("TR{rockme}\n")
+        qtbot.keyClick(term, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier)
+        shell._pty.write.assert_called_with("TR{rockme}")
+    finally:
+        clip.setText(previous)
 
 
 def test_cd_is_forced_while_locked():

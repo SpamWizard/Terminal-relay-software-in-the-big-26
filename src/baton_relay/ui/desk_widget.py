@@ -87,7 +87,7 @@ class _TerminalPane(QFrame):
         label.setObjectName("deskSection")
         head.addWidget(label)
         head.addStretch(1)
-        tip = QLabel("Real Kali TTY · nano/vim/less work · click a file to paste its name")
+        tip = QLabel("Tab completes · drag or double-click a flag to copy · Ctrl+V pastes")
         tip.setObjectName("deskHint")
         head.addWidget(tip)
         layout.addLayout(head)
