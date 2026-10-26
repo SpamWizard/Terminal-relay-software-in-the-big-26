@@ -519,6 +519,11 @@ class SwitchOverlay(QFrame):
         self.roster_label.setWordWrap(True)
         box_l.addWidget(self.roster_label)
 
+        self.board_btn = QPushButton("Board")
+        self.board_btn.setObjectName("boardBack")
+        self.board_btn.hide()
+        box_l.addWidget(self.board_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
         outer.addWidget(self.box, alignment=Qt.AlignmentFlag.AlignCenter)
         outer.addStretch(1)
         self.hide()
@@ -584,6 +589,7 @@ class GameScreen(QWidget):
         self.setObjectName("gameScreen")
         self._person_accent = config.theme.accent
         self._prev_switch_key: tuple[str, int] | None = None
+        self._on_board_back: Callable[[], None] | None = None
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 10, 16, 12)
         root.setSpacing(8)
@@ -611,6 +617,13 @@ class GameScreen(QWidget):
         self.state_label = QLabel("WAITING")
         self.state_label.setObjectName("statusState")
         strip.addWidget(self.state_label)
+
+        self.board_btn = QPushButton("Board")
+        self.board_btn.setObjectName("boardBack")
+        self.board_btn.setToolTip("Leave this category and pick another")
+        self.board_btn.clicked.connect(self._request_board)
+        self.board_btn.hide()
+        strip.addWidget(self.board_btn)
 
         strip.addStretch(1)
 
@@ -671,6 +684,7 @@ class GameScreen(QWidget):
         root.addWidget(self.stage, 1)
 
         self.switch_overlay = SwitchOverlay(config.theme, self)
+        self.switch_overlay.board_btn.clicked.connect(self._request_board)
         self.correct_burst = CorrectBurst(self)
         self.wrong_burst = WrongBurst(self)
 
@@ -708,6 +722,13 @@ class GameScreen(QWidget):
 
     def bind_category_choose(self, handler: Callable[[str], None]) -> None:
         self.category_board.set_choose_handler(handler)
+
+    def bind_return_to_board(self, handler: Callable[[], None]) -> None:
+        self._on_board_back = handler
+
+    def _request_board(self) -> None:
+        if self._on_board_back is not None:
+            self._on_board_back()
 
     def play_correct(self, points_text: str = "") -> None:
         ui = self.config.ui
@@ -788,6 +809,9 @@ class GameScreen(QWidget):
             self.state_label.setObjectName("statusState")
         self.state_label.style().unpolish(self.state_label)
         self.state_label.style().polish(self.state_label)
+        show_board = snap.progress.phase == "in_pick" and not snap.progress.finished
+        self.board_btn.setVisible(show_board)
+        self.switch_overlay.board_btn.setVisible(show_board)
 
         msg = (snap.last_message or "").strip()
         # Don't duplicate the challenge prompt / routine "try again" under the desk.
@@ -920,6 +944,7 @@ class MainWindow(QMainWindow):
         self.game_screen = GameScreen(config)
         self.game_screen.bind_submit(self._on_submit)
         self.game_screen.bind_category_choose(self._on_category_choose)
+        self.game_screen.bind_return_to_board(self._on_return_to_board)
         self.score_screen = ScoreScreen()
         self.score_screen.next_team.connect(self._next_team)
 
@@ -1436,6 +1461,13 @@ class MainWindow(QMainWindow):
         if not self.session:
             return
         if self.session.select_category(set_id):
+            self._render(force_question=True)
+            self._save_checkpoint()
+
+    def _on_return_to_board(self) -> None:
+        if not self.session:
+            return
+        if self.session.return_to_board():
             self._render(force_question=True)
             self._save_checkpoint()
 

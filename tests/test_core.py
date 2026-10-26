@@ -117,7 +117,7 @@ def test_number_expr():
 def test_load_questions(sets):
     assert len(sets) >= 2
     ids = {s.set_id for s in sets}
-    assert "hello_shell" in ids
+    assert "steghide" in ids
     assert "fake_logos" in ids
     types = {q.type for s in sets for q in s.questions}
     assert "desk" in types
@@ -334,6 +334,92 @@ def test_board_timers_frozen(config, sets):
     assert session.game_remaining == game_before
     assert session.leg_remaining == leg_before
     assert notes == []
+
+
+def test_board_button_is_visible_only_inside_a_category(qtbot, config):
+    from PySide6.QtCore import Qt
+
+    from baton_relay.ui.main_window import GameScreen
+
+    cfg = _with_warmup(config, 0, questions_per_pick=2, board_slots=3)
+    session = GameSession(
+        cfg,
+        tiny_sets(3, 2),
+        team_name="Quick",
+        player_names=["A", "B", "C"],
+        bypass_baton=True,
+    )
+    screen = GameScreen(cfg)
+    qtbot.addWidget(screen)
+    screen.show()
+    hits: list[str] = []
+    screen.bind_return_to_board(lambda: hits.append("back"))
+
+    def paint() -> None:
+        snap = session.snapshot()
+        screen.render(
+            snap,
+            True,
+            session.current_question(),
+            board_categories=session.board_categories(),
+        )
+
+    paint()
+    assert not screen.board_btn.isVisible()
+    sid = session.progress.board_slots[0]
+    assert session.select_category(sid)
+    paint()
+    assert screen.board_btn.isVisible()
+    qtbot.mouseClick(screen.board_btn, Qt.MouseButton.LeftButton)
+    assert hits == ["back"]
+
+
+def test_return_to_board_restores_the_category(config):
+    cfg = _with_warmup(config, 0, questions_per_pick=2, board_slots=3)
+    session = GameSession(
+        cfg,
+        tiny_sets(3, 2),
+        team_name="Quick",
+        player_names=["A", "B", "C"],
+        bypass_baton=True,
+    )
+    sid = session.progress.board_slots[0]
+    assert session.select_category(sid)
+    q = session.current_question()
+    assert q is not None
+    session.submit_answer(_correct_answer(q))
+    assert session.progress.phase == "in_pick"
+    score = session.progress.total_score
+    assert score > 0
+
+    assert session.return_to_board() is True
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert session.progress.phase == "board"
+    assert sid in session.progress.board_slots
+    assert session.progress.total_score == score
+    assert session.return_to_board() is False
+
+    assert session.select_category(sid)
+    nxt = session.current_question()
+    assert nxt is not None
+    assert nxt.id != q.id
+
+
+def test_return_to_board_while_waiting_for_baton(config):
+    cfg = _with_warmup(config, 0, questions_per_pick=1, board_slots=2)
+    session = GameSession(
+        cfg, tiny_sets(2, 1), team_name="Test", player_names=["Ada", "Ben", "Cy", "Dee"]
+    )
+    sid = session.progress.board_slots[0]
+    assert session.select_category(sid)
+    assert session.state == RelayState.WAITING_FOR_BATON
+    qid = session.current_question().id
+    assert session.return_to_board() is True
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert sid in session.progress.board_slots
+    session.on_baton_reading(0, source="fake")
+    assert session.select_category(sid)
+    assert session.current_question().id == qid
 
 
 def test_select_category_and_refill(config, sets):

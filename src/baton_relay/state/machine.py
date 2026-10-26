@@ -343,6 +343,56 @@ class GameSession:
         self._emit()
         return True
 
+    def return_to_board(self) -> bool:
+        """Leave the open category and show the board again.
+
+        Answers already scored stay. The category comes back if it still has
+        questions, so it can be picked again.
+        """
+        if self.state == RelayState.PAUSED_SCORE or self.progress.finished:
+            return False
+        if self.progress.phase != "in_pick":
+            return False
+
+        sid = self.progress.pick_set_id
+        self.progress.in_redo = False
+        self.progress.redo_queue = []
+        self.progress.redo_index = 0
+        self.progress.pick_set_id = None
+        self.progress.pick_remaining = 0
+        self.progress.pick_missed = []
+
+        if sid and self._remaining_in_set(sid) > 0:
+            self.progress.pool = [s for s in self.progress.pool if s != sid]
+            if sid not in self.progress.board_slots:
+                self.progress.board_slots.append(sid)
+
+        self.progress.pool = [
+            s for s in self.progress.pool if self._remaining_in_set(s) > 0
+        ]
+        slots_n = min(self.config.questions.board_slots, MAX_BOARD_SLOTS)
+        while len(self.progress.board_slots) < slots_n and self.progress.pool:
+            nxt = self.progress.pool.pop(0)
+            if nxt not in self.progress.board_slots and self._remaining_in_set(nxt) > 0:
+                self.progress.board_slots.append(nxt)
+
+        if not self.progress.board_slots:
+            self._pause_score("All categories complete.")
+            return True
+
+        self.progress.phase = "board"
+        self.state = RelayState.CHOOSING_CATEGORY
+        self.last_message = "Choose a category."
+        self._ensure_testing_seat()
+        self._event(
+            "board_opened",
+            categories=list(self.progress.board_slots),
+            titles=[self._sets_by_id[s].title for s in self.progress.board_slots],
+            initial=False,
+        )
+        self._emit()
+        return True
+
     def _refill_and_return_to_board(self) -> None:
         finished_id = self.progress.pick_set_id
         # If the picked set still has questions, it goes to the back of the pool

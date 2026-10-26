@@ -36,19 +36,6 @@ def test_resolve_blocks_escape(tmp_path: Path):
         resolve_in_public(pub, "C:/Windows/notepad.exe")
 
 
-def test_load_hello_shell_challenge():
-    qset = load_challenge_dir(ROOT / "challenges" / "hello_shell")
-    assert qset.set_id == "hello_shell"
-    assert len(qset.questions) == 1
-    q = qset.questions[0]
-    assert isinstance(q, Desk)
-    assert q.score("TR{hello_wsl_desk}", SCORING).correct
-    assert not q.score("TR{nope}", SCORING).correct
-    pub = Path(q.public_dir)
-    assert (pub / "notes.txt").is_file()
-    assert "TR{hello_wsl_desk}" in (pub / "notes.txt").read_text(encoding="utf-8")
-
-
 def test_distro_name_slug():
     assert distro_name("Red Team!").startswith("relay-")
 
@@ -315,5 +302,5 @@ def test_load_config_files():
     assert "desk" in types
     assert "multiple_choice" in types
     ids = {s.set_id for s in sets}
-    assert "hello_shell" in ids
+    assert "steghide" in ids
     assert "fake_logos" in ids or any("logo" in s.title.casefold() for s in sets)

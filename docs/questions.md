@@ -35,11 +35,13 @@ All files are validated at startup; the app refuses to start on errors.
 ## Challenge folders (HC-style)
 
 ```
-challenges/hello_shell/
+challenges/steghide/
   challenge.json
   public/          # copied into the team's WSL disk on first open
   private/         # staff only — never copied into the distro
 ```
+
+Staff solutions for every board category are in [writeups/README.md](../writeups/README.md). That folder is not a question file and is never shown to players or copied into a team shell.
 
 `challenge.json` can be a normal set or a compact one-question form. Desk challenges must be exactly one question. The loader sets `public_dir` automatically.
 

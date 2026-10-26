@@ -41,7 +41,6 @@ redo_multiplier = 0.5
 
 [questions]
 files = [
-    "challenges/hello_shell",
     "challenges/steghide",
     "challenges/photo_note",
     "challenges/anthem",
