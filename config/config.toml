@@ -49,6 +49,7 @@ files = [
     "challenges/hashcat",
     "challenges/regex",
     "challenges/crackme",
+    "challenges/telenet",
     "questions/fake_logos.json",
 ]
 redo_missed_at_set_end = false

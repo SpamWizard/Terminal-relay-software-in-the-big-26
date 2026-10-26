@@ -70,6 +70,7 @@ def test_short_desk_challenges_solve_clean():
         "hashcat": "TR{spark}",
         "regex": "TR{kite4}",
         "crackme": "TR{rockme}",
+        "telenet": "TR{virtual_circuit}",
     }
     for folder, flag in expected.items():
         qset = load_challenge_dir(ROOT / "challenges" / folder)
@@ -124,6 +125,11 @@ def test_short_desk_challenges_solve_clean():
 
     source = (ROOT / "challenges" / "crackme" / "public" / "crackme.py").read_text(encoding="utf-8")
     assert 'pw[::-1] == "emkcor"' in source
+
+    telenet = (ROOT / "challenges" / "telenet" / "public" / "telenet.py").read_text(encoding="utf-8")
+    assert 'count == str(len(text))' in telenet
+    assert 'print("REJECTED")' in telenet
+    assert "usage" not in telenet
 
 
 def test_command_output_is_not_held_until_next_key():

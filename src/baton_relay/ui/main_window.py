@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Callable
 
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QKeyEvent, QTextOption
+from PySide6.QtGui import QKeyEvent, QKeySequence, QShortcut, QTextOption
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -590,6 +590,7 @@ class GameScreen(QWidget):
         self._person_accent = config.theme.accent
         self._prev_switch_key: tuple[str, int] | None = None
         self._on_board_back: Callable[[], None] | None = None
+        self._on_skip: Callable[[], None] | None = None
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 10, 16, 12)
         root.setSpacing(8)
@@ -624,6 +625,13 @@ class GameScreen(QWidget):
         self.board_btn.clicked.connect(self._request_board)
         self.board_btn.hide()
         strip.addWidget(self.board_btn)
+
+        self.skip_btn = QPushButton("Skip")
+        self.skip_btn.setObjectName("boardBack")
+        self.skip_btn.setToolTip("Skip this and pick another (F6)")
+        self.skip_btn.clicked.connect(self._request_skip)
+        self.skip_btn.hide()
+        strip.addWidget(self.skip_btn)
 
         strip.addStretch(1)
 
@@ -726,9 +734,16 @@ class GameScreen(QWidget):
     def bind_return_to_board(self, handler: Callable[[], None]) -> None:
         self._on_board_back = handler
 
+    def bind_skip(self, handler: Callable[[], None]) -> None:
+        self._on_skip = handler
+
     def _request_board(self) -> None:
         if self._on_board_back is not None:
             self._on_board_back()
+
+    def _request_skip(self) -> None:
+        if self._on_skip is not None:
+            self._on_skip()
 
     def play_correct(self, points_text: str = "") -> None:
         ui = self.config.ui
@@ -812,6 +827,17 @@ class GameScreen(QWidget):
         show_board = snap.progress.phase == "in_pick" and not snap.progress.finished
         self.board_btn.setVisible(show_board)
         self.switch_overlay.board_btn.setVisible(show_board)
+        show_skip = False
+        if snap.bypass_baton and not snap.progress.finished:
+            if snap.progress.phase == "board":
+                show_skip = bool(snap.progress.pool)
+                self.skip_btn.setText("More")
+                self.skip_btn.setToolTip("Show categories that are waiting (F6)")
+            elif snap.state != RelayState.PAUSED_SCORE:
+                show_skip = True
+                self.skip_btn.setText("Skip")
+                self.skip_btn.setToolTip("Skip this and pick another (F6). Board leaves it so you can come back.")
+        self.skip_btn.setVisible(show_skip)
 
         msg = (snap.last_message or "").strip()
         # Don't duplicate the challenge prompt / routine "try again" under the desk.
@@ -945,6 +971,11 @@ class MainWindow(QMainWindow):
         self.game_screen.bind_submit(self._on_submit)
         self.game_screen.bind_category_choose(self._on_category_choose)
         self.game_screen.bind_return_to_board(self._on_return_to_board)
+        self.game_screen.bind_skip(self._quick_skip)
+        self._skip_shortcut = QShortcut(QKeySequence(Qt.Key.Key_F6), self)
+        self._skip_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._skip_shortcut.activated.connect(self._quick_skip)
+        self._skip_shortcut.setEnabled(quick)
         self.score_screen = ScoreScreen()
         self.score_screen.next_team.connect(self._next_team)
 
@@ -1470,6 +1501,23 @@ class MainWindow(QMainWindow):
         if self.session.return_to_board():
             self._render(force_question=True)
             self._save_checkpoint()
+
+    def _quick_skip(self) -> None:
+        """Quick testing only: skip the open question, or page the board."""
+        if not self.session or not self.session.bypass_baton:
+            return
+        if self.stack.currentWidget() is not self.game_screen:
+            return
+        if self.session.progress.phase == "board":
+            if self.session.cycle_board():
+                self._render(force_question=True)
+                self._save_checkpoint()
+            return
+        if self.session.current_question() is None:
+            return
+        self.session.skip_question(organizer=False)
+        self._render(force_question=True)
+        self._save_checkpoint()
 
     def _on_submit(self, answer) -> None:
         if not self.session:

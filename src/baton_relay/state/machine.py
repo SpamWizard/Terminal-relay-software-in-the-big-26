@@ -393,6 +393,32 @@ class GameSession:
         self._emit()
         return True
 
+    def cycle_board(self) -> bool:
+        """Quick testing: bring waiting categories onto the board.
+
+        Shown categories go to the back. Nothing is marked skipped.
+        """
+        if not self.bypass_baton:
+            return False
+        if self.state != RelayState.CHOOSING_CATEGORY or self.progress.phase != "board":
+            return False
+        if not self.progress.pool:
+            return False
+
+        combined = list(self.progress.pool) + list(self.progress.board_slots)
+        slots_n = min(self.config.questions.board_slots, MAX_BOARD_SLOTS, len(combined))
+        self.progress.board_slots = combined[:slots_n]
+        self.progress.pool = combined[slots_n:]
+        self.last_message = "Choose a category."
+        self._ensure_testing_seat()
+        self._event(
+            "board_cycled",
+            categories=list(self.progress.board_slots),
+            titles=[self._sets_by_id[s].title for s in self.progress.board_slots],
+        )
+        self._emit()
+        return True
+
     def _refill_and_return_to_board(self) -> None:
         finished_id = self.progress.pick_set_id
         # If the picked set still has questions, it goes to the back of the pool

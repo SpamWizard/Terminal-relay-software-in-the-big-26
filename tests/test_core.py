@@ -87,6 +87,32 @@ def test_quick_bypass_opens_category_selection(config):
     assert session.questions_locked() is False
 
 
+def test_quick_skip_and_board_cycle(config):
+    cfg = _with_warmup(config, 0, questions_per_pick=1, board_slots=1)
+    sets = tiny_sets(3, 2)
+    session = GameSession(cfg, sets, team_name="Quick", bypass_baton=True)
+    shown = session.progress.board_slots[0]
+    waiting = list(session.progress.pool)
+    assert waiting
+    assert session.cycle_board() is True
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert session.progress.board_slots[0] == waiting[0]
+    assert shown in session.progress.pool
+
+    sid = session.progress.board_slots[0]
+    assert session.select_category(sid) is True
+    skipped = session.current_question().id
+    session.skip_question(organizer=False)
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert session.current_question() is None
+    assert skipped in session.progress.missed_ids
+
+    locked = GameSession(cfg, sets, team_name="Live")
+    before = list(locked.progress.board_slots)
+    assert locked.cycle_board() is False
+    assert locked.progress.board_slots == before
+
+
 def test_load_config(config):
     assert config.team_size == len(config.people)
     assert config.team_size >= 2

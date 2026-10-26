@@ -1,0 +1,10 @@
+{
+  "id": "telenet",
+  "type": "desk",
+  "title": "Telenet",
+  "set_id": "telenet",
+  "prompt": "Send a Telenet message: python3 telenet.py \"<message>\". Submit the flag it prints. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{virtual_circuit}"],
+  "panes": ["files", "terminal"]
+}

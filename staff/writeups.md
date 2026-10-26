@@ -104,6 +104,18 @@ It prints `correct`.
 
 Flag: `TR{rockme}`
 
+## Telenet
+
+`telenet.py` approves `TELENET <text> <count>`, where `count` is the number of characters in `text`. The words can be anything.
+
+```bash
+python3 telenet.py "TELENET hello 5"
+```
+
+That prints the flag. A bad message, including `TELENET hello 4`, prints only `REJECTED`.
+
+Flag: `TR{virtual_circuit}`
+
 ## Fake Logos
 
 Each question is five logos in a row, labeled A through E. One of them never happened. The answer index in `questions/fake_logos.json` is 0-based.
