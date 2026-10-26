@@ -583,89 +583,91 @@ class GameScreen(QWidget):
         self._person_accent = config.theme.accent
         self._prev_switch_key: tuple[str, int] | None = None
         root = QVBoxLayout(self)
-        root.setContentsMargins(28, 24, 28, 20)
-        root.setSpacing(12)
+        root.setContentsMargins(16, 10, 16, 12)
+        root.setSpacing(8)
 
-        header = QHBoxLayout()
+        # Thin status strip — relay chrome stays minimal; challenge owns the screen.
+        status = QFrame()
+        status.setObjectName("statusStrip")
+        status.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        strip = QHBoxLayout(status)
+        strip.setContentsMargins(14, 8, 14, 8)
+        strip.setSpacing(16)
+
         self.team_label = QLabel("TEAM")
-        self.team_label.setObjectName("headline")
-        header.addWidget(self.team_label, 2)
-        self.score_label = QLabel("SCORE 0")
-        self.score_label.setObjectName("headline")
-        header.addWidget(self.score_label, 1)
-        self.game_timer = QLabel("00:00")
-        self.game_timer.setObjectName("headline")
-        header.addWidget(self.game_timer, 1, Qt.AlignmentFlag.AlignRight)
-        root.addLayout(header)
+        self.team_label.setObjectName("statusTeam")
+        strip.addWidget(self.team_label, 2)
+
+        self.next_big = QLabel("#—")
+        self.next_big.setObjectName("statusPlayer")
+        strip.addWidget(self.next_big)
+
+        self.leg_timer = QLabel("0:00")
+        self.leg_timer.setObjectName("statusLeg")
+        strip.addWidget(self.leg_timer)
+
+        self.state_label = QLabel("WAITING")
+        self.state_label.setObjectName("statusState")
+        strip.addWidget(self.state_label)
+
+        strip.addStretch(1)
+
+        self.score_label = QLabel("0")
+        self.score_label.setObjectName("statusScore")
+        strip.addWidget(self.score_label)
+
+        self.game_timer = QLabel("0:00")
+        self.game_timer.setObjectName("statusGame")
+        strip.addWidget(self.game_timer)
+
+        root.addWidget(status)
 
         self.roster_bar = QLabel("")
-        self.roster_bar.setObjectName("muted")
-        self.roster_bar.setWordWrap(True)
+        self.roster_bar.setObjectName("statusRoster")
+        self.roster_bar.setWordWrap(False)
         root.addWidget(self.roster_bar)
+
+        self.message = QLabel("")
+        self.message.setWordWrap(True)
+        self.message.setObjectName("statusMessage")
+        self.message.hide()
+        root.addWidget(self.message)
 
         self.stage = QWidget()
         stage_l = QVBoxLayout(self.stage)
         stage_l.setContentsMargins(0, 0, 0, 0)
-        stage_l.setSpacing(12)
+        stage_l.setSpacing(0)
 
-        body = QHBoxLayout()
-
-        self.left_panel = QFrame()
-        self.left_panel.setObjectName("panel")
-        self.left_panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.left_panel.setAutoFillBackground(True)
-        left_l = QVBoxLayout(self.left_panel)
-        left_l.addWidget(QLabel("NEXT / LEG"))
-        self.next_big = QLabel("—")
-        self.next_big.setObjectName("timerBig")
-        self.next_big.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.next_big.setWordWrap(True)
-        left_l.addWidget(self.next_big)
-        self.leg_timer = QLabel("00:00")
-        self.leg_timer.setObjectName("headline")
-        self.leg_timer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        left_l.addWidget(self.leg_timer)
-        self.state_label = QLabel("WAITING")
-        self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        left_l.addWidget(self.state_label)
-        self.message = QLabel("")
-        self.message.setWordWrap(True)
-        self.message.setObjectName("muted")
-        left_l.addWidget(self.message)
-        log_label = QLabel("Log")
-        log_label.setObjectName("muted")
-        left_l.addWidget(log_label)
-        self.activity_log = QPlainTextEdit()
-        self.activity_log.setObjectName("activityLog")
-        self.activity_log.setReadOnly(True)
-        self.activity_log.setMaximumBlockCount(800)
-        self.activity_log.setMinimumHeight(120)
-        self.activity_log.setUndoRedoEnabled(False)
-        self.activity_log.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
-        self.activity_log.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
-        self.activity_log.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.activity_log.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        left_l.addWidget(self.activity_log, 1)
-        body.addWidget(self.left_panel, 1)
-
+        # Challenge is the product — almost full window.
         self.right_panel = QFrame()
-        self.right_panel.setObjectName("panel")
+        self.right_panel.setObjectName("challengeStage")
         self.right_panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.right_panel.setAutoFillBackground(True)
+        self.right_panel.setAutoFillBackground(False)
         right_l = QVBoxLayout(self.right_panel)
+        right_l.setContentsMargins(12, 8, 12, 8)
+        right_l.setSpacing(0)
         self.right_stack = QStackedWidget()
+        self.right_stack.setObjectName("challengeStack")
+        self.right_stack.setAutoFillBackground(False)
+        self.right_stack.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.question_host = QuestionHost()
         self.category_board = CategoryBoard()
         self.right_stack.addWidget(self.question_host)
         self.right_stack.addWidget(self.category_board)
         right_l.addWidget(self.right_stack)
-        body.addWidget(self.right_panel, 2)
+        stage_l.addWidget(self.right_panel, 1)
 
-        stage_l.addLayout(body, 1)
+        # Keep a log sink for events; not shown (challenge focus).
+        self.left_panel = QFrame()
+        self.left_panel.hide()
+        self.activity_log = QPlainTextEdit()
+        self.activity_log.setObjectName("activityLog")
+        self.activity_log.setReadOnly(True)
+        self.activity_log.setMaximumBlockCount(800)
+        self.activity_log.hide()
 
         root.addWidget(self.stage, 1)
 
-        # Full-screen takeover (covers header + stage, not just the middle band)
         self.switch_overlay = SwitchOverlay(config.theme, self)
         self.correct_burst = CorrectBurst(self)
         self.wrong_burst = WrongBurst(self)
@@ -693,7 +695,7 @@ class GameScreen(QWidget):
 
     def panel_rects_in(self, target: QWidget) -> list[QRect]:
         """Opaque game boxes — stars stay in the gaps around them."""
-        return [_rect_in(self.left_panel, target), _rect_in(self.right_panel, target)]
+        return [_rect_in(self.right_panel, target)]
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -749,8 +751,8 @@ class GameScreen(QWidget):
     ) -> None:
         self.team_label.setText(snap.team_name or "TEAM")
         score = snap.progress.total_score
-        self.score_label.setText(f"SCORE {score:.1f}" if score % 1 else f"SCORE {int(score)}")
-        self.game_timer.setText(f"GAME {_fmt_time(snap.game_remaining)}")
+        self.score_label.setText(f"{score:.1f}" if score % 1 else f"{int(score)}")
+        self.game_timer.setText(_fmt_time(snap.game_remaining))
         self.leg_timer.setText(_fmt_time(snap.leg_remaining))
         self.roster_bar.setText(_roster_text(snap.roster, highlight=snap.expected_person_index))
 
@@ -766,12 +768,8 @@ class GameScreen(QWidget):
         if expected.name.strip() == str(expected.player_number):
             self.next_big.setText(f"#{expected.player_number}")
         else:
-            self.next_big.setText(f"#{expected.player_number}\n{expected.name}")
-        show = display_color(accent_slot.color, self.config.theme)
-        self.next_big.setStyleSheet(f"color: {show}; background: transparent;")
-        self.leg_timer.setStyleSheet(f"color: {show}; background: transparent;")
-        self.game_timer.setStyleSheet(f"color: {show}; background: transparent;")
-        self.score_label.setStyleSheet(f"color: {show}; background: transparent;")
+            self.next_big.setText(f"#{expected.player_number} {expected.name}")
+        # Status strip stays neutral — person tint is only the window wash, not neon labels.
 
         state_names = {
             RelayState.WAITING_FOR_BATON: "WAITING",
@@ -783,13 +781,28 @@ class GameScreen(QWidget):
         }
         self.state_label.setText(state_names.get(snap.state, snap.state.name))
         if snap.wrong_baton or snap.state == RelayState.DISCONNECTED:
-            self.state_label.setObjectName("warn")
+            self.state_label.setObjectName("statusStateWarn")
         else:
-            self.state_label.setObjectName("")
+            self.state_label.setObjectName("statusState")
         self.state_label.style().unpolish(self.state_label)
         self.state_label.style().polish(self.state_label)
 
-        self.message.setText(snap.last_message)
+        msg = (snap.last_message or "").strip()
+        # Don't duplicate the challenge prompt / routine "try again" under the desk.
+        noisy = msg.lower().startswith("incorrect") or msg.lower().startswith("correct")
+        if msg and snap.state == RelayState.ACTIVE and not noisy:
+            self.message.setText(msg)
+            self.message.show()
+        elif msg and snap.state in (
+            RelayState.WAITING_FOR_BATON,
+            RelayState.FROZEN,
+            RelayState.DISCONNECTED,
+        ):
+            self.message.setText(msg)
+            self.message.show()
+        else:
+            self.message.clear()
+            self.message.hide()
 
         if snap.state == RelayState.CHOOSING_CATEGORY:
             self.right_stack.setCurrentWidget(self.category_board)

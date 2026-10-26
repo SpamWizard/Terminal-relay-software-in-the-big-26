@@ -59,8 +59,14 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
     QLabel {{
         background-color: transparent;
     }}
-    QWidget#questionBody, QWidget#questionScrollBody {{
+    QWidget#questionBody, QWidget#questionScrollBody,
+    QWidget#questionHost, QWidget#deskRoot, QFrame#challengeStage {{
         background-color: transparent;
+        border: none;
+    }}
+    QStackedWidget#challengeStack {{
+        background-color: transparent;
+        border: none;
     }}
     QScrollArea#questionScroll, QWidget#questionScrollViewport {{
         background: transparent;
@@ -125,27 +131,112 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         background-color: transparent;
         padding: 4px 2px 10px 2px;
     }}
-    QFrame#deskRail, QFrame#deskPanel, QFrame#deskFlagBar {{
-        background-color: {mix(bg, "#000000", 0.18)};
-        border: 1px solid {mix(bg, ac, 0.28)};
-        border-radius: 12px;
+    QFrame#statusStrip {{
+        background-color: {rgba(mix(bg, "#000000", 0.40), 0.55)};
+        border: none;
+        border-radius: 8px;
+        max-height: 48px;
     }}
-    QLabel#deskSection {{
-        color: {ac};
+    QLabel#statusTeam {{
+        color: {fg};
+        font-size: 15px;
+        font-weight: 600;
+        background-color: transparent;
+    }}
+    QLabel#statusPlayer, QLabel#statusLeg, QLabel#statusGame, QLabel#statusScore {{
+        color: {fg};
+        font-size: 15px;
+        font-weight: 600;
+        font-family: "Cascadia Mono", "Consolas", monospace;
+        background-color: transparent;
+        padding: 0 4px;
+    }}
+    QLabel#statusState {{
+        color: {muted};
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 1px;
+        background-color: transparent;
+        padding: 0 6px;
+    }}
+    QLabel#statusStateWarn {{
+        color: #ff6b6b;
         font-size: 12px;
         font-weight: 700;
-        letter-spacing: 2px;
+        letter-spacing: 1px;
+        background-color: transparent;
+        padding: 0 6px;
+    }}
+    QLabel#statusRoster {{
+        color: {muted};
+        font-size: 12px;
+        background-color: transparent;
+        padding: 0 4px 2px 4px;
+    }}
+    QLabel#statusMessage {{
+        color: {muted};
+        font-size: 13px;
+        background-color: transparent;
+        padding: 0 4px;
+    }}
+    QFrame#challengeStage {{
+        background-color: transparent;
+        border: none;
+    }}
+    QLabel#challengePrompt {{
+        color: {fg};
+        font-size: 17px;
+        font-weight: 500;
+        background-color: transparent;
+        border: none;
+        padding: 2px 4px 10px 4px;
+    }}
+    QLabel#challengeFeedback {{
+        color: {muted};
+        font-size: 13px;
+        background-color: transparent;
+        border: none;
+        padding: 2px 4px 0 4px;
+    }}
+    QPushButton#deskSubmit {{
+        background-color: {mix(fg, bg, 0.12)};
+        color: {fg};
+        border: 1px solid {mix(fg, bg, 0.55)};
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 10px 20px;
+        min-width: 96px;
+    }}
+    QPushButton#deskSubmit:hover {{
+        background-color: {mix(fg, bg, 0.22)};
+        border-color: {mix(fg, bg, 0.35)};
+    }}
+    QPushButton#deskSubmit:disabled {{
+        background-color: {mix(bg, "#000000", 0.25)};
+        color: {muted};
+        border-color: {mix(bg, fg, 0.12)};
+    }}
+    QFrame#deskRail, QFrame#deskPanel, QFrame#deskFlagBar {{
+        background-color: transparent;
+        border: none;
+    }}
+    QLabel#deskSection {{
+        color: {muted};
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 1.5px;
         background-color: transparent;
     }}
     QLabel#deskHint {{
-        color: {muted};
+        color: {mix(fg, bg, 0.55)};
         font-size: 11px;
         background-color: transparent;
     }}
     QLabel#deskPrompt {{
-        color: {ac};
-        font-size: 18px;
-        font-weight: 700;
+        color: {muted};
+        font-size: 16px;
+        font-weight: 600;
         background-color: transparent;
         padding: 0 2px;
     }}
@@ -160,42 +251,59 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
     }}
     QListWidget#deskFileList::item {{
         padding: 8px 10px;
-        border-radius: 8px;
+        border-radius: 6px;
         margin: 1px 0;
+        border: none;
     }}
     QListWidget#deskFileList::item:selected {{
-        background-color: {mix(bg, ac, 0.28)};
+        background-color: {mix(bg, "#ffffff", 0.10)};
         color: {fg};
     }}
     QListWidget#deskFileList::item:hover {{
-        background-color: {hover};
+        background-color: {mix(bg, "#ffffff", 0.06)};
     }}
     QPlainTextEdit#deskTerminalOut {{
-        background-color: {mix(bg, "#000000", 0.35)};
-        border: 1px solid {mix(bg, ac, 0.18)};
-        border-radius: 10px;
+        background-color: {mix(bg, "#000000", 0.42)};
+        border: none;
+        border-radius: 8px;
         color: {fg};
         padding: 12px 14px;
         font-size: 13px;
-        selection-background-color: {mix(bg, ac, 0.35)};
+        selection-background-color: {mix(bg, "#ffffff", 0.18)};
     }}
-    QLineEdit#deskTerminalIn, QLineEdit#deskFlagIn {{
-        background-color: {mix(bg, "#000000", 0.30)};
-        border: 1px solid {mix(bg, ac, 0.32)};
-        border-radius: 10px;
+    QLineEdit#deskTerminalIn {{
+        background-color: {mix(bg, "#000000", 0.38)};
+        border: 1px solid {mix(fg, bg, 0.78)};
+        border-radius: 8px;
         padding: 10px 14px;
         font-size: 15px;
         min-height: 22px;
+        color: {fg};
     }}
-    QLineEdit#deskTerminalIn:focus, QLineEdit#deskFlagIn:focus {{
-        border: 1px solid {ac};
+    QLineEdit#deskTerminalIn:focus {{
+        border: 1px solid {mix(fg, bg, 0.45)};
+        background-color: {mix(bg, "#000000", 0.48)};
+    }}
+    QLineEdit#deskFlagIn {{
+        background-color: transparent;
+        border: none;
+        border-bottom: 1px solid {mix(fg, bg, 0.65)};
+        border-radius: 0px;
+        padding: 8px 4px;
+        font-size: 15px;
+        min-height: 22px;
+        color: {fg};
+    }}
+    QLineEdit#deskFlagIn:focus {{
+        background-color: transparent;
+        border: none;
+        border-bottom: 1px solid {mix(fg, bg, 0.35)};
     }}
     QTextBrowser#deskPage {{
-        background-color: {mix(bg, "#ffffff", 0.04)};
-        border: 1px solid {mix(bg, ac, 0.18)};
-        border-radius: 10px;
+        background-color: transparent;
+        border: none;
         color: {fg};
-        padding: 8px;
+        padding: 4px;
     }}
     QSplitter#deskSplitter::handle {{
         background: transparent;
@@ -636,11 +744,9 @@ def display_color(color: str, theme: ThemeConfig) -> str:
 
 
 def game_screen_wash(theme: ThemeConfig, person_color: str) -> str:
-    """Full-screen person tint — fills the whole game view edge to edge."""
+    """Subtle person wash — background only, no neon panel outlines."""
     soft = soften(person_color, theme, amount=0.10)
-    bg = mix(theme.background, soft, 0.32)
-    edge = mix(theme.background, soft, 0.50)
-    panel = mix(mix(theme.background, "#000000", 0.22), soft, 0.14)
+    bg = mix(theme.background, soft, 0.18)
     return f"""
     QWidget#gameScreen {{
         background-color: {bg};
@@ -648,18 +754,15 @@ def game_screen_wash(theme: ThemeConfig, person_color: str) -> str:
     QWidget#gameScreen QLabel {{
         background-color: transparent;
     }}
-    QWidget#gameScreen QFrame#panel {{
-        background-color: {panel};
-        border: 2px solid {edge};
-    }}
     """
 
 
 def person_window_stylesheet(theme: ThemeConfig, person_color: str) -> str:
-    """Base app stylesheet + full-window person wash (covers chrome past the stage)."""
+    """Base app stylesheet + quiet window wash (keep theme accent, don't neon everything)."""
     soft = soften(person_color, theme, amount=0.12)
-    bg = mix(theme.background, soft, 0.32)
-    base = build_stylesheet(theme, accent=soft)
+    bg = mix(theme.background, soft, 0.16)
+    # Keep the configured theme accent for rare CTAs — not the baton person color.
+    base = build_stylesheet(theme)
     return (
         base
         + f"""

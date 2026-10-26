@@ -73,6 +73,9 @@ class _QuestionScroll(QScrollArea):
 class QuestionHost(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("questionHost")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(False)
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._body: QWidget | None = None
@@ -85,24 +88,27 @@ class QuestionHost(QWidget):
         self._locked = True
         self._current_qid: str | None = None
 
+        self._layout.setSpacing(10)
+
         self.prompt = QLabel("")
         self.prompt.setWordWrap(True)
-        self.prompt.setObjectName("headline")
+        self.prompt.setObjectName("challengePrompt")
         self._layout.addWidget(self.prompt)
 
         self._slot = QVBoxLayout()
-        self._layout.addLayout(self._slot)
+        self._slot.setContentsMargins(0, 0, 0, 0)
+        self._layout.addLayout(self._slot, 1)
 
-        btn_row = QHBoxLayout()
+        self._btn_row = QHBoxLayout()
         self.submit_btn = QPushButton("SUBMIT")
         self.submit_btn.setObjectName("primary")
         self.submit_btn.clicked.connect(self._submit)
-        btn_row.addWidget(self.submit_btn)
-        btn_row.addStretch(1)
-        self._layout.addLayout(btn_row)
+        self._btn_row.addWidget(self.submit_btn)
+        self._btn_row.addStretch(1)
+        self._layout.addLayout(self._btn_row)
 
         self.feedback = QLabel("")
-        self.feedback.setObjectName("muted")
+        self.feedback.setObjectName("challengeFeedback")
         self._layout.addWidget(self.feedback)
 
     def set_submit_handler(self, handler: Callable[[Any], None]) -> None:
@@ -136,6 +142,7 @@ class QuestionHost(QWidget):
         self._collect = None
         self.prompt.setText("")
         self.feedback.setText("")
+        self.submit_btn.show()
 
     def clear_desk_sessions(self) -> None:
         self._desk_store.clear()
@@ -155,8 +162,9 @@ class QuestionHost(QWidget):
         self.prompt.setText(question.prompt)
 
         if isinstance(question, Desk):
+            self.prompt.setObjectName("challengePrompt")
             state = self._desk_store.get(question.id)
-            body, collect, desk = build_desk_widget(question, state)
+            body, collect, desk = build_desk_widget(question, state, on_submit=self._submit)
             body.setObjectName("questionBody")
             body.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
             self._body = body
@@ -164,8 +172,11 @@ class QuestionHost(QWidget):
             self._collect = collect
             self._slot.addWidget(body)
             desk.set_desk_locked(self._locked)
+            self.submit_btn.hide()
             return
 
+        self.prompt.setObjectName("challengePrompt")
+        self.submit_btn.show()
         body, collect = build_answer_widget(question)
         body.setObjectName("questionBody")
         body.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)

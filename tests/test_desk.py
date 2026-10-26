@@ -81,6 +81,19 @@ def test_terminal_hash_and_b64(tmp_path: Path):
     assert "relay_view_source" in out.output
 
 
+def test_tab_complete_command_and_file(tmp_path: Path):
+    from baton_relay.desk.complete import complete_line
+
+    pub = tmp_path / "public"
+    pub.mkdir()
+    (pub / "briefing.txt").write_text("x", encoding="utf-8")
+    (pub / "scan.txt").write_text("y", encoding="utf-8")
+    assert complete_line(pub, "ca").text.startswith("cat")
+    assert complete_line(pub, "cat br").text == "cat briefing.txt"
+    multi = complete_line(pub, "cat ")
+    assert "briefing.txt" in multi.matches and "scan.txt" in multi.matches
+
+
 def test_load_all_config_challenges():
     paths = [
         ROOT / "challenges" / "find_the_line",

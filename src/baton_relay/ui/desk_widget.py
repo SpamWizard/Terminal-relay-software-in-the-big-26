@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QFont, QTextCursor
+from PySide6.QtCore import QEvent, Qt, QUrl
+from PySide6.QtGui import QFont, QKeyEvent, QTextCursor
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -16,12 +16,14 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPlainTextEdit,
+    QPushButton,
     QSplitter,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
 
+from baton_relay.desk.complete import complete_line
 from baton_relay.desk.sandbox import list_public_files, resolve_in_public
 from baton_relay.desk.terminal import run_desk_command
 from baton_relay.questions.types import Desk
@@ -60,16 +62,37 @@ def _mono(size: int = 12) -> QFont:
     return font
 
 
+class _TerminalInput(QLineEdit):
+    """Line edit that uses Tab for autocomplete instead of focus change."""
+
+    def __init__(self, on_tab: Callable[[], None], parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._on_tab = on_tab
+
+    def event(self, event: QEvent) -> bool:  # noqa: N802
+        # Steal Tab before Qt uses it to move focus.
+        if (
+            event.type() == QEvent.Type.KeyPress
+            and isinstance(event, QKeyEvent)
+            and event.key() == Qt.Key.Key_Tab
+            and not event.modifiers()
+        ):
+            self._on_tab()
+            return True
+        return super().event(event)
+
+
 class _TerminalPane(QFrame):
     def __init__(self, public_dir: Path, state: DeskSessionState, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("deskPanel")
+        self.setAutoFillBackground(False)
         self._public = public_dir
         self._state = state
         self._locked = False
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(8)
 
         head = QHBoxLayout()
@@ -77,7 +100,7 @@ class _TerminalPane(QFrame):
         label.setObjectName("deskSection")
         head.addWidget(label)
         head.addStretch(1)
-        tip = QLabel("help · cat · grep · b64 · sha256 · python")
+        tip = QLabel("Tab completes · help · cat · grep · b64 · sha256 · python")
         tip.setObjectName("deskHint")
         head.addWidget(tip)
         layout.addLayout(head)
@@ -100,9 +123,9 @@ class _TerminalPane(QFrame):
         prompt = QLabel("›")
         prompt.setObjectName("deskPrompt")
         row.addWidget(prompt)
-        self.input = QLineEdit()
+        self.input = _TerminalInput(self._complete)
         self.input.setObjectName("deskTerminalIn")
-        self.input.setPlaceholderText("command")
+        self.input.setPlaceholderText("command  (Tab to complete)")
         self.input.setFont(_mono(13))
         self.input.returnPressed.connect(self._run)
         row.addWidget(self.input, 1)
@@ -126,6 +149,16 @@ class _TerminalPane(QFrame):
     def _append(self, text: str) -> None:
         self.output.appendPlainText(text)
         self._state.scrollback = self.output.toPlainText()
+
+    def _complete(self) -> None:
+        if self._locked:
+            return
+        result = complete_line(self._public, self.input.text())
+        if result.text != self.input.text():
+            self.input.setText(result.text)
+            self.input.end(False)
+        elif len(result.matches) > 1:
+            self._append("  ".join(result.matches))
 
     def _run(self) -> None:
         if self._locked:
@@ -153,11 +186,12 @@ class _FilesPane(QFrame):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("deskRail")
+        self.setAutoFillBackground(False)
         self._state = state
         self._on_pick = on_pick
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(8)
 
         label = QLabel("Files")
@@ -220,17 +254,22 @@ class DeskWidget(QWidget):
         self,
         question: Desk,
         state: DeskSessionState,
+        *,
+        on_submit: Callable[[], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("deskRoot")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(False)
         self._state = state
+        self._on_submit = on_submit
         self._panes: list[Any] = []
         public = Path(question.public_dir)
         panes = list(question.panes or ["files", "terminal"])
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 4, 0, 0)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
 
         main = QSplitter(Qt.Orientation.Horizontal)
@@ -279,26 +318,38 @@ class DeskWidget(QWidget):
 
         flag_bar = QFrame()
         flag_bar.setObjectName("deskFlagBar")
+        flag_bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        flag_bar.setAutoFillBackground(False)
         flag_row = QHBoxLayout(flag_bar)
-        flag_row.setContentsMargins(14, 10, 14, 10)
-        flag_row.setSpacing(12)
+        flag_row.setContentsMargins(4, 4, 4, 0)
+        flag_row.setSpacing(10)
         flag_label = QLabel("Flag")
         flag_label.setObjectName("deskSection")
         flag_row.addWidget(flag_label)
         self.flag_edit = QLineEdit()
         self.flag_edit.setObjectName("deskFlagIn")
         self.flag_edit.setPlaceholderText("TR{…}")
-        self.flag_edit.setFont(_mono(14))
+        self.flag_edit.setFont(_mono(13))
         self.flag_edit.setText(state.flag_text)
         self.flag_edit.textChanged.connect(self._save_flag)
+        self.flag_edit.returnPressed.connect(self._submit_clicked)
         flag_row.addWidget(self.flag_edit, 1)
+        self.submit_btn = QPushButton("Submit")
+        self.submit_btn.setObjectName("deskSubmit")
+        self.submit_btn.clicked.connect(self._submit_clicked)
+        flag_row.addWidget(self.submit_btn)
         layout.addWidget(flag_bar)
 
     def _save_flag(self, text: str) -> None:
         self._state.flag_text = text
 
+    def _submit_clicked(self) -> None:
+        if self._on_submit:
+            self._on_submit()
+
     def set_desk_locked(self, locked: bool) -> None:
         self.flag_edit.setEnabled(not locked)
+        self.submit_btn.setEnabled(not locked)
         for pane in self._panes:
             pane.set_locked(locked)
 
@@ -312,6 +363,8 @@ class DeskWidget(QWidget):
 def build_desk_widget(
     question: Desk,
     state: DeskSessionState,
+    *,
+    on_submit: Callable[[], None] | None = None,
 ) -> tuple[QWidget, Callable[[], Any], DeskWidget]:
-    desk = DeskWidget(question, state)
+    desk = DeskWidget(question, state, on_submit=on_submit)
     return desk, desk.collect_flag, desk
