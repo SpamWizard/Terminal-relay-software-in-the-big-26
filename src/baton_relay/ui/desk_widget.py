@@ -1,4 +1,4 @@
-"""HC-style challenge desk: file rail, terminal, optional page, flag bar."""
+"""HC-style challenge desk: file rail, WSL terminal pipe, optional page, flag bar."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import QEvent, Qt, QUrl
+from PySide6.QtCore import QEvent, Qt, QUrl, Signal
 from PySide6.QtGui import QFont, QKeyEvent, QTextCursor
 from PySide6.QtWidgets import (
     QFrame,
@@ -25,13 +25,14 @@ from PySide6.QtWidgets import (
 
 from baton_relay.desk.complete import complete_line
 from baton_relay.desk.sandbox import list_public_files, resolve_in_public
-from baton_relay.desk.terminal import run_desk_command
+from baton_relay.desk.shell import TeamShell
 from baton_relay.questions.types import Desk
 
 
 @dataclass
 class DeskSessionState:
-    scrollback: str = ""
+    """Per-challenge UI bits (flag + file pick). Transcript lives on TeamShell."""
+
     selected_file: str | None = None
     flag_text: str = ""
 
@@ -70,7 +71,6 @@ class _TerminalInput(QLineEdit):
         self._on_tab = on_tab
 
     def event(self, event: QEvent) -> bool:  # noqa: N802
-        # Steal Tab before Qt uses it to move focus.
         if (
             event.type() == QEvent.Type.KeyPress
             and isinstance(event, QKeyEvent)
@@ -83,12 +83,21 @@ class _TerminalInput(QLineEdit):
 
 
 class _TerminalPane(QFrame):
-    def __init__(self, public_dir: Path, state: DeskSessionState, parent: QWidget | None = None) -> None:
+    """Line box that pipes into the team's long-lived bash."""
+
+    output_chunk = Signal(str)
+
+    def __init__(
+        self,
+        public_dir: Path,
+        shell: TeamShell | None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("deskPanel")
         self.setAutoFillBackground(False)
         self._public = public_dir
-        self._state = state
+        self._shell = shell
         self._locked = False
 
         layout = QVBoxLayout(self)
@@ -100,7 +109,7 @@ class _TerminalPane(QFrame):
         label.setObjectName("deskSection")
         head.addWidget(label)
         head.addStretch(1)
-        tip = QLabel("Tab completes · help · cat · grep · b64 · sha256 · python")
+        tip = QLabel("Linux shell · Tab completes file names · baton out locks typing")
         tip.setObjectName("deskHint")
         head.addWidget(tip)
         layout.addLayout(head)
@@ -110,12 +119,13 @@ class _TerminalPane(QFrame):
         self.output.setObjectName("deskTerminalOut")
         self.output.setFont(_mono(12))
         self.output.setFrameShape(QFrame.Shape.NoFrame)
-        if state.scrollback:
-            self.output.setPlainText(state.scrollback)
+        if shell is not None and shell.transcript:
+            self.output.setPlainText(shell.transcript)
             self.output.moveCursor(QTextCursor.MoveOperation.End)
         else:
-            self.output.setPlainText("Ready. Click a file on the left, or type a command.\n")
-            state.scrollback = self.output.toPlainText()
+            self.output.setPlainText(
+                "Team Linux shell. Click a file on the left, or type a command.\n"
+            )
         layout.addWidget(self.output, 1)
 
         row = QHBoxLayout()
@@ -131,9 +141,22 @@ class _TerminalPane(QFrame):
         row.addWidget(self.input, 1)
         layout.addLayout(row)
 
+        self.output_chunk.connect(self._on_chunk)
+
+    def bind_shell(self, shell: TeamShell | None) -> None:
+        self._shell = shell
+        if shell is not None:
+            # Replace prior callback so only this pane receives live bytes.
+            shell.on_output = lambda text: self.output_chunk.emit(text)
+            if shell.transcript:
+                self.output.setPlainText(shell.transcript)
+                self.output.moveCursor(QTextCursor.MoveOperation.End)
+
     def set_locked(self, locked: bool) -> None:
         self._locked = locked
         self.input.setEnabled(not locked)
+        if self._shell is not None:
+            self._shell.set_locked(locked)
 
     def paste_filename(self, name: str) -> None:
         if self._locked or not name:
@@ -146,9 +169,12 @@ class _TerminalPane(QFrame):
         self.input.setFocus()
         self.input.end(False)
 
-    def _append(self, text: str) -> None:
-        self.output.appendPlainText(text)
-        self._state.scrollback = self.output.toPlainText()
+    def _on_chunk(self, text: str) -> None:
+        cursor = self.output.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText(text)
+        self.output.setTextCursor(cursor)
+        self.output.ensureCursorVisible()
 
     def _complete(self) -> None:
         if self._locked:
@@ -158,20 +184,20 @@ class _TerminalPane(QFrame):
             self.input.setText(result.text)
             self.input.end(False)
         elif len(result.matches) > 1:
-            self._append("  ".join(result.matches))
+            self._on_chunk("  ".join(result.matches) + "\n")
 
     def _run(self) -> None:
         if self._locked:
             return
         line = self.input.text()
         self.input.clear()
-        self._append(f"› {line}")
-        result = run_desk_command(self._public, line)
-        if result.output:
-            self._append(result.output)
-        elif result.exit_code != 0:
-            self._append(f"(exit {result.exit_code})")
-        self._state.scrollback = self.output.toPlainText()
+        if self._shell is None:
+            self._on_chunk("› (no team shell — start a game first)\n")
+            return
+        try:
+            self._shell.send_line(line)
+        except Exception as exc:
+            self._on_chunk(f"error: {exc}\n")
 
 
 class _FilesPane(QFrame):
@@ -198,40 +224,34 @@ class _FilesPane(QFrame):
         label.setObjectName("deskSection")
         layout.addWidget(label)
 
-        hint = QLabel("Click to paste")
-        hint.setObjectName("deskHint")
-        layout.addWidget(hint)
-
         self.list = QListWidget()
         self.list.setObjectName("deskFileList")
-        self.list.setSpacing(2)
-        self.list.setFrameShape(QFrame.Shape.NoFrame)
+        self.list.setFont(_mono(11))
         for name in list_public_files(public_dir):
-            item = QListWidgetItem(name)
-            self.list.addItem(item)
-        self.list.itemClicked.connect(self._clicked)
-        layout.addWidget(self.list, 1)
-
+            self.list.addItem(QListWidgetItem(name))
         if state.selected_file:
             matches = self.list.findItems(state.selected_file, Qt.MatchFlag.MatchExactly)
             if matches:
                 self.list.setCurrentItem(matches[0])
-
-    def set_locked(self, locked: bool) -> None:
-        self.list.setEnabled(not locked)
+        self.list.itemClicked.connect(self._clicked)
+        layout.addWidget(self.list, 1)
 
     def _clicked(self, item: QListWidgetItem) -> None:
         name = item.text()
         self._state.selected_file = name
         self._on_pick(name)
 
+    def set_locked(self, locked: bool) -> None:
+        self.list.setEnabled(not locked)
+
 
 class _PagePane(QFrame):
     def __init__(self, public_dir: Path, page_file: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("deskPanel")
+        self.setAutoFillBackground(False)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(8)
         label = QLabel("Page")
         label.setObjectName("deskSection")
@@ -255,6 +275,7 @@ class DeskWidget(QWidget):
         question: Desk,
         state: DeskSessionState,
         *,
+        shell: TeamShell | None = None,
         on_submit: Callable[[], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
@@ -268,6 +289,14 @@ class DeskWidget(QWidget):
         public = Path(question.public_dir)
         panes = list(question.panes or ["files", "terminal"])
 
+        if shell is not None:
+            try:
+                shell.ensure_challenge(question.id, public)
+            except Exception as exc:
+                # Still show the desk; terminal will surface the error on first line.
+                if shell.transcript == "":
+                    shell.transcript = f"error preparing challenge: {exc}\n"
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
@@ -279,7 +308,8 @@ class DeskWidget(QWidget):
         term: _TerminalPane | None = None
 
         if "terminal" in panes:
-            term = _TerminalPane(public, state)
+            term = _TerminalPane(public, shell)
+            term.bind_shell(shell)
             self._panes.append(term)
 
         if "files" in panes:
@@ -364,7 +394,8 @@ def build_desk_widget(
     question: Desk,
     state: DeskSessionState,
     *,
+    shell: TeamShell | None = None,
     on_submit: Callable[[], None] | None = None,
 ) -> tuple[QWidget, Callable[[], Any], DeskWidget]:
-    desk = DeskWidget(question, state, on_submit=on_submit)
+    desk = DeskWidget(question, state, shell=shell, on_submit=on_submit)
     return desk, desk.collect_flag, desk

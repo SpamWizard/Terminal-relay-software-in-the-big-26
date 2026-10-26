@@ -1,33 +1,38 @@
 # Terminal Relay
 
-Needs Python 3.11 or newer.
+Needs Python 3.11 or newer on Windows, plus WSL2 for desk challenges (see [docs/wsl-desk.md](docs/wsl-desk.md)).
+
 ## Setup
+
+```powershell
 python -m venv .venv
-
-Turn the venv on:
-
-# Windows (PowerShell)
 .\.venv\Scripts\Activate.ps1
-# Windows (cmd)
-.venv\Scripts\activate
-# Linux / macOS
-source .venv/bin/activate
-
-Install it:
-bash
 pip install -e ".[dev]"
+```
+
+Build the golden **Kali** WSL image once (after WSL2 + `kali-linux` + `New-VHD` work):
+
+```powershell
+wsl --install -d kali-linux
+wsl -d kali-linux   # finish first-time setup, then exit
+powershell -ExecutionPolicy Bypass -File scripts\build_relay_gold.ps1
+```
+
+See [docs/wsl-desk.md](docs/wsl-desk.md).
 
 ## Start
-# Real baton (board plugged in):
-bash
-relay run
 
-# Fake baton (no board, use the keyboard):
+```powershell
+relay run
 relay run --fake-device
+relay quick
+```
+
 With the fake baton, click the game window, then press control `1`–`6` to put a baton in and `P` to pull it out.
 
-# Skip the name screen and open category selection (a player is already in):
-relay quick
+## Content
 
-## HC-style challenges
-Board tiles can be challenge folders under `challenges/` (see `docs/questions.md`). Each desk challenge has a `public/` folder, an in-window terminal, and a flag box. Baton freeze keeps the terminal scrollback — talk to your teammates across the handoff. Default game length is 25 minutes.
+- **Desk challenges** under `challenges/` — real Linux shell per team (linked clone of `images/relay-gold.vhdx`).
+- **Fake Logos** — picture multiple-choice in `questions/06_fake_logos.json`.
+
+Default game length is 25 minutes. Baton freeze keeps the terminal transcript; teammates talk across the handoff.

@@ -1,2 +1,0 @@
-rule: Capitalize(word) + "2026"
-then sha256 hex — that string is also a vault filename stem

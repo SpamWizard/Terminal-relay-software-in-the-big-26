@@ -1,6 +1,0 @@
-# asset inventory — grep the hostname you rebuild
-mail.spam.invalid     role=mx      note=TR{decoy_not_dns}
-print.ops.local       role=print  note=ask_facilities
-badge.ops.local                role=badge  note=TR{dns_badge_desk}
-ntp.ops.local         role=time   note=none
-ignore.me.in-addr.arpa role=ptr   note=noise

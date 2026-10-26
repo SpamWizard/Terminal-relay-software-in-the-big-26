@@ -1,4 +1,0 @@
-TKT-1001  status=open   note=TR{old_ticket}
-TKT-2200  status=closed note=noise
-TKT-8814  status=ready  note=TR{handoff_gold}
-TKT-8815  status=open   note=TR{off_by_one}

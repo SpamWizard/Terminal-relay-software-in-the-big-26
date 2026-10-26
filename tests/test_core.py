@@ -12,7 +12,7 @@ from baton_relay.input.decode import decode_pins
 from baton_relay.input.base import ReadingKind
 from baton_relay.questions.loader import QuestionLoadError, load_all_question_files
 from baton_relay.questions.registry import ensure_builtin_types_loaded
-from baton_relay.questions.types import MultipleChoice, SelectAll, ShortAnswer
+from baton_relay.questions.types import Desk, MultipleChoice
 from baton_relay.state.machine import GameSession, RelayState
 from tests.conftest import tiny_sets
 
@@ -23,21 +23,10 @@ CONFIG = ROOT / "config" / "config.toml"
 
 def _correct_answer(q):
     """Right answer payload for whatever type is on the board."""
-    if q.type in {"desk", "flag", "short_answer", "fill_blank"}:
+    if q.type == "desk":
         return q.accepted[0]
     if q.type == "multiple_choice":
         return q.answer
-    if q.type == "select_all":
-        return list(q.answer)
-    if q.type == "put_in_order":
-        return list(q.answer)
-    if q.type == "match_up":
-        return dict(q.answer)
-    if q.type == "numeric":
-        return q.answer
-    if q.type == "hands_on":
-        success = q.success or {}
-        return (success.get("accepted") or ["x"])[0]
     raise AssertionError(f"no solver for {q.type}")
 
 
@@ -128,7 +117,7 @@ def test_number_expr():
 def test_load_questions(sets):
     assert len(sets) >= 2
     ids = {s.set_id for s in sets}
-    assert "find_the_line" in ids
+    assert "hello_shell" in ids
     assert "fake_logos" in ids
     types = {q.type for s in sets for q in s.questions}
     assert "desk" in types
@@ -209,33 +198,19 @@ def test_scoring_mc():
     assert q.score(0, scoring).points == 0
 
 
-def test_scoring_select_all_partial():
-    q = SelectAll(
-        id="a",
-        type="select_all",
+def test_scoring_desk_flag():
+    q = Desk(
+        id="d",
+        type="desk",
         prompt="p",
-        points=10,
-        partial_credit=True,
-        choices=["a", "b", "c"],
-        answer=[0, 1],
+        points=50,
+        accepted=["TR{ok}"],
+        public_dir="/tmp",
+        panes=["files", "terminal"],
     )
     scoring = ScoringConfig(True, 0, 0.5)
-    partial = q.score([0], scoring)
-    assert partial.partial
-    assert partial.points == 5.0
-
-
-def test_short_answer_casefold():
-    q = ShortAnswer(
-        id="a",
-        type="short_answer",
-        prompt="p",
-        points=5,
-        accepted=["Hello"],
-        case_sensitive=False,
-    )
-    scoring = ScoringConfig(True, 0, 0.5)
-    assert q.score("  hello ", scoring).correct
+    assert q.score("TR{ok}", scoring).correct
+    assert not q.score("nope", scoring).correct
 
 
 def test_state_machine_baton_flow(config, sets):

@@ -98,15 +98,6 @@ class ControllerConfig:
 
 
 @dataclass(frozen=True)
-class ContainersConfig:
-    runtime: str
-    network_mode: str
-    memory_limit: str
-    cpu_limit: float
-    default_timeout_seconds: int
-
-
-@dataclass(frozen=True)
 class PathsConfig:
     results_dir: Path
     checkpoint_path: Path
@@ -140,7 +131,6 @@ class AppConfig:
     questions: QuestionsConfig
     controller: ControllerConfig
     organizer_password_hash: str
-    containers: ContainersConfig
     paths: PathsConfig
     theme: ThemeConfig
     themes: dict[str, ThemeConfig]
@@ -460,24 +450,6 @@ def load_config(path: Path) -> AppConfig:
         "[organizer].password_hash",
     )
 
-    containers_raw = raw.get("containers", {})
-    if not isinstance(containers_raw, dict):
-        raise ConfigError("[containers]: expected table")
-    containers = ContainersConfig(
-        runtime=_as_str(containers_raw.get("runtime", "podman"), "[containers].runtime"),
-        network_mode=_as_str(
-            containers_raw.get("network_mode", "none"), "[containers].network_mode"
-        ),
-        memory_limit=_as_str(
-            containers_raw.get("memory_limit", "256m"), "[containers].memory_limit"
-        ),
-        cpu_limit=_as_float(containers_raw.get("cpu_limit", 0.5), "[containers].cpu_limit"),
-        default_timeout_seconds=_as_int(
-            containers_raw.get("default_timeout_seconds", 600),
-            "[containers].default_timeout_seconds",
-        ),
-    )
-
     paths_raw = raw.get("paths", {})
     if not isinstance(paths_raw, dict):
         raise ConfigError("[paths]: expected table")
@@ -596,7 +568,6 @@ def load_config(path: Path) -> AppConfig:
         questions=questions,
         controller=controller,
         organizer_password_hash=password_hash,
-        containers=containers,
         paths=paths,
         theme=theme,
         themes=theme_presets,
@@ -704,13 +675,6 @@ def save_config(config: AppConfig, path: Path | None = None) -> None:
             "",
             "[organizer]",
             f"password_hash = {_toml_str(config.organizer_password_hash)}",
-            "",
-            "[containers]",
-            f"runtime = {_toml_str(config.containers.runtime)}",
-            f"network_mode = {_toml_str(config.containers.network_mode)}",
-            f"memory_limit = {_toml_str(config.containers.memory_limit)}",
-            f"cpu_limit = {_toml_number(config.containers.cpu_limit)}",
-            f"default_timeout_seconds = {config.containers.default_timeout_seconds}",
             "",
             "[paths]",
             f"results_dir = {_toml_str(_rel_path(config.paths.results_dir, root))}",

@@ -20,10 +20,6 @@ dev = [
     "pytest>=8.0",
     "pytest-qt>=4.4",
 ]
-containers = [
-    "docker>=7.0",
-]
-
 [project.scripts]
 relay = "baton_relay.cli:main"
 

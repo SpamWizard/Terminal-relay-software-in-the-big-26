@@ -1,2 +1,0 @@
-from the png trailer
-TR{stego_found}

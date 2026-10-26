@@ -41,25 +41,7 @@ redo_multiplier = 0.5
 
 [questions]
 files = [
-    "challenges/find_the_line",
-    "challenges/bash_crumbs",
-    "challenges/page_source",
-    "challenges/stego_tail",
-    "challenges/broken_check",
-    "challenges/pcap_dns",
-    "challenges/auth_once",
-    "challenges/zip_comment",
-    "challenges/nested_b64",
-    "challenges/char_codes",
-    "challenges/two_halves",
-    "challenges/rule_crack",
-    "challenges/pdf_eof",
-    "challenges/pipeline_abc",
-    "challenges/probe_temp",
-    "challenges/whitespace",
-    "challenges/checksum_pick",
-    "challenges/map_legend",
-    "challenges/wrong_salt",
+    "challenges/hello_shell",
     "questions/06_fake_logos.json",
 ]
 redo_missed_at_set_end = false
@@ -83,13 +65,6 @@ skip_question = "X"
 
 [organizer]
 password_hash = "argon2$dev$change-me"
-
-[containers]
-runtime = "podman"
-network_mode = "none"
-memory_limit = "256m"
-cpu_limit = 0.5
-default_timeout_seconds = 600
 
 [paths]
 results_dir = "results"

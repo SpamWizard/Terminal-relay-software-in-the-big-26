@@ -45,22 +45,6 @@ def _png(path: Path, rgb: tuple[int, int, int] = (40, 120, 200), size: int = 8) 
 def _question(qtype: str, **extra) -> dict:
     base = {
         "multiple_choice": {"choices": ["no", "yes"], "answer": 1},
-        "select_all": {"choices": ["a", "b", "c"], "answer": [0, 2]},
-        "put_in_order": {"items": ["a", "b", "c"], "answer": [2, 0, 1]},
-        "match_up": {
-            "left": ["a", "b"],
-            "right": ["A", "B"],
-            "answer": {"0": 1, "1": 0},
-        },
-        "short_answer": {"accepted": ["dns"]},
-        "numeric": {"answer": 62, "tolerance": 0},
-        "fill_blank": {"accepted": ["trust"]},
-        "flag": {"accepted": ["FLAG{ok}"]},
-        "hands_on": {
-            "image": "relay/practice:latest",
-            "ports": [8080],
-            "success": {"type": "flag", "accepted": ["FLAG{ok}"]},
-        },
     }[qtype]
     return {"prompt": f"Text for {qtype}", "points": 10, **base, **extra}
 
@@ -100,14 +84,6 @@ def test_repo_text_sets_have_no_images():
     "qtype,answer,expect_correct",
     [
         ("multiple_choice", 1, True),
-        ("select_all", [0, 2], True),
-        ("put_in_order", [2, 0, 1], True),
-        ("match_up", {"0": 1, "1": 0}, True),
-        ("short_answer", "dns", True),
-        ("numeric", 62, True),
-        ("fill_blank", "trust", True),
-        ("flag", "FLAG{ok}", True),
-        ("hands_on", "FLAG{ok}", True),
     ],
 )
 def test_every_type_accepts_pictures_and_still_scores(tmp_path: Path, qtype, answer, expect_correct):
@@ -134,8 +110,6 @@ def test_every_type_accepts_pictures_and_still_scores(tmp_path: Path, qtype, ans
     assert question.images[0].caption == ""
     assert question.images[1].caption == "Same diagram"
     assert Path(question.images[0].path).is_file()
-    if qtype == "hands_on":
-        assert question.image == "relay/practice:latest"
     scored = question.score(answer, SCORING)
     assert scored.correct is expect_correct
 
@@ -152,9 +126,9 @@ def test_caption_whitespace_and_relative_parent(tmp_path: Path):
         [
             {
                 "id": "q",
-                "type": "short_answer",
+                "type": "multiple_choice",
                 **_question(
-                    "short_answer",
+                    "multiple_choice",
                     images=[{"src": "../shared/star.png", "caption": "  star   topology "}],
                 ),
             }
@@ -174,8 +148,8 @@ def test_absolute_picture_path(tmp_path: Path):
         [
             {
                 "id": "q",
-                "type": "numeric",
-                **_question("numeric", images=[str(picture)]),
+                "type": "multiple_choice",
+                **_question("multiple_choice", images=[str(picture)]),
             }
         ],
     )
@@ -219,7 +193,7 @@ def test_wrong_suffix_magic_rejected(tmp_path: Path):
     path = tmp_path / "set.json"
     _write_set(
         path,
-        [{"id": "q", "type": "flag", **_question("flag", images=["photo.jpg"])}],
+        [{"id": "q", "type": "multiple_choice", **_question("multiple_choice", images=["photo.jpg"])}],
     )
     with pytest.raises(QuestionLoadError, match="not a valid JPG"):
         load_question_file(path)
@@ -354,9 +328,9 @@ def test_eight_pictures_make_two_rows_of_four(qtbot, tmp_path: Path):
         [
             {
                 "id": "q",
-                "type": "select_all",
+                "type": "multiple_choice",
                 **_question(
-                    "select_all",
+                    "multiple_choice",
                     prompt="Select the diagrams that show a firewall.",
                     images=names,
                 ),

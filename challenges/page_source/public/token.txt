@@ -1,2 +1,0 @@
-recovered from data-token path
-TR{relay_view_source}

@@ -1,2 +1,0 @@
-real salt material
-TR{salt_file_wins}

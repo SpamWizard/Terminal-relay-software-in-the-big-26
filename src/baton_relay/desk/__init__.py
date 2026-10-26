@@ -1,5 +1,5 @@
-"""In-window challenge desk: sandboxed line terminal and helpers."""
+"""In-window challenge desk: WSL team shell helpers."""
 
-from baton_relay.desk.terminal import TerminalResult, run_desk_command
+from baton_relay.desk.shell import ShellError, TeamShell, open_team_shell, require_desk_runtime
 
-__all__ = ["TerminalResult", "run_desk_command"]
+__all__ = ["ShellError", "TeamShell", "open_team_shell", "require_desk_runtime"]

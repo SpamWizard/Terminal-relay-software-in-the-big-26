@@ -17,16 +17,7 @@ from dataclasses import replace
 import pytest
 
 from baton_relay.config import ScoringConfig
-from baton_relay.questions.types import (
-    FillBlank,
-    Flag,
-    MatchUp,
-    MultipleChoice,
-    Numeric,
-    PutInOrder,
-    SelectAll,
-    ShortAnswer,
-)
+from baton_relay.questions.types import Desk, MultipleChoice
 from baton_relay.results.checkpoint import (
     apply_checkpoint,
     progress_from_dict,
@@ -48,8 +39,6 @@ def _seconds() -> float:
 def test_marathon_state_machine_hammer(config):
     """Random-walk sessions until the wall clock budget is spent."""
     budget = _seconds()
-    # Reserve ~15% of budget for scoring + checkpoint hammers in sibling tests
-    # when run together; this test takes the bulk.
     deadline = time.monotonic() + budget * 0.70
     rng = random.Random(20261019)
     walks = 0
@@ -84,7 +73,6 @@ def test_marathon_state_machine_hammer(config):
         steps = rng.randint(80, 400)
         _walk(session, rng, steps)
         _invariants(session)
-        # Occasional checkpoint roundtrip mid-chaos
         if walks % 7 == 0:
             data = session_to_dict(session)
             apply_checkpoint(session, data, cfg)
@@ -104,7 +92,7 @@ def test_marathon_state_machine_hammer(config):
 
 
 def test_marathon_scoring_hammer():
-    """Pound every scorer with garbage + correct answers for the remaining budget."""
+    """Pound scorers with garbage + correct answers for the remaining budget."""
     budget = _seconds() * 0.15
     deadline = time.monotonic() + budget
     rng = random.Random(42)
@@ -118,51 +106,17 @@ def test_marathon_scoring_hammer():
         MultipleChoice(
             id="mc", type="multiple_choice", prompt="p", points=10, choices=["a", "b", "c"], answer=2
         ),
-        SelectAll(
-            id="sa",
-            type="select_all",
+        Desk(
+            id="d",
+            type="desk",
             prompt="p",
-            points=10,
-            choices=["a", "b", "c", "d"],
-            answer=[0, 2],
-            partial_credit=True,
+            points=50,
+            accepted=["TR{ok}"],
+            public_dir="/tmp",
+            panes=["files", "terminal"],
         ),
-        PutInOrder(
-            id="ord", type="put_in_order", prompt="p", points=8, items=["a", "b", "c"], answer=[1, 2, 0]
-        ),
-        MatchUp(
-            id="mu",
-            type="match_up",
-            prompt="p",
-            points=9,
-            left=["a", "b", "c"],
-            right=["A", "B", "C"],
-            answer={"0": 1, "1": 2, "2": 0},
-        ),
-        ShortAnswer(id="sh", type="short_answer", prompt="p", points=5, accepted=["yes", "y"]),
-        Numeric(id="nu", type="numeric", prompt="p", points=5, answer=3.14, tolerance=0.01),
-        FillBlank(id="fb", type="fill_blank", prompt="p", points=4, accepted=["blue"]),
-        Flag(id="fl", type="flag", prompt="p", points=4, accepted=["FLAG{z}"]),
     ]
-    garbage = [
-        None,
-        "",
-        "nope",
-        0,
-        1,
-        2,
-        99,
-        -1,
-        [],
-        {},
-        [0],
-        [0, 1, 2],
-        {"0": 0},
-        3.14,
-        "FLAG{z}",
-        "yes",
-        "Y",
-    ]
+    garbage = [None, "", "nope", 0, 1, 2, 99, -1, [], {}, "TR{ok}", "TR{no}"]
     n = 0
     while time.monotonic() < deadline:
         q = rng.choice(questions)

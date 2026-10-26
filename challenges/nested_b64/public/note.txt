@@ -1,1 +1,0 @@
-If it still looks like base64, decode again. Stop when it looks like a path.

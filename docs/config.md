@@ -17,7 +17,6 @@ For short local debug timers, use `config/config.local.toml` (gitignored) if you
 | `[questions]` | files (each file = board category), warmup_count, board_slots, questions_per_pick, redo_missed_at_set_end |
 | `[controller]` | Xbox: enabled, device_name, inactivity_lock_seconds, unlock_hold_ms, unlock_buttons, `[controller.bindings]` |
 | `[organizer]` | password_hash — reserved (CONFIG lock not wired yet) |
-| `[containers]` | runtime/limits — reserved for Linux hands-on challenges |
 | `[questions].files` | JSON sets and/or challenge folders (`challenges/...`) |
 | `[timers].leg_runs_while_frozen` | `false` pauses the leg during baton handoff (HC-style default) |
 | `[paths]` | results_dir, checkpoint_path (mirror of the active run checkpoint) |

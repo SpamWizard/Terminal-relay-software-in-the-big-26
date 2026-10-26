@@ -27,6 +27,9 @@ results/*
 !results/.gitkeep
 data/checkpoints/*
 !data/checkpoints/.gitkeep
+data/wsl/
+images/*.vhdx
+images/*.tar
 
 # Local secrets / machine-specific
 config/config.local.toml

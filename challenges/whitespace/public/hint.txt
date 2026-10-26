@@ -1,1 +1,0 @@
-python -c can show repr(line) to see \t vs space. Result is a filename here.

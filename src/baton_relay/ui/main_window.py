@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from baton_relay.audio import play_switch_chime
 from baton_relay.config import AppConfig, load_config
+from baton_relay.desk.shell import ShellError, TeamShell, open_team_shell
 from baton_relay.duration import format_duration
 from baton_relay.input.base import BatonReading, ReadingKind
 from baton_relay.input.fake import FakeBatonSource
@@ -29,6 +30,7 @@ from baton_relay.input.serial_source import SerialBatonSource
 from baton_relay.input.xbox import XboxController
 from baton_relay.questions.base import QuestionSet
 from baton_relay.questions.loader import load_all_question_files
+from baton_relay.questions.types import Desk
 from baton_relay.results.checkpoint import (
     checkpoint_path_for,
     load_checkpoint,
@@ -900,6 +902,9 @@ class MainWindow(QMainWindow):
         self._last_qid: str | None = None
         self._fake: FakeBatonSource | None = None
         self._serial: SerialBatonSource | None = None
+        self._team_shell: TeamShell | None = None
+        # results/ lives at the repo root.
+        self._repo_root = config.paths.results_dir.parent
 
         self.setWindowTitle("Terminal Relay")
         self.resize(1280, 800)
@@ -980,7 +985,34 @@ class MainWindow(QMainWindow):
         if self._fake is not None:
             self._fake.stop()
         self._xbox.stop()
+        self._close_team_shell()
         super().closeEvent(event)
+
+    def _sets_need_desk(self) -> bool:
+        return any(isinstance(q, Desk) for s in self.sets for q in s.questions)
+
+    def _close_team_shell(self) -> None:
+        if self._team_shell is not None:
+            self._team_shell.close()
+            self._team_shell = None
+        self.game_screen.question_host.set_team_shell(None)
+
+    def _open_team_shell(self, team_name: str) -> None:
+        self._close_team_shell()
+        if not self._sets_need_desk():
+            return
+        try:
+            self._team_shell = open_team_shell(self._repo_root, team_name)
+        except ShellError as exc:
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.critical(
+                self,
+                "Team shell",
+                f"Could not open the WSL team shell:\n\n{exc}",
+            )
+            raise
+        self.game_screen.question_host.set_team_shell(self._team_shell)
 
     def _flash_override(self, title: str, sub: str = "") -> None:
         self._override_flash.setGeometry(self.rect())
@@ -1250,6 +1282,12 @@ class MainWindow(QMainWindow):
         )
         assert self.session is not None
         assert self.event_log is not None
+        try:
+            self._open_team_shell(self.session.team_name)
+        except ShellError:
+            self._close_team_shell()
+            self.startup.name_edit.setFocus()
+            return
 
         self.event_log.emit(
             "run_resumed",
@@ -1272,6 +1310,11 @@ class MainWindow(QMainWindow):
         *,
         bypass_baton: bool = False,
     ) -> None:
+        try:
+            self._open_team_shell(team_name)
+        except ShellError:
+            self._close_team_shell()
+            return
         self.run_dir = new_run_dir(self.config.paths.results_dir, team_name)
         self.event_log = EventLog(self.run_dir / "events.jsonl")
         self.game_screen.clear_activity()
@@ -1446,6 +1489,8 @@ class MainWindow(QMainWindow):
         self._update_star_holes()
 
     def _next_team(self) -> None:
+        self._close_team_shell()
+        self.game_screen.question_host.clear_desk_sessions()
         self.session = None
         self.event_log = None
         self.run_dir = None

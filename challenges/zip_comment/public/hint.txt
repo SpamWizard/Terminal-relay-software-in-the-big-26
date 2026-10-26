@@ -1,1 +1,0 @@
-zipfile.ZipFile(...).comment  →  b64  →  open that relative path
