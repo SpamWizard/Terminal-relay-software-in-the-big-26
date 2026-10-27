@@ -3,8 +3,8 @@
   "type": "desk",
   "title": "Hangman",
   "set_id": "hangman",
-  "prompt": "Play hangman: python3 hangman.py. Ten wrong guesses ends the game. The flag is TR{the first letter of each word in the phrase, in order}. You are already in this challenge's directory.",
+  "prompt": "Play hangman: python3 hangman.py. Five wrong guesses ends the game. The flag is TR{the first letter of each word in the phrase, in order}. You are already in this challenge's directory.",
   "points": 100,
-  "accepted": ["TR{spbgzlbac}"],
+  "accepted": ["TR{hyszwrs}"],
   "panes": ["files", "terminal"]
 }

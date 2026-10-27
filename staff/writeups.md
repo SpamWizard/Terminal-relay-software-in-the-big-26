@@ -138,19 +138,19 @@ Flag: `TR{just_xor}`
 
 ## Hangman
 
-`hangman.py` is a game. Ten wrong letters loses. A loss does not print the phrase, and the phrase is not stored as plain text.
+`hangman.py` is a game. The scaffold is already drawn. Five wrong letters each add a body part and then you lose. A loss does not print the phrase, and the phrase is not stored as plain text.
 
 Guess letters. One path that never misses:
 
 ```bash
-printf '%s\n' a s h l u c m y p v b g z | python3 hangman.py
+printf '%s\n' h a v e y o u s n z d i k w t r l | python3 hangman.py
 ```
 
-The phrase is `sly pygmy bugs gulp zyzzyva lymph by a chasm`.
+The phrase is `have you seen zodiak with real shoes`.
 
-The flag is the first letter of each word, in order. Count `by` and `a`.
+The flag is the first letter of each word, in order.
 
-Flag: `TR{spbgzlbac}`
+Flag: `TR{hyszwrs}`
 
 ## Fake Logos
 
