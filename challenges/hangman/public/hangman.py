@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Hangman. Ten wrong letters ends it. The phrase is not shown until you win."""
+"""Hangman. Five wrong letters ends it. The phrase is not shown until you win."""
 
 import sys
 
 _DATA = bytes.fromhex(
-    "447d230c1e4e7637554e55643d5f4e5064365c4e4d6820561741707a40175a6132"
-    "0c0c4e313b0c0d5f702941"
+    "5f702c494e4e7e2f0c1d5274340c145875334d05176633580617633f4d02176232430b44"
 )
 _PAD = bytes((0x37, 0x11, 0x5A, 0x2C, 0x6E))
-_MISSES = 10
+_MISSES = 5
 
 
 def _phrase() -> str:
@@ -16,23 +15,13 @@ def _phrase() -> str:
 
 
 def _gallows(misses: int) -> str:
-    if misses >= 10:
-        head = "X"
-    elif misses >= 9:
-        head = "@"
-    elif misses >= 8:
-        head = "0"
-    elif misses >= 7:
-        head = "o"
-    elif misses >= 1:
-        head = "O"
-    else:
-        head = " "
+    # Scaffold is always drawn. Each miss adds one body part.
+    head = "X" if misses >= 5 else ("O" if misses >= 1 else " ")
     body = "|" if misses >= 2 else " "
     left_arm = "/" if misses >= 3 else " "
     right_arm = "\\" if misses >= 4 else " "
     left_leg = "/" if misses >= 5 else " "
-    right_leg = "\\" if misses >= 6 else " "
+    right_leg = "\\" if misses >= 5 else " "
     return "\n".join(
         [
             "  +---+",
@@ -53,8 +42,9 @@ def _board(phrase: str, known: set[str]) -> str:
     return "   ".join(words)
 
 
-def _frame(phrase: str, known: set[str], wrong: list[str]) -> str:
-    tried = " ".join(wrong) if wrong else "-"
+def _frame(phrase: str, known: set[str], wrong: list[str], guessed: list[str]) -> str:
+    tried = " ".join(guessed) if guessed else "-"
+    misses = " ".join(wrong) if wrong else "-"
     return "\n".join(
         [
             "HANGMAN",
@@ -64,7 +54,8 @@ def _frame(phrase: str, known: set[str], wrong: list[str]) -> str:
             "",
             _board(phrase, known),
             "",
-            f"Misses: {tried}",
+            f"Guessed: {tried}",
+            f"Misses: {misses}",
         ]
     )
 
@@ -73,11 +64,12 @@ def main() -> None:
     phrase = _phrase()
     known: set[str] = set()
     wrong: list[str] = []
+    guessed: list[str] = []
     while True:
         solved = all(ch == " " or ch in known for ch in phrase)
         if sys.stdout.isatty():
             sys.stdout.write("\033[H\033[2J")
-        sys.stdout.write(_frame(phrase, known, wrong) + "\n")
+        sys.stdout.write(_frame(phrase, known, wrong, guessed) + "\n")
         if solved:
             sys.stdout.write("\nSolved.\n\n" + phrase + "\n\n")
             sys.stdout.write(
@@ -97,6 +89,7 @@ def main() -> None:
             continue
         if guess in known or guess in wrong:
             continue
+        guessed.append(guess)
         if guess in phrase:
             known.add(guess)
         else:

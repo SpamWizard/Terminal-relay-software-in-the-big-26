@@ -73,7 +73,7 @@ def test_short_desk_challenges_solve_clean():
         "gate": "TR{relay9x}",
         "telenet": "TR{virtual_circuit}",
         "xor": "TR{just_xor}",
-        "hangman": "TR{spbgzlbac}",
+        "hangman": "TR{hyszwrs}",
     }
     for folder, flag in expected.items():
         qset = load_challenge_dir(ROOT / "challenges" / folder)
@@ -170,29 +170,30 @@ def test_short_desk_challenges_solve_clean():
     assert solved.stdout.strip() == "TR{just_xor}"
 
     hangman = (ROOT / "challenges" / "hangman" / "public" / "hangman.py").read_text(encoding="utf-8")
-    phrase = "sly pygmy bugs gulp zyzzyva lymph by a chasm"
+    phrase = "have you seen zodiak with real shoes"
     assert phrase not in hangman
-    assert "spbgzlbac" not in hangman
+    assert "hyszwrs" not in hangman
     won = subprocess.run(
         [sys.executable, "hangman.py"],
         cwd=ROOT / "challenges" / "hangman" / "public",
-        input="\n".join(["a", "s", "h", "l", "u", "c", "m", "y", "p", "v", "b", "g", "z"]) + "\n",
+        input="\n".join(list("haveyousnzdikwtrl")) + "\n",
         capture_output=True,
         text=True,
         check=True,
     )
     assert phrase in won.stdout
-    assert "TR{spbgzlbac}" not in won.stdout
+    assert "TR{hyszwrs}" not in won.stdout
     lost = subprocess.run(
         [sys.executable, "hangman.py"],
         cwd=ROOT / "challenges" / "hangman" / "public",
-        input="\n".join(list("etoirdfwkx")) + "\n",
+        input="\n".join(list("bcfgj")) + "\n",
         capture_output=True,
         text=True,
         check=True,
     )
     assert "Out of guesses" in lost.stdout
     assert phrase not in lost.stdout
+    assert "X" in lost.stdout
 
 
 def test_command_output_is_not_held_until_next_key():
@@ -363,6 +364,46 @@ def test_ctrl_v_pastes_flag_into_the_shell(qtbot):
         shell._pty.write.assert_called_with("TR{rockme}")
     finally:
         clip.setText(previous)
+
+
+def test_mouse_wheel_scrolls_terminal_history(qtbot):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtGui import QWheelEvent
+
+    from baton_relay.ui.pty_terminal import PtyTerminalWidget
+
+    term = PtyTerminalWidget()
+    qtbot.addWidget(term)
+    term.resize(800, 400)
+    term.show()
+    qtbot.waitUntil(lambda: term._rows >= 8)
+    rows = term._rows
+    total = rows + 12
+    for i in range(total):
+        term._stream.feed(f"line-{i:02d}\r\n")
+    joined = "".join(term._screen.display)
+    assert "line-00" not in joined
+    assert f"line-{total - 2:02d}" in joined
+
+    pos = QPoint(term.width() // 2, term.height() // 2)
+    global_pos = term.mapToGlobal(pos)
+    wheel_up = QWheelEvent(
+        pos,
+        global_pos,
+        QPoint(0, 0),
+        QPoint(0, 120 * 40),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+    term.wheelEvent(wheel_up)
+    assert any("line-00" in row for row in term._screen.display)
+
+    # Shift+PageDown pages toward the live prompt again.
+    for _ in range(8):
+        qtbot.keyClick(term, Qt.Key.Key_PageDown, Qt.KeyboardModifier.ShiftModifier)
+    assert "line-00" not in "".join(term._screen.display)
 
 
 def _joined_writes(shell) -> list[str]:
