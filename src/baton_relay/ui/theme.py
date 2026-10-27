@@ -60,9 +60,15 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         background-color: transparent;
     }}
     QWidget#questionBody, QWidget#questionScrollBody,
-    QWidget#questionHost, QWidget#deskRoot, QFrame#challengeStage {{
+    QWidget#questionHost, QWidget#deskRoot,
+    QFrame#challengeStage {{
         background-color: transparent;
         border: none;
+    }}
+    QWidget#deskFlagField {{
+        background-color: transparent;
+        border: none;
+        border-bottom: 1px solid {mix(fg, bg, 0.55)};
     }}
     QStackedWidget#challengeStack {{
         background-color: transparent;
@@ -214,23 +220,30 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         padding: 2px 4px 0 4px;
     }}
     QPushButton#deskSubmit {{
-        background-color: {mix(fg, bg, 0.12)};
-        color: {fg};
-        border: 1px solid {mix(fg, bg, 0.55)};
-        border-radius: 8px;
+        background-color: transparent;
+        color: {ac};
+        border: none;
+        border-radius: 0px;
         font-size: 14px;
         font-weight: 600;
-        padding: 10px 20px;
-        min-width: 96px;
+        letter-spacing: 0.6px;
+        padding: 0px 2px 2px 12px;
+        margin: 0px;
+        min-width: 72px;
+        min-height: 32px;
+        max-height: 32px;
     }}
     QPushButton#deskSubmit:hover {{
-        background-color: {mix(fg, bg, 0.22)};
-        border-color: {mix(fg, bg, 0.35)};
+        background-color: transparent;
+        color: {mix(ac, "#ffffff", 0.40)};
+    }}
+    QPushButton#deskSubmit:pressed {{
+        background-color: transparent;
+        color: {fg};
     }}
     QPushButton#deskSubmit:disabled {{
-        background-color: {mix(bg, "#000000", 0.25)};
+        background-color: transparent;
         color: {muted};
-        border-color: {mix(bg, fg, 0.12)};
     }}
     QFrame#deskRail, QFrame#deskPanel, QFrame#deskFlagBar {{
         background-color: transparent;
@@ -297,7 +310,6 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
     QLineEdit#deskFlagIn {{
         background-color: transparent;
         border: none;
-        border-bottom: 1px solid {mix(fg, bg, 0.65)};
         border-radius: 0px;
         padding: 8px 4px;
         font-size: 15px;
@@ -307,7 +319,6 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
     QLineEdit#deskFlagIn:focus {{
         background-color: transparent;
         border: none;
-        border-bottom: 1px solid {mix(fg, bg, 0.35)};
     }}
     QTextBrowser#deskPage {{
         background-color: transparent;
@@ -397,13 +408,28 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         color: #475569;
     }}
     QPushButton#primary {{
-        background-color: {ac};
-        color: {bg};
-        font-size: 20px;
-        padding: 16px 36px;
+        background-color: {mix(fg, bg, 0.06)};
+        color: {mix(bg, "#000000", 0.35)};
+        border: 1px solid {mix(fg, bg, 0.28)};
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        padding: 12px 28px;
+        border-radius: 8px;
     }}
     QPushButton#primary:hover {{
-        background-color: {mix(ac, "#ffffff", 0.25)};
+        background-color: {fg};
+        color: {bg};
+        border-color: {fg};
+    }}
+    QPushButton#primary:pressed {{
+        background-color: {mix(fg, bg, 0.18)};
+        color: {bg};
+    }}
+    QPushButton#primary:disabled {{
+        background-color: {mix(bg, "#000000", 0.20)};
+        color: {muted};
+        border-color: {mix(bg, fg, 0.14)};
     }}
     QPushButton#ghost {{
         border-color: {panel_border};
