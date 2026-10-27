@@ -51,6 +51,7 @@ files = [
     "challenges/crackme",
     "challenges/telenet",
     "challenges/xor",
+    "challenges/hangman",
     "questions/fake_logos.json",
 ]
 redo_missed_at_set_end = false

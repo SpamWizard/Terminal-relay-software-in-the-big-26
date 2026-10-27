@@ -136,6 +136,22 @@ for i in range(256):
 
 Flag: `TR{just_xor}`
 
+## Hangman
+
+`hangman.py` is a game. Ten wrong letters loses. A loss does not print the phrase, and the phrase is not stored as plain text.
+
+Guess letters. One path that never misses:
+
+```bash
+printf '%s\n' a s h l u c m y p v b g z | python3 hangman.py
+```
+
+The phrase is `sly pygmy bugs gulp zyzzyva lymph by a chasm`.
+
+The flag is the first letter of each word, in order. Count `by` and `a`.
+
+Flag: `TR{spbgzlbac}`
+
 ## Fake Logos
 
 Each question is five logos in a row, labeled A through E. One of them never happened. The answer index in `questions/fake_logos.json` is 0-based.
