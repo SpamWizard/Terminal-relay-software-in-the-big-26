@@ -209,7 +209,12 @@ def create_linked_clone(repo_root: Path, team_name: str) -> str:
     child = team_vhdx_path(repo_root, team_name)
     _clear_readonly(gold)
     if _distro_registered(name):
-        return name
+        if child.is_file():
+            return name
+        # The distro entry outlived its disk. Starting it only yields
+        # "The system cannot find the path specified."
+        _run([_wsl_exe(), "--unregister", name], timeout=180.0)
+        _shutdown_wsl()
     if child.is_file():
         # Distro registration lost; reattach the same child (do not stack another link).
         try:
