@@ -29,7 +29,8 @@ data/checkpoints/*
 !data/checkpoints/.gitkeep
 data/scoreboard_pending.jsonl
 data/wsl/
-images/*.vhdx
+# Local WSL / gold disks — never commit these
+*.vhdx
 images/*.tar
 
 # Local secrets / machine-specific
