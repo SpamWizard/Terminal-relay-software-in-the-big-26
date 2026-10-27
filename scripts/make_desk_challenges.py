@@ -160,6 +160,73 @@ def _write_encrypted_zip(path: Path, name: str, data: bytes, password: bytes) ->
     path.write_bytes(local + central + eocd)
 
 
+def _write_gate() -> None:
+    """ELF-shaped blob whose only English phrase is the flag body.
+
+    xxd's ASCII column should show one readable phrase and nothing else.
+    """
+    import re
+
+    phrase = b"TR{pass the baton}"
+    # Dense non-letters so the dump still looks "binary", not empty.
+    noise = bytes((i * 37 + 0x91) & 0xFF for i in range(0xA0))
+    noise = bytes(b if b < 0x41 or b > 0x7A else (b ^ 0x80) for b in noise)
+
+    # Tiny exit(0) stub so `file` still says ELF, then noise, then the phrase.
+    code = bytes(
+        [
+            0xB8, 0x3C, 0x00, 0x00, 0x00,  # mov eax, 60
+            0x31, 0xFF,                    # xor edi, edi
+            0x0F, 0x05,                    # syscall
+        ]
+    )
+    text_off = 64 + 56
+    body = code + noise + phrase + b"\x00" + noise[::-1]
+    load_end = text_off + len(body)
+    entry = 0x400000 + text_off
+    ident = b"\x7fELF" + bytes([2, 1, 1, 0]) + bytes(8)
+    eh = struct.pack(
+        "<16sHHIQQQIHHHHHH",
+        ident,
+        2,          # ET_EXEC
+        62,         # EM_X86_64
+        1,
+        entry,
+        64,         # e_phoff
+        0,          # no section headers (avoids .text / .rodata names)
+        0,
+        64,
+        56,
+        1,
+        0,
+        0,
+        0,
+    )
+    ph = struct.pack(
+        "<IIQQQQQQ",
+        1,          # PT_LOAD
+        5,          # R+X
+        0,
+        0x400000,
+        0x400000,
+        load_end,
+        load_end,
+        0x1000,
+    )
+    blob = eh + ph + body
+    if blob.count(phrase) != 1:
+        raise SystemExit("gate phrase missing or duplicated")
+    # Letter runs of length 4+ must be only the words inside the flag.
+    allowed = {w for w in b"pass the baton".split() if len(w) >= 4}
+    found = set(re.findall(rb"[A-Za-z]{4,}", blob))
+    if found != allowed:
+        raise SystemExit(f"unexpected english in gate: {sorted(found)}")
+    out = CHALLENGES / "gate" / "public" / "bin" / "gate"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(blob)
+    print("wrote", out, "phrase", phrase.decode())
+
+
 def main() -> None:
     secret = base64.b64encode(codecs.encode(FLAG_UNWRAP, "rot13").encode().hex().encode())
     unwrap = CHALLENGES / "unwrap" / "public" / "secret.txt"
@@ -179,6 +246,7 @@ def main() -> None:
 
     anthem = CHALLENGES / "anthem" / "public" / "anthem.mp3"
     _write_encrypted_zip(anthem, "flag.txt", FLAG_ANTHEM, b"anthem")
+    _write_gate()
     print("wrote", secret.decode(), digest)
 
 

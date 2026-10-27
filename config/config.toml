@@ -49,6 +49,7 @@ files = [
     "challenges/hashcat",
     "challenges/regex",
     "challenges/crackme",
+    "challenges/gate",
     "challenges/telenet",
     "challenges/xor",
     "challenges/hangman",

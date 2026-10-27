@@ -104,6 +104,16 @@ It prints `correct`.
 
 Flag: `TR{rockme}`
 
+## Gate
+
+`bin/gate` is mostly noise. The flag itself sits in the ASCII column of an xxd dump.
+
+```bash
+xxd bin/gate
+```
+
+Flag: `TR{pass the baton}`
+
 ## Telenet
 
 `telenet.py` approves `TELENET <text> <count>`, where `count` is the number of characters in `text`. The words can be anything.

@@ -1,0 +1,10 @@
+{
+  "id": "gate",
+  "type": "desk",
+  "title": "Gate",
+  "set_id": "gate",
+  "prompt": "bin/gate looks like noise. Someone hid words in this; xxd is the right tool. Submit what you find. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{pass the baton}"],
+  "panes": ["files", "terminal"]
+}
