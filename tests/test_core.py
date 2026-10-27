@@ -10,6 +10,7 @@ import pytest
 from baton_relay.config import ConfigError, ScoringConfig, load_config
 from baton_relay.input.decode import decode_pins
 from baton_relay.input.base import ReadingKind
+from baton_relay.questions.base import QuestionSet
 from baton_relay.questions.loader import QuestionLoadError, load_all_question_files
 from baton_relay.questions.registry import ensure_builtin_types_loaded
 from baton_relay.questions.types import Desk, MultipleChoice
@@ -148,6 +149,43 @@ def test_load_questions(sets):
     types = {q.type for s in sets for q in s.questions}
     assert "desk" in types
     assert "multiple_choice" in types
+    logos = next(s for s in sets if s.set_id == "fake_logos")
+    assert logos.deferred is True
+    assert all(q.points == 1 for q in logos.questions)
+
+
+def test_deferred_category_waits_until_primaries_gone(config):
+    cfg = _with_warmup(config, 0, questions_per_pick=1, board_slots=2)
+    sets = tiny_sets(2, 1)
+    sets.append(
+        QuestionSet(
+            set_id="bonus",
+            title="Bonus",
+            deferred=True,
+            questions=[
+                MultipleChoice(
+                    id="bonus_q0",
+                    type="multiple_choice",
+                    prompt="later",
+                    points=1,
+                    choices=["no", "yes"],
+                    answer=1,
+                )
+            ],
+        )
+    )
+    session = GameSession(cfg, sets, team_name="Defer", bypass_baton=True)
+    assert "bonus" not in session.progress.board_slots
+    assert "bonus" in session.progress.pool
+
+    for _ in range(2):
+        sid = session.progress.board_slots[0]
+        assert sid != "bonus"
+        assert session.select_category(sid) is True
+        session.submit_answer(1)
+
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert session.progress.board_slots == ["bonus"]
 
 
 def test_bad_question_file(tmp_path):

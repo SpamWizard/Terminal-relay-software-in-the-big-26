@@ -6,9 +6,12 @@ Question sets are JSON files or challenge folders listed in `[questions].files`.
 {
   "set_id": "fake_logos",
   "title": "Fake Logos",
-  "questions": [ { "id": "g1", "type": "multiple_choice", "prompt": "...", "images": [...], "points": 10, ... } ]
+  "deferred": true,
+  "questions": [ { "id": "g1", "type": "multiple_choice", "prompt": "...", "images": [...], "points": 1, ... } ]
 }
 ```
+
+Optional set field `deferred: true` keeps that category off the board until every non-deferred category is exhausted.
 
 ## Board flow (config)
 

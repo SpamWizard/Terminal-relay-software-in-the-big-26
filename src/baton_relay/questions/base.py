@@ -45,3 +45,5 @@ class QuestionSet:
     title: str
     questions: list[Question]
     source_path: str = ""
+    # Held off the board until every non-deferred category is exhausted.
+    deferred: bool = False

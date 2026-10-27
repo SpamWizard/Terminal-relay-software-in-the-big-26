@@ -92,6 +92,7 @@ def load_question_file(path: Path) -> QuestionSet:
 
     set_id = str(_require(data, "set_id", where))
     title = str(_require(data, "title", where))
+    deferred = bool(data.get("deferred", False))
     questions_raw = _require(data, "questions", where)
     if not isinstance(questions_raw, list) or not questions_raw:
         raise QuestionLoadError(f"{where}: 'questions' must be a non-empty array")
@@ -106,7 +107,13 @@ def load_question_file(path: Path) -> QuestionSet:
         seen_ids.add(q.id)
         questions.append(q)
 
-    return QuestionSet(set_id=set_id, title=title, questions=questions, source_path=where)
+    return QuestionSet(
+        set_id=set_id,
+        title=title,
+        questions=questions,
+        source_path=where,
+        deferred=deferred,
+    )
 
 
 def _compact_challenge_to_set(data: dict[str, Any], where: str) -> dict[str, Any]:
@@ -146,6 +153,7 @@ def load_challenge_dir(path: Path) -> QuestionSet:
     data = _compact_challenge_to_set(raw, str(meta))
     set_id = str(_require(data, "set_id", str(meta)))
     title = str(_require(data, "title", str(meta)))
+    deferred = bool(data.get("deferred", False))
     questions_raw = _require(data, "questions", str(meta))
     if not isinstance(questions_raw, list) or not questions_raw:
         raise QuestionLoadError(f"{meta}: 'questions' must be a non-empty array")
@@ -177,7 +185,13 @@ def load_challenge_dir(path: Path) -> QuestionSet:
         seen_ids.add(q.id)
         questions.append(q)
 
-    return QuestionSet(set_id=set_id, title=title, questions=questions, source_path=where)
+    return QuestionSet(
+        set_id=set_id,
+        title=title,
+        questions=questions,
+        source_path=where,
+        deferred=deferred,
+    )
 
 
 def load_question_path(path: Path) -> QuestionSet:
