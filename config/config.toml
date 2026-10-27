@@ -50,9 +50,7 @@ files = [
     "challenges/regex",
     "challenges/crackme",
     "challenges/telenet",
-    "challenges/xor_pair",
-    "challenges/xor_byte",
-    "challenges/xor_repeat",
+    "challenges/xor",
     "questions/fake_logos.json",
 ]
 redo_missed_at_set_end = false
