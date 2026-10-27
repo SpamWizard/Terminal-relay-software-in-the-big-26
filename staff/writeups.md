@@ -106,26 +106,13 @@ Flag: `TR{rockme}`
 
 ## Gate
 
-`bin/gate` is a static Linux ELF. It reads one argument from the stack (no libc). For each character it does `xor 0xA7`, then adds the index, and compares the result with a 7-byte table in `.rodata`. The byte after the password must be 0.
+`bin/gate` is mostly noise. The flag itself sits in the ASCII column of an xxd dump.
 
 ```bash
-objdump -d -M intel bin/gate
-objdump -s -j .rodata bin/gate
+xxd bin/gate
 ```
 
-The table is `d5 c3 cd c9 e2 a3 e5`. Each character is independent, so invert one byte at a time:
-
-```bash
-python3 -c "t=bytes.fromhex('d5c3cdc9e2a3e5'); print(bytes(((b-i)&0xff)^0xA7 for i,b in enumerate(t)).decode())"
-```
-
-That prints `relay9x`.
-
-```bash
-bin/gate relay9x
-```
-
-Flag: `TR{relay9x}`
+Flag: `TR{pass the baton}`
 
 ## Telenet
 

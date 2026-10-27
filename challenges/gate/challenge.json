@@ -3,8 +3,8 @@
   "type": "desk",
   "title": "Gate",
   "set_id": "gate",
-  "prompt": "bin/gate is a Linux program. The flag is TR{the password it accepts}. Heard something about objdump. You are already in this challenge's directory.",
+  "prompt": "bin/gate looks like noise. Someone hid words in this; xxd is the right tool. Submit what you find. You are already in this challenge's directory.",
   "points": 100,
-  "accepted": ["TR{relay9x}"],
+  "accepted": ["TR{pass the baton}"],
   "panes": ["files", "terminal"]
 }

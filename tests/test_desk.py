@@ -70,7 +70,7 @@ def test_short_desk_challenges_solve_clean():
         "hashcat": "TR{spark}",
         "regex": "TR{kite4}",
         "crackme": "TR{rockme}",
-        "gate": "TR{relay9x}",
+        "gate": "TR{pass the baton}",
         "telenet": "TR{virtual_circuit}",
         "xor": "TR{just_xor}",
         "hangman": "TR{hyszwrs}",
@@ -86,6 +86,9 @@ def test_short_desk_challenges_solve_clean():
         pub = Path(q.public_dir)
         for path in pub.rglob("*"):
             if path.is_file() and flag.encode() in path.read_bytes():
+                # Gate's puzzle is finding the flag in the xxd dump.
+                if folder == "gate":
+                    continue
                 raise AssertionError(f"{path} contains the flag")
 
     photo = (ROOT / "challenges" / "photo_note" / "public" / "photo.jpg").read_bytes()
@@ -129,13 +132,12 @@ def test_short_desk_challenges_solve_clean():
     source = (ROOT / "challenges" / "crackme" / "public" / "crackme.py").read_text(encoding="utf-8")
     assert 'pw[::-1] == "emkcor"' in source
 
+    import re
+
     gate = (ROOT / "challenges" / "gate" / "public" / "bin" / "gate").read_bytes()
     assert gate.startswith(b"\x7fELF")
-    table = bytes.fromhex("d5c3cdc9e2a3e5")
-    assert table in gate
-    assert bytes(((b - i) & 0xFF) ^ 0xA7 for i, b in enumerate(table)) == b"relay9x"
-    assert b"relay9x" not in gate
-    assert b"\x34\xa7" in gate
+    assert gate.count(b"TR{pass the baton}") == 1
+    assert set(re.findall(rb"[A-Za-z]{4,}", gate)) == {b"pass", b"baton"}
 
     telenet = (ROOT / "challenges" / "telenet" / "public" / "telenet.py").read_text(encoding="utf-8")
     assert 'count == str(len(text))' in telenet
