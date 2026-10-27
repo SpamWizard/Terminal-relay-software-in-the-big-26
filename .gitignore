@@ -38,3 +38,4 @@ config/config.local.toml
 
 # Exhaustive marathon run log
 tests/_marathon_run.log
+*.vhdx
