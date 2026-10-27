@@ -116,36 +116,25 @@ That prints the flag. A bad message, including `TELENET hello 4`, prints only `R
 
 Flag: `TR{virtual_circuit}`
 
-## XOR Pair
+## XOR
 
-`a.hex` and `b.hex` are the same length. XOR them byte by byte.
-
-```bash
-python3 -c "a=bytes.fromhex(open('a.hex').read()); b=bytes.fromhex(open('b.hex').read()); print(bytes(x^y for x,y in zip(a,b)).decode())"
-```
-
-Flag: `TR{zip_the_bytes}`
-
-## One Byte
-
-`cipher.hex` is a single-byte XOR. The plaintext starts with `TR{`, so one of the 256 keys is the answer. The key is `0x37`.
+`cipher.hex` is a single-byte XOR. The key is not in the folder. `xor.py` applies one hex byte and prints the result. The plaintext starts with `TR{`, and the key is `37`.
 
 ```bash
-python3 -c "c=bytes.fromhex(open('cipher.hex').read());
-[print(bytes(b^k for b in c).decode()) for k in range(256) if bytes(b^k for b in c).startswith(b'TR{')]"
+python3 xor.py 37
 ```
 
-Flag: `TR{try_every_byte}`
-
-## Repeat Key
-
-`key.txt` is the five bytes `relay`, repeated across `cipher.hex`.
+Or try every byte:
 
 ```bash
-python3 -c "c=bytes.fromhex(open('cipher.hex').read()); k=open('key.txt','rb').read(); print(bytes(b^k[i%len(k)] for i,b in enumerate(c)).decode())"
+python3 -c "import subprocess
+for i in range(256):
+    out = subprocess.check_output(['python3','xor.py',f'{i:02x}'], text=True)
+    if out.startswith('TR{'):
+        print(out, end='')"
 ```
 
-Flag: `TR{key_repeats}`
+Flag: `TR{just_xor}`
 
 ## Fake Logos
 

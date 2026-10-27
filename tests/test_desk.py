@@ -71,9 +71,7 @@ def test_short_desk_challenges_solve_clean():
         "regex": "TR{kite4}",
         "crackme": "TR{rockme}",
         "telenet": "TR{virtual_circuit}",
-        "xor_pair": "TR{zip_the_bytes}",
-        "xor_byte": "TR{try_every_byte}",
-        "xor_repeat": "TR{key_repeats}",
+        "xor": "TR{just_xor}",
     }
     for folder, flag in expected.items():
         qset = load_challenge_dir(ROOT / "challenges" / folder)
@@ -134,22 +132,32 @@ def test_short_desk_challenges_solve_clean():
     assert 'print("REJECTED")' in telenet
     assert "usage" not in telenet
 
-    a = bytes.fromhex((ROOT / "challenges" / "xor_pair" / "public" / "a.hex").read_text(encoding="utf-8"))
-    b = bytes.fromhex((ROOT / "challenges" / "xor_pair" / "public" / "b.hex").read_text(encoding="utf-8"))
-    assert bytes(x ^ y for x, y in zip(a, b)) == b"TR{zip_the_bytes}"
+    cipher = bytes.fromhex((ROOT / "challenges" / "xor" / "public" / "cipher.hex").read_text(encoding="utf-8"))
+    hits = [key for key in range(256) if bytes(byte ^ key for byte in cipher).startswith(b"TR{")]
+    assert hits == [0x37]
+    assert not (ROOT / "challenges" / "xor" / "public" / "key.txt").exists()
 
-    cipher = bytes.fromhex((ROOT / "challenges" / "xor_byte" / "public" / "cipher.hex").read_text(encoding="utf-8"))
-    byte_hits = [
-        bytes(byte ^ key for byte in cipher)
-        for key in range(256)
-        if bytes(byte ^ key for byte in cipher).startswith(b"TR{")
-    ]
-    assert byte_hits == [b"TR{try_every_byte}"]
+    import subprocess
+    import sys
 
-    repeated = bytes.fromhex((ROOT / "challenges" / "xor_repeat" / "public" / "cipher.hex").read_text(encoding="utf-8"))
-    key = (ROOT / "challenges" / "xor_repeat" / "public" / "key.txt").read_bytes()
-    assert key == b"relay"
-    assert bytes(byte ^ key[i % len(key)] for i, byte in enumerate(repeated)) == b"TR{key_repeats}"
+    public = ROOT / "challenges" / "xor" / "public"
+    bare = subprocess.run(
+        [sys.executable, "xor.py"],
+        cwd=public,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert bare.returncode != 0
+    assert "TR{just_xor}" not in bare.stdout
+    solved = subprocess.run(
+        [sys.executable, "xor.py", "37"],
+        cwd=public,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert solved.stdout.strip() == "TR{just_xor}"
 
 
 def test_command_output_is_not_held_until_next_key():

@@ -1,0 +1,10 @@
+{
+  "id": "xor",
+  "type": "desk",
+  "title": "XOR",
+  "set_id": "xor",
+  "prompt": "cipher.hex is one line of hex. Every byte was XORed with the same unknown byte. The plaintext starts with TR{. xor.py tries one hex byte: python3 xor.py 41. Find the byte. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{just_xor}"],
+  "panes": ["files", "terminal"]
+}
