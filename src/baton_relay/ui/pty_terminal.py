@@ -5,7 +5,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QColor, QFont, QKeyEvent, QMouseEvent, QPainter, QResizeEvent
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QKeyEvent,
+    QMouseEvent,
+    QPainter,
+    QResizeEvent,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
 import pyte
@@ -151,6 +159,24 @@ class PtyTerminalWidget(QWidget):
         metrics = self.fontMetrics()
         self._cell_w = max(6, metrics.horizontalAdvance("M"))
         self._cell_h = max(12, metrics.height())
+
+    def _scroll_by_lines(self, lines: int) -> None:
+        """Move the viewport through pyte scrollback. Negative = older output."""
+        if lines == 0:
+            return
+        screen = self._screen
+        count = abs(lines)
+        ratio = count / max(1, screen.lines)
+        old_ratio = screen.history.ratio
+        screen.history = screen.history._replace(ratio=ratio)
+        try:
+            if lines < 0:
+                screen.prev_page()
+            else:
+                screen.next_page()
+        finally:
+            screen.history = screen.history._replace(ratio=old_ratio)
+        self.update()
 
     def _fit_size(self) -> None:
         self._measure_cells()
@@ -341,6 +367,17 @@ class PtyTerminalWidget(QWidget):
             self._paste_clipboard()
             event.accept()
             return
+        # Shift+PageUp/Down browse scrollback; plain Page* still go to the PTY
+        # (less, vim, …).
+        shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+        if shift and event.key() == Qt.Key.Key_PageUp:
+            self._scroll_by_lines(-max(1, self._rows // 2))
+            event.accept()
+            return
+        if shift and event.key() == Qt.Key.Key_PageDown:
+            self._scroll_by_lines(max(1, self._rows // 2))
+            event.accept()
+            return
         if self._locked or self._shell is None:
             return
         seq = _key_to_seq(event)
@@ -348,6 +385,18 @@ class PtyTerminalWidget(QWidget):
             super().keyPressEvent(event)
             return
         self._shell.write_keys(seq)
+        event.accept()
+
+    def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
+        delta = event.angleDelta().y()
+        if delta == 0:
+            delta = event.pixelDelta().y()
+        if delta == 0:
+            super().wheelEvent(event)
+            return
+        # One notch ≈ 120°; high-res wheels may send smaller deltas.
+        steps = max(1, abs(delta) // 120) if abs(delta) >= 120 else 1
+        self._scroll_by_lines((-3 if delta > 0 else 3) * steps)
         event.accept()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802

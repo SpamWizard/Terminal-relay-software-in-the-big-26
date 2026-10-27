@@ -357,6 +357,46 @@ def test_ctrl_v_pastes_flag_into_the_shell(qtbot):
         clip.setText(previous)
 
 
+def test_mouse_wheel_scrolls_terminal_history(qtbot):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtGui import QWheelEvent
+
+    from baton_relay.ui.pty_terminal import PtyTerminalWidget
+
+    term = PtyTerminalWidget()
+    qtbot.addWidget(term)
+    term.resize(800, 400)
+    term.show()
+    qtbot.waitUntil(lambda: term._rows >= 8)
+    rows = term._rows
+    total = rows + 12
+    for i in range(total):
+        term._stream.feed(f"line-{i:02d}\r\n")
+    joined = "".join(term._screen.display)
+    assert "line-00" not in joined
+    assert f"line-{total - 2:02d}" in joined
+
+    pos = QPoint(term.width() // 2, term.height() // 2)
+    global_pos = term.mapToGlobal(pos)
+    wheel_up = QWheelEvent(
+        pos,
+        global_pos,
+        QPoint(0, 0),
+        QPoint(0, 120 * 40),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+    term.wheelEvent(wheel_up)
+    assert any("line-00" in row for row in term._screen.display)
+
+    # Shift+PageDown pages toward the live prompt again.
+    for _ in range(8):
+        qtbot.keyClick(term, Qt.Key.Key_PageDown, Qt.KeyboardModifier.ShiftModifier)
+    assert "line-00" not in "".join(term._screen.display)
+
+
 def _joined_writes(shell) -> list[str]:
     assert shell._cd_thread is not None
     shell._cd_thread.join(timeout=2)
