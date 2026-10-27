@@ -196,13 +196,24 @@ relay run
 
 ## Update a station from GitHub
 
-After someone pushes changes, run this block on **each** station PC. Close the game first. Leave the PC on and online; it pulls the repo, reinstalls the app, refreshes the golden Kali disk, and clears old team disks. Git may ask for the GitHub password once. Walk away until the prompt comes back.
+After someone pushes changes, run this block on **each** station PC. Close the game first. Leave the PC on and online. It pulls from GitHub, reinstalls the app, refreshes the golden Kali disk (or builds it if missing), clears old team disks, and warms a standby desk disk. Git may ask for the GitHub password once. Walk away until the prompt comes back, then start the game with the block under **Next time**.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File C:\relay\scripts\update_station.ps1
+cd C:\relay
+git pull
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+if (Test-Path images\relay-gold.vhdx) {
+  powershell -ExecutionPolicy Bypass -File scripts\build_relay_gold.ps1 -SeedOnly
+} else {
+  powershell -ExecutionPolicy Bypass -File scripts\build_relay_gold.ps1
+}
+relay reset
+relay warm
 ```
 
-When it prints `Done. Station matches GitHub.`, start the game again with the block under **Next time**. If the gold refresh fails, run step 5 once (full rebuild), then run this update block again.
+If the gold step fails, run step 5 once (full rebuild), then run this update block again.
 
 ## Next time, and between teams
 
@@ -228,4 +239,4 @@ Match length and roster are the **CONFIG** button on the launch screen, which wr
 
 Tests, from the same `(.venv)` prompt: `pytest`.
 
-Rebuilding the golden disk from scratch is the same block as step 5. Details: [docs/wsl-desk.md](docs/wsl-desk.md). The update script above already refreshes gold and runs `relay reset` for you.
+Rebuilding the golden disk from scratch is the same block as step 5. Details: [docs/wsl-desk.md](docs/wsl-desk.md). The update block above already refreshes gold and runs `relay reset` / `relay warm` for you.
