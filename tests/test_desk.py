@@ -72,6 +72,7 @@ def test_short_desk_challenges_solve_clean():
         "crackme": "TR{rockme}",
         "telenet": "TR{virtual_circuit}",
         "xor": "TR{just_xor}",
+        "hangman": "TR{spbgzlbac}",
     }
     for folder, flag in expected.items():
         qset = load_challenge_dir(ROOT / "challenges" / folder)
@@ -158,6 +159,31 @@ def test_short_desk_challenges_solve_clean():
         check=True,
     )
     assert solved.stdout.strip() == "TR{just_xor}"
+
+    hangman = (ROOT / "challenges" / "hangman" / "public" / "hangman.py").read_text(encoding="utf-8")
+    phrase = "sly pygmy bugs gulp zyzzyva lymph by a chasm"
+    assert phrase not in hangman
+    assert "spbgzlbac" not in hangman
+    won = subprocess.run(
+        [sys.executable, "hangman.py"],
+        cwd=ROOT / "challenges" / "hangman" / "public",
+        input="\n".join(["a", "s", "h", "l", "u", "c", "m", "y", "p", "v", "b", "g", "z"]) + "\n",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert phrase in won.stdout
+    assert "TR{spbgzlbac}" not in won.stdout
+    lost = subprocess.run(
+        [sys.executable, "hangman.py"],
+        cwd=ROOT / "challenges" / "hangman" / "public",
+        input="\n".join(list("etoirdfwkx")) + "\n",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "Out of guesses" in lost.stdout
+    assert phrase not in lost.stdout
 
 
 def test_command_output_is_not_held_until_next_key():
