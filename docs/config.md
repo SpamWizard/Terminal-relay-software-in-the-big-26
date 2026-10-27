@@ -18,6 +18,7 @@ Prefer the in-app **CONFIG** screen on launch. Edits save to `config.toml` and a
 | `[questions].files` | JSON sets and/or challenge folders (`challenges/...`) |
 | `[timers].leg_runs_while_frozen` | `false` pauses the leg during a baton handoff |
 | `[paths]` | results_dir, checkpoint_path (mirror of the active run checkpoint) |
+| `[scoreboard]` | POST finished runs to the Scoreboard Pi: `enabled` (default false), `base_url`, `machine_id`, `timeout_seconds`. Bearer token = Pi IP (host in `base_url`); no separate secret. Stations only need LAN reachability to the Pi. |
 | `[theme]` | `name` selects a preset (default `deep_space`); optional accent/background/foreground overrides |
 | `[themes.<name>]` | Named color presets (deep_space, neon_terminal, amber_grid, violet_pulse, ice, crimson, …) |
 | `[ui]` | correct toast timings; `switch_sound` / `switch_sound_volume` (0–1) for change alert |

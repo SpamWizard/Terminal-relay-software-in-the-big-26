@@ -6,6 +6,7 @@ import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 
 VALID_BATON_PAIRS: frozenset[tuple[int, int]] = frozenset(
@@ -104,6 +105,16 @@ class PathsConfig:
 
 
 @dataclass(frozen=True)
+class ScoreboardConfig:
+    """POST finished summary.json to the Scoreboard Pi (LAN). Off by default."""
+
+    enabled: bool
+    base_url: str
+    machine_id: str
+    timeout_seconds: float
+
+
+@dataclass(frozen=True)
 class ThemeConfig:
     name: str
     accent: str
@@ -132,6 +143,7 @@ class AppConfig:
     controller: ControllerConfig
     organizer_password_hash: str
     paths: PathsConfig
+    scoreboard: ScoreboardConfig
     theme: ThemeConfig
     themes: dict[str, ThemeConfig]
     ui: UiConfig
@@ -466,6 +478,47 @@ def load_config(path: Path) -> AppConfig:
         checkpoint_path = (root_dir / checkpoint_path).resolve()
     paths = PathsConfig(results_dir=results_dir, checkpoint_path=checkpoint_path)
 
+    scoreboard_raw = raw.get("scoreboard", {})
+    if scoreboard_raw is None:
+        scoreboard_raw = {}
+    if not isinstance(scoreboard_raw, dict):
+        raise ConfigError("[scoreboard]: expected table")
+    sb_enabled = _as_bool(
+        scoreboard_raw.get("enabled", False), "[scoreboard].enabled"
+    )
+    sb_base = _as_str(
+        scoreboard_raw.get("base_url", "http://192.168.1.50:8080"),
+        "[scoreboard].base_url",
+    ).strip()
+    sb_machine = _as_str(
+        scoreboard_raw.get("machine_id", "station-1"),
+        "[scoreboard].machine_id",
+    ).strip()
+    sb_timeout = _as_number_expr(
+        scoreboard_raw.get("timeout_seconds", 10),
+        "[scoreboard].timeout_seconds",
+    )
+    if sb_timeout <= 0:
+        raise ConfigError(
+            f"[scoreboard].timeout_seconds: must be > 0, got {sb_timeout}"
+        )
+    if sb_enabled:
+        if not sb_base:
+            raise ConfigError("[scoreboard].base_url: required when enabled")
+        if not sb_machine:
+            raise ConfigError("[scoreboard].machine_id: required when enabled")
+        host = urlparse(sb_base).hostname
+        if not host:
+            raise ConfigError(
+                f"[scoreboard].base_url: must include a host (Pi IP), got {sb_base!r}"
+            )
+    scoreboard = ScoreboardConfig(
+        enabled=sb_enabled,
+        base_url=sb_base,
+        machine_id=sb_machine,
+        timeout_seconds=sb_timeout,
+    )
+
     theme_raw = raw.get("theme", {})
     if not isinstance(theme_raw, dict):
         raise ConfigError("[theme]: expected table")
@@ -569,6 +622,7 @@ def load_config(path: Path) -> AppConfig:
         controller=controller,
         organizer_password_hash=password_hash,
         paths=paths,
+        scoreboard=scoreboard,
         theme=theme,
         themes=theme_presets,
         ui=ui,
@@ -680,6 +734,13 @@ def save_config(config: AppConfig, path: Path | None = None) -> None:
             f"results_dir = {_toml_str(_rel_path(config.paths.results_dir, root))}",
             f"checkpoint_path = "
             f"{_toml_str(_rel_path(config.paths.checkpoint_path, root))}",
+            "",
+            "[scoreboard]",
+            f"enabled = {'true' if config.scoreboard.enabled else 'false'}",
+            f"base_url = {_toml_str(config.scoreboard.base_url)}",
+            "# api key = Pi IP (same as host in base_url); no separate secret",
+            f"machine_id = {_toml_str(config.scoreboard.machine_id)}",
+            f"timeout_seconds = {_toml_number(config.scoreboard.timeout_seconds)}",
             "",
             "[theme]",
             f"name = {_toml_str(config.theme.name)}",

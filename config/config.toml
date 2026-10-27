@@ -79,6 +79,13 @@ password_hash = "argon2$dev$change-me"
 results_dir = "results"
 checkpoint_path = "data/checkpoints/current.json"
 
+[scoreboard]
+enabled = true
+base_url = "http://192.168.1.50:8080"
+# api key = Pi IP (same as host in base_url); no separate secret
+machine_id = "station-3"
+timeout_seconds = 10
+
 [theme]
 name = "deep_space"
 

@@ -27,6 +27,7 @@ results/*
 !results/.gitkeep
 data/checkpoints/*
 !data/checkpoints/.gitkeep
+data/scoreboard_pending.jsonl
 data/wsl/
 images/*.vhdx
 images/*.tar

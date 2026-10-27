@@ -10,10 +10,12 @@ from baton_relay.results.log import (
     team_name_taken,
     team_slug,
 )
+from baton_relay.results.scoreboard import ScoreboardUploader
 
 __all__ = [
     "EventLog",
     "PriorTeamRun",
+    "ScoreboardUploader",
     "find_resumable_run",
     "list_team_runs",
     "load_checkpoint",

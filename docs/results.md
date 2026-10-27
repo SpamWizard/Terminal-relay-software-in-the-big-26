@@ -38,3 +38,12 @@ Written when the game ends. This is the score sheet:
 - `attempts`: every answer and skip, in order, with prompt, submitted answer, expected answer, and points
 
 `time_used` is the game clock (allotted time minus time left), not wall-clock time. Resume bonuses that add time back shorten it.
+
+## Scoreboard Pi
+
+When `[scoreboard].enabled` is true, writing `summary.json` also POSTs that run to the Scoreboard Pi (`POST /api/v1/runs`). The game client never talks to saintcon.org.
+
+- Auth: `Authorization: Bearer <pi-ip>` (same string as the host in `base_url`)
+- Body: `{ machine_id, submitted_at, summary }` where `summary` is the exact `summary.json` object
+- Success writes a `scoreboard_submitted` marker in the run folder
+- Failures are logged and queued in `data/scoreboard_pending.jsonl` for retry (same payload; Pi upsert is idempotent). The queue is drained periodically — the app does **not** scan/upload the whole `results/` tree on startup.

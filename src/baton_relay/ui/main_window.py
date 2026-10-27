@@ -44,6 +44,7 @@ from baton_relay.results.log import (
     score_sheet,
     team_name_taken,
 )
+from baton_relay.results.scoreboard import ScoreboardUploader
 from baton_relay.state.machine import GameSession, GameSnapshot, PlayerSlot, RelayState
 from baton_relay.ui.category_board import CategoryBoard
 from baton_relay.ui.config_dialog import ConfigDialog
@@ -955,6 +956,8 @@ class MainWindow(QMainWindow):
         self._team_shell: TeamShell | None = None
         # results/ lives at the repo root.
         self._repo_root = config.paths.results_dir.parent
+        self._scoreboard = ScoreboardUploader(config.scoreboard, config.root_dir)
+        self._scoreboard.start()
 
         self.setWindowTitle("Terminal Relay")
         self.resize(1280, 800)
@@ -1041,6 +1044,7 @@ class MainWindow(QMainWindow):
         if self._fake is not None:
             self._fake.stop()
         self._xbox.stop()
+        self._scoreboard.stop()
         self._close_team_shell()
         super().closeEvent(event)
 
@@ -1172,6 +1176,7 @@ class MainWindow(QMainWindow):
             if self.session is not None:
                 self.session.set_device_status(self._device_label)
         self._xbox.apply_config(config.controller)
+        self._scoreboard.update_config(config.scoreboard)
         if self.session is not None:
             self.session.config = config
         self._update_star_holes()
@@ -1454,7 +1459,9 @@ class MainWindow(QMainWindow):
                         }
                         for s in snap.roster
                     ]
-                self.event_log.write_summary(self.run_dir / "summary.json", sheet)
+                summary_path = self.run_dir / "summary.json"
+                self.event_log.write_summary(summary_path, sheet)
+                self._scoreboard.submit_async(summary_path)
                 # Finished runs are not resumable
                 for path in (
                     checkpoint_path_for(self.run_dir),

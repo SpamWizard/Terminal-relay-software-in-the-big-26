@@ -204,6 +204,8 @@ relay reset
 
 That archives checkpoints and deletes team Linux disks. It leaves `images\relay-gold.vhdx` in place. Scores land in `C:\relay\results\<team>\<timestamp>\summary.json`. See [docs/results.md](docs/results.md).
 
+On event day, set `[scoreboard] enabled = true` with the Pi `base_url` and this station’s `machine_id` (token = Pi IP). Finished runs POST to the Scoreboard Pi only — never to saintcon.org.
+
 Match length and roster are the **CONFIG** button on the launch screen, which writes `config\config.toml`. Default game is 25 minutes (`game_seconds = 1500`), a leg is 100 seconds, team size is 3. The rest of the file is in [docs/config.md](docs/config.md).
 
 Tests, from the same `(.venv)` prompt: `pytest`.
