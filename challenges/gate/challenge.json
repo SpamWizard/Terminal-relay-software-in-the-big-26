@@ -1,0 +1,10 @@
+{
+  "id": "gate",
+  "type": "desk",
+  "title": "Gate",
+  "set_id": "gate",
+  "prompt": "bin/gate is a Linux program. The flag is TR{the password it accepts}. Heard something about objdump. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{relay9x}"],
+  "panes": ["files", "terminal"]
+}

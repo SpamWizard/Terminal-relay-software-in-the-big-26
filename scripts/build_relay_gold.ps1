@@ -236,6 +236,9 @@ cp /challenges/wordlist/hash.txt /challenges/wordlist/wordlist.txt /tmp/relay-ch
 john --pot=/tmp/relay-check/john.pot --format=raw-md5 --wordlist=/tmp/relay-check/wordlist.txt /tmp/relay-check/hash.txt
 john --pot=/tmp/relay-check/john.pot --show --format=raw-md5 /tmp/relay-check/hash.txt | grep -q lantern
 python3 /challenges/crackme/crackme.py rockme | grep -qx correct
+chmod +x /challenges/gate/bin/gate
+test "$(/challenges/gate/bin/gate relay9x)" = correct
+test "$(/challenges/gate/bin/gate nope || true)" = nope
 rm -rf /tmp/relay-check /root/.john /home/player/.john
 find /challenges \( -name '*.pot' -o -name '*.rec' -o -name 'john.log' -o -name '*.john' \) -delete
 chown -R player:player /challenges
