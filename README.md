@@ -15,12 +15,14 @@ There are two windows in this guide:
 
 Run the blocks in PowerShell, not the black Command Prompt. Click the window, `Ctrl+V`, Enter. Wait until the prompt comes back before the next step.
 
-## 1. Install Git and Python from Ninite
+## 1. Install Git and Python 3.12.10
 
 1. Open [https://ninite.com](https://ninite.com).
-2. Under **Developer Tools**, check **Git** and **Python x64 3**. Leave the plain **Python** box unchecked. That one is Python 2.
+2. Under **Developer Tools**, check **Git** only. Do not check Python — Ninite’s newest Python breaks the pygame install later.
 3. Click **Get Installer** and run the downloaded exe. Wait until Ninite finishes and closes.
-4. Press the Windows key, type `App execution aliases`, press Enter, and switch **off** `python.exe` and `python3.exe`.
+4. Download [Python 3.12.10 (64-bit)](https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe) and run it.
+5. On the first screen, check **Add python.exe to PATH**, then click **Install Now**. Wait until it finishes.
+6. Press the Windows key, type `App execution aliases`, press Enter, and switch **off** `python.exe` and `python3.exe`.
 
 Close every terminal window, open a new PowerShell, and run this block:
 
@@ -30,7 +32,7 @@ python --version
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force
 ```
 
-You want a git version line and `Python 3.11` or newer. The last line lets the later scripts run for this Windows user.
+You want a git version line and `Python 3.12.10`. The last line lets the later scripts run for this Windows user.
 
 ## 2. Install WSL and the Hyper-V disk tools
 
