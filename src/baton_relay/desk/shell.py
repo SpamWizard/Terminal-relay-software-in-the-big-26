@@ -41,6 +41,15 @@ def team_vhdx_path(repo_root: Path, team_name: str) -> Path:
     return repo_root / "data" / "wsl" / team_slug(team_name) / "ext4.vhdx"
 
 
+# Pre-copied gold child. Claimed (moved) when a team starts so the first
+# desk open is a rename instead of a multi-hundred-MB copy.
+STANDBY_SLUG = "_standby"
+
+
+def standby_vhdx_path(repo_root: Path) -> Path:
+    return repo_root / "data" / "wsl" / STANDBY_SLUG / "ext4.vhdx"
+
+
 def wsl_available() -> bool:
     return shutil.which("wsl") is not None or shutil.which("wsl.exe") is not None
 
@@ -197,12 +206,91 @@ def _remove_child(child: Path) -> None:
         child.unlink(missing_ok=True)
 
 
+def _standby_ready(repo_root: Path) -> bool:
+    path = standby_vhdx_path(repo_root)
+    if not path.is_file():
+        return False
+    try:
+        return path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def ensure_standby_disk(repo_root: Path) -> Path:
+    """Make sure a full gold copy sits at the standby path (not registered with WSL).
+
+    Claiming this file on team start is a move, so the first desk open does not
+    wait on a multi-hundred-MB copy from ``images/relay-gold.vhdx``.
+    """
+    require_desk_runtime(repo_root)
+    gold = gold_vhdx_path(repo_root)
+    child = standby_vhdx_path(repo_root)
+    if _standby_ready(repo_root):
+        gold_size = gold.stat().st_size
+        try:
+            if child.stat().st_size == gold_size:
+                return child
+        except OSError:
+            pass
+        # Stale/partial standby — rebuild.
+        _remove_child(child)
+    try:
+        _create_full_copy_child(gold, child)
+    except OSError as copy_exc:
+        raise ShellError(f"Could not pre-copy golden disk: {copy_exc}") from copy_exc
+    return child
+
+
+def warm_standby_async(repo_root: Path) -> None:
+    """Kick off a background gold copy. Safe to call often; no-ops if ready."""
+    if _standby_ready(repo_root):
+        gold = gold_vhdx_path(repo_root)
+        child = standby_vhdx_path(repo_root)
+        try:
+            if gold.is_file() and child.stat().st_size == gold.stat().st_size:
+                return
+        except OSError:
+            pass
+
+    def _worker() -> None:
+        try:
+            ensure_standby_disk(repo_root)
+        except Exception:
+            # Warm is best-effort; team start still falls back to a live copy.
+            pass
+
+    threading.Thread(target=_worker, name="relay-warm-standby", daemon=True).start()
+
+
+def _claim_standby(repo_root: Path, team_name: str) -> Path | None:
+    """Move the standby disk into the team's path. Returns the child path or None."""
+    standby = standby_vhdx_path(repo_root)
+    if not _standby_ready(repo_root):
+        return None
+    child = team_vhdx_path(repo_root, team_name)
+    if child.is_file():
+        return None
+    child.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _clear_readonly(standby)
+        shutil.move(str(standby), str(child))
+        _clear_readonly(child)
+    except OSError:
+        return None
+    try:
+        standby.parent.rmdir()
+    except OSError:
+        pass
+    return child
+
+
 def create_linked_clone(repo_root: Path, team_name: str) -> str:
     """Create a team disk from the golden parent and import it in place.
 
-    Tries a Hyper-V differencing (linked) clone first. WSL often refuses those
-    because HCS cannot open the parent VHDX (0xc03a0016). In that case we fall
-    back to a full copy of the gold disk — slower/larger, but works.
+    Prefers a pre-copied standby disk (near-instant move). Otherwise tries a
+    Hyper-V differencing (linked) clone. WSL often refuses those because HCS
+    cannot open the parent VHDX (0xc03a0016). In that case we fall back to a
+    full copy of the gold disk — slower/larger, but works.
     """
     name = distro_name(team_name)
     gold = gold_vhdx_path(repo_root)
@@ -222,6 +310,18 @@ def create_linked_clone(repo_root: Path, team_name: str) -> str:
             return name
         except ShellError:
             _remove_child(child)
+
+    claimed = _claim_standby(repo_root, team_name)
+    if claimed is not None:
+        child = claimed
+        try:
+            _import_in_place(name, child)
+        except ShellError:
+            _remove_child(child)
+            # Fall through to a fresh clone from gold.
+        else:
+            warm_standby_async(repo_root)
+            return name
 
     used_differencing = False
     try:
@@ -260,6 +360,7 @@ def create_linked_clone(repo_root: Path, team_name: str) -> str:
                 "(no access to the parent VHDX). Full copy also failed.\n"
                 f"{copy_exc}"
             ) from copy_exc
+    warm_standby_async(repo_root)
     return name
 
 

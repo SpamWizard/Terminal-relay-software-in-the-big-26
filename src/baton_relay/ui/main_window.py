@@ -1061,17 +1061,22 @@ class MainWindow(QMainWindow):
         self._close_team_shell()
         if not self._sets_need_desk():
             return
+        from PySide6.QtGui import QCursor
+        from PySide6.QtWidgets import QApplication, QMessageBox
+
+        # Keep the cursor honest while the standby claim / gold copy runs.
+        QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
         try:
             self._team_shell = open_team_shell(self._repo_root, team_name)
         except ShellError as exc:
-            from PySide6.QtWidgets import QMessageBox
-
             QMessageBox.critical(
                 self,
                 "Team shell",
                 f"Could not open the WSL team shell:\n\n{exc}",
             )
             raise
+        finally:
+            QApplication.restoreOverrideCursor()
         self.game_screen.question_host.set_team_shell(self._team_shell)
 
     def _flash_override(self, title: str, sub: str = "") -> None:
@@ -1303,6 +1308,8 @@ class MainWindow(QMainWindow):
 
     def _show_game(self) -> None:
         self._save_checkpoint()
+        # Drop any mouse/key that was queued while the desk disk was preparing.
+        self.game_screen.category_board.arm()
         self.stack.setCurrentWidget(self.game_screen)
         self._timer.start()
         self._render(force_question=True)

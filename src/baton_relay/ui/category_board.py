@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Callable
 
 from PySide6.QtCore import Qt, Signal
@@ -18,6 +19,10 @@ from PySide6.QtWidgets import (
 )
 
 from baton_relay.config import MAX_BOARD_SLOTS
+
+# Ignore clicks for a beat after the board appears. Team-disk prep used to
+# freeze the UI; queued mouse releases then landed on a tile (often Hashcat).
+_ARM_DELAY_S = 0.55
 
 # (row, column, column_span) inside a grid of `columns` equal tracks.
 # Every row is full, so the tiles cover the board with no empty hole.
@@ -93,6 +98,10 @@ class _CategoryTile(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.setMinimumSize(0, 72)
+        # Mouse-only: Enter/Space on a focused tile used to auto-open a category.
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setAutoDefault(False)
+        self.setDefault(False)
 
     def paintEvent(self, event) -> None:  # noqa: N802
         painter = QPainter(self)
@@ -122,6 +131,7 @@ class CategoryBoard(QWidget):
         super().__init__(parent)
         self._handler: Callable[[str], None] | None = None
         self._shown: tuple[tuple[str, str], ...] | None = None
+        self._armed_at = 0.0
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(16)
@@ -148,6 +158,10 @@ class CategoryBoard(QWidget):
     def set_choose_handler(self, handler: Callable[[str], None]) -> None:
         self._handler = handler
 
+    def arm(self, delay_s: float = _ARM_DELAY_S) -> None:
+        """Ignore tile clicks until ``delay_s`` has elapsed."""
+        self._armed_at = time.monotonic() + max(0.0, delay_s)
+
     def show_categories(self, categories: list[tuple[str, str]]) -> None:
         """categories: list of (set_id, title). At most 8 are shown."""
         visible = list(categories)[:MAX_BOARD_SLOTS]
@@ -158,6 +172,8 @@ class CategoryBoard(QWidget):
             return
         self._shown = shown
         self._clear_grid()
+        # Fresh tiles under a click that was meant for START / the name screen.
+        self.arm()
 
         if not visible:
             empty = QLabel("No categories left.")
@@ -194,6 +210,8 @@ class CategoryBoard(QWidget):
         return btn
 
     def _on_click(self, set_id: str) -> None:
+        if time.monotonic() < self._armed_at:
+            return
         self.category_chosen.emit(set_id)
         if self._handler:
             self._handler(set_id)

@@ -152,7 +152,7 @@ The game opens fullscreen. Leave that PowerShell window open; closing it closes 
 2. Type a team name and a name in the `#1`, `#2`, and `#3` boxes. All three are required.
 3. Click **START**.
 4. Press `1` to plug in player 1. The category board opens.
-5. Click a category. A desk category opens a Linux terminal. The first team waits about a minute while Windows copies the golden disk.
+5. Click a category. A desk category opens a Linux terminal. If a standby disk was warmed (`relay warm`), start is instant; otherwise the first team waits while Windows copies the golden disk.
 6. Press `P` to pull the baton. Press `2` or `3` to hand it to the next player.
 
 | Key | Action |
@@ -167,6 +167,14 @@ To skip the name screen, run this block in the same window. That also uses the k
 ```powershell
 relay quick
 ```
+
+The first team used to wait about a minute while Windows copied the golden Kali disk. Stations now keep a standby copy ready. After an update (or anytime), warm it once:
+
+```powershell
+relay warm
+```
+
+`relay run` and `relay quick` also start that copy in the background, so the next team start is usually instant.
 
 ## Optional hardware
 
@@ -185,6 +193,16 @@ relay probe
 ```powershell
 relay run
 ```
+
+## Update a station from GitHub
+
+After someone pushes changes, run this block on **each** station PC. Close the game first. Leave the PC on and online; it pulls the repo, reinstalls the app, refreshes the golden Kali disk, and clears old team disks. Git may ask for the GitHub password once. Walk away until the prompt comes back.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\relay\scripts\update_station.ps1
+```
+
+When it prints `Done. Station matches GitHub.`, start the game again with the block under **Next time**. If the gold refresh fails, run step 5 once (full rebuild), then run this update block again.
 
 ## Next time, and between teams
 
@@ -210,4 +228,4 @@ Match length and roster are the **CONFIG** button on the launch screen, which wr
 
 Tests, from the same `(.venv)` prompt: `pytest`.
 
-Rebuilding the golden disk after a challenge edit is the same block as step 5. Details: [docs/wsl-desk.md](docs/wsl-desk.md). Run `relay reset` afterward so the next team gets the new disk.
+Rebuilding the golden disk from scratch is the same block as step 5. Details: [docs/wsl-desk.md](docs/wsl-desk.md). The update script above already refreshes gold and runs `relay reset` for you.

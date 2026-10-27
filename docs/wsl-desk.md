@@ -40,13 +40,14 @@ Your everyday `Ubuntu` WSL distro (if any) is left alone — only Kali is export
 
 On first start of a team name, the app:
 
-1. Tries a linked (differencing) VHDX clone of `images\relay-gold.vhdx`
-2. If WSL refuses the parent chain (common: `0xc03a0016`), falls back to a **full copy** of the gold disk (~1 GB, once per team)
-3. `wsl --import-in-place relay-<slug> …\ext4.vhdx`
-4. Opens one long-lived `bash` as user `player`
-5. Copies each challenge’s `public/` into `/challenges/<id>/` the first time that challenge opens
+1. Claims a pre-copied **standby** disk at `data\wsl\_standby\ext4.vhdx` when one exists (near-instant move)
+2. Otherwise tries a linked (differencing) VHDX clone of `images\relay-gold.vhdx`
+3. If WSL refuses the parent chain (common: `0xc03a0016`), falls back to a **full copy** of the gold disk (~1 GB, once per team)
+4. `wsl --import-in-place relay-<slug> …\ext4.vhdx`
+5. Opens one long-lived `bash` as user `player`
+6. Copies each challenge’s `public/` into `/challenges/<id>/` the first time that challenge opens
 
-First start of a team can take a minute when it has to full-copy. Later resumes reuse the same disk.
+`relay warm` (and station update / app launch) builds the standby copy in the background so the next team does not wait. Without a standby, first start can take a minute. Later resumes reuse the same disk.
 
 `relay reset` unregisters every `relay-*` distro (deletes child disks) and clears `data/wsl/`. It never deletes `images/relay-gold.vhdx`.
 

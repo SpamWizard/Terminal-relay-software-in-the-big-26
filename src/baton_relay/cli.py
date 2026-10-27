@@ -1,4 +1,4 @@
-"""CLI entrypoints: `relay run`, `relay quick`, `relay probe`, `relay reset`."""
+"""CLI entrypoints: `relay run`, `relay quick`, `relay warm`, `relay probe`, `relay reset`."""
 
 from __future__ import annotations
 
@@ -33,6 +33,27 @@ def cmd_quick(args: argparse.Namespace) -> int:
         fake_device=True,
         quick=True,
     )
+
+
+def cmd_warm(args: argparse.Namespace) -> int:
+    """Pre-copy the golden Kali disk so the next team start is instant."""
+    from baton_relay.config import ConfigError, load_config
+    from baton_relay.desk.shell import ShellError, ensure_standby_disk, standby_vhdx_path
+
+    try:
+        config = load_config(Path(args.config))
+    except ConfigError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    repo_root = config.paths.results_dir.parent
+    try:
+        path = ensure_standby_disk(repo_root)
+    except ShellError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    print(f"Standby desk disk ready: {path}")
+    print(f"(same as {standby_vhdx_path(repo_root)})")
+    return 0
 
 
 def cmd_probe(args: argparse.Namespace) -> int:
@@ -80,6 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     quick_p.set_defaults(func=cmd_quick)
 
+    warm_p = sub.add_parser(
+        "warm",
+        help="Pre-copy the golden Kali disk so the next team start does not wait",
+    )
+    warm_p.set_defaults(func=cmd_warm)
+
     probe_p = sub.add_parser(
         "probe",
         help="Print which baton pins are plugged in (no game window)",
@@ -103,7 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
-    if not raw or raw[0] not in ("run", "probe", "reset", "quick"):
+    if not raw or raw[0] not in ("run", "probe", "reset", "quick", "warm"):
         raw = ["run", *raw]
     args = parser.parse_args(raw)
     return args.func(args)

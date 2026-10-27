@@ -379,3 +379,55 @@ def test_load_config_files():
     ids = {s.set_id for s in sets}
     assert "steghide" in ids
     assert "fake_logos" in ids or any("logo" in s.title.casefold() for s in sets)
+
+
+def test_claim_standby_moves_disk(tmp_path: Path):
+    from baton_relay.desk.shell import (
+        _claim_standby,
+        ensure_standby_disk,
+        standby_vhdx_path,
+        team_vhdx_path,
+    )
+
+    gold = tmp_path / "images" / "relay-gold.vhdx"
+    gold.parent.mkdir(parents=True)
+    gold.write_bytes(b"GOLD-DISK")
+
+    with (
+        patch("baton_relay.desk.shell.require_desk_runtime"),
+        patch("baton_relay.desk.shell._clear_readonly"),
+    ):
+        ready = ensure_standby_disk(tmp_path)
+        assert ready == standby_vhdx_path(tmp_path)
+        assert ready.read_bytes() == b"GOLD-DISK"
+
+        claimed = _claim_standby(tmp_path, "Alpha")
+        assert claimed == team_vhdx_path(tmp_path, "Alpha")
+        assert claimed.is_file()
+        assert claimed.read_bytes() == b"GOLD-DISK"
+        assert not standby_vhdx_path(tmp_path).is_file()
+        assert _claim_standby(tmp_path, "Beta") is None
+
+
+def test_category_board_ignores_clicks_until_armed(qtbot):
+    from PySide6.QtCore import Qt
+
+    from baton_relay.ui.category_board import CategoryBoard, _CategoryTile
+
+    board = CategoryBoard()
+    qtbot.addWidget(board)
+    picked: list[str] = []
+    board.set_choose_handler(lambda sid: picked.append(sid))
+    board.show_categories([("hashcat", "Hashcat"), ("steghide", "Steghide")])
+    board.show()
+    qtbot.waitExposed(board)
+
+    tiles = board.findChildren(_CategoryTile)
+    assert len(tiles) == 2
+    # Fresh board is armed — ghost clicks must not open a category.
+    qtbot.mouseClick(tiles[0], Qt.MouseButton.LeftButton)
+    assert picked == []
+
+    board.arm(0)
+    qtbot.mouseClick(tiles[0], Qt.MouseButton.LeftButton)
+    assert picked == ["hashcat"]

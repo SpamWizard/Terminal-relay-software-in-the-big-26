@@ -25,13 +25,17 @@ def run_app(*, config_path: Path, fake_device: bool = False, quick: bool = False
         return 1
 
     needs_desk = any(isinstance(q, Desk) for s in sets for q in s.questions)
+    repo_root = config.paths.results_dir.parent
     if needs_desk:
-        repo_root = config.paths.results_dir.parent
         try:
             require_desk_runtime(repo_root)
         except ShellError as exc:
             print(f"ERROR: desk challenges need a working WSL setup:\n{exc}", file=sys.stderr)
             return 1
+        # Background gold copy so the next team start is a rename, not a wait.
+        from baton_relay.desk.shell import warm_standby_async
+
+        warm_standby_async(repo_root)
 
     from PySide6.QtWidgets import QApplication
 
