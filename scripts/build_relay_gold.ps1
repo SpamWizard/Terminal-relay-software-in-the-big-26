@@ -154,23 +154,42 @@ appendWindowsPath = false
 default = player
 EOF
 '@
-# Write setup as UTF-8 (no BOM). Run via /mnt/c/... while stock automount is still on.
+# Write setup as UTF-8 (no BOM). Do not Copy-Item into \\wsl$\...\tmp —
+# Windows often returns Access denied on that sticky path (SeedOnly or not).
+# Stream bytes into `cat` so PowerShell never re-encodes the script as UTF-16.
+function Send-WslBytes {
+    param(
+        [Parameter(Mandatory = $true)][string]$Distro,
+        [Parameter(Mandatory = $true)][string]$RemotePath,
+        [Parameter(Mandatory = $true)][byte[]]$Bytes
+    )
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = "wsl.exe"
+    $psi.Arguments = "-d $Distro -u root -- bash -c `"mkdir -p `$(dirname '$RemotePath') && cat > '$RemotePath'`""
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $p = [System.Diagnostics.Process]::Start($psi)
+    $p.StandardInput.BaseStream.Write($Bytes, 0, $Bytes.Length)
+    $p.StandardInput.Close()
+    $stdout = $p.StandardOutput.ReadToEnd()
+    $stderr = $p.StandardError.ReadToEnd()
+    $p.WaitForExit()
+    if ($p.ExitCode -ne 0) {
+        throw "failed to write $RemotePath into $Distro (exit $($p.ExitCode)): $stderr$stdout"
+    }
+}
+
 $setupPath = Join-Path $WorkDir "setup.sh"
 $utf8 = New-Object System.Text.UTF8Encoding $false
 $setupUnix = ($setup -replace "`r`n", "`n") -replace "`r", "`n"
 [System.IO.File]::WriteAllText($setupPath, $setupUnix, $utf8)
-# Deliver setup.sh through \\wsl$. SeedOnly images have automount turned off,
-# so /mnt/c is not there. A fresh Kali import still has the share.
 Write-Host "Running setup inside $WorkDistro"
-wsl.exe -d $WorkDistro -u root -- bash -c "mkdir -p /tmp"
+wsl.exe -d $WorkDistro -u root -- bash -c "true"
 if ($LASTEXITCODE -ne 0) { throw "could not start $WorkDistro" }
-$wslTmp = "\\wsl$\$WorkDistro\tmp"
-$deadline = (Get-Date).AddSeconds(40)
-while (-not (Test-Path $wslTmp)) {
-    if ((Get-Date) -gt $deadline) { throw "\\wsl$\$WorkDistro\tmp is not reachable" }
-    Start-Sleep -Milliseconds 250
-}
-Copy-Item -Force $setupPath (Join-Path $wslTmp "setup.sh")
+Send-WslBytes -Distro $WorkDistro -RemotePath "/tmp/setup.sh" -Bytes ([System.IO.File]::ReadAllBytes($setupPath))
 wsl.exe -d $WorkDistro -u root -- bash /tmp/setup.sh
 if ($LASTEXITCODE -ne 0) {
     throw "gold setup script failed inside $WorkDistro (exit $LASTEXITCODE)"
@@ -244,7 +263,7 @@ chown -R player:player /challenges
 '@
 $checkUnix = ($check -replace "`r`n", "`n") -replace "`r", "`n"
 [System.IO.File]::WriteAllText($checkPath, $checkUnix, $utf8)
-Copy-Item -Force $checkPath (Join-Path $wslTmp "check.sh")
+Send-WslBytes -Distro $WorkDistro -RemotePath "/tmp/check.sh" -Bytes ([System.IO.File]::ReadAllBytes($checkPath))
 Write-Host "Checking that each short challenge solves ..."
 wsl.exe -d $WorkDistro -u root -- bash /tmp/check.sh
 if ($LASTEXITCODE -ne 0) { throw "challenge check failed inside $WorkDistro" }
