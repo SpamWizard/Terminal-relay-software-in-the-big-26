@@ -243,11 +243,6 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         letter-spacing: 1.5px;
         background-color: transparent;
     }}
-    QLabel#deskHint {{
-        color: {mix(fg, bg, 0.55)};
-        font-size: 11px;
-        background-color: transparent;
-    }}
     QLabel#deskPrompt {{
         color: {muted};
         font-size: 16px;

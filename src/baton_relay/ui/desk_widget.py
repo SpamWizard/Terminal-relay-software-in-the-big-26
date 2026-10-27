@@ -82,15 +82,9 @@ class _TerminalPane(QFrame):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(8)
 
-        head = QHBoxLayout()
         label = QLabel("Terminal")
         label.setObjectName("deskSection")
-        head.addWidget(label)
-        head.addStretch(1)
-        tip = QLabel("Tab completes · drag or double-click a flag to copy · Ctrl+V pastes")
-        tip.setObjectName("deskHint")
-        head.addWidget(tip)
-        layout.addLayout(head)
+        layout.addWidget(label)
 
         self.term = PtyTerminalWidget()
         self.term.setMinimumHeight(220)
