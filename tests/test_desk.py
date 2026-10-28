@@ -431,6 +431,42 @@ def test_show_question_keeps_same_desk_terminal(qtbot):
     assert "still-here" in desk._term_pane.term.feed_log()
 
 
+def test_flag_field_keeps_focus_across_lock_refresh(qtbot):
+    """Timer re-renders call set_locked(False) often; that must not yank the flag box."""
+    from baton_relay.questions.types import Desk
+    from baton_relay.ui.question_widgets import QuestionHost
+
+    public = ROOT / "challenges" / "gate" / "public"
+    q = Desk(
+        id="gate",
+        type="desk",
+        prompt="Open the gate",
+        points=1,
+        public_dir=str(public),
+        accepted=["TR{x}"],
+        panes=["terminal"],
+    )
+    host = QuestionHost()
+    qtbot.addWidget(host)
+    host.set_locked(False)
+    host.show_question(q)
+    desk = host._desk
+    assert desk is not None
+    host.show()
+    qtbot.waitExposed(host)
+    # First open focuses the shell once; let that settle, then use the flag box.
+    qtbot.waitUntil(lambda: desk._term_pane.term.hasFocus())
+    desk.flag_edit.setFocus()
+    qtbot.waitUntil(desk.flag_edit.hasFocus)
+
+    host.set_locked(False)
+    desk.set_desk_locked(False)
+    host.show_question(q)
+    assert desk.flag_edit.hasFocus()
+    qtbot.keyClicks(desk.flag_edit, "TR{x}")
+    assert desk.flag_edit.text() == "TR{x}"
+
+
 def test_mouse_wheel_scrolls_terminal_history(qtbot):
     from PySide6.QtCore import QPoint, Qt
     from PySide6.QtGui import QWheelEvent

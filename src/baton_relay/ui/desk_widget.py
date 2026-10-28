@@ -318,12 +318,13 @@ class DeskWidget(QWidget):
             self._on_submit()
 
     def set_desk_locked(self, locked: bool) -> None:
+        # Do not focus_shell here: GameSession ticks re-render ~10×/s and would
+        # yank focus out of the flag field every time. Unlock focus is handled by
+        # QuestionHost.set_locked / _TerminalPane.set_locked on locked→unlocked.
         self.flag_edit.setEnabled(not locked)
         self.submit_btn.setEnabled(not locked)
         for pane in self._panes:
             pane.set_locked(locked)
-        if not locked:
-            self.focus_shell()
 
     def focus_shell(self) -> None:
         if self._term_pane is not None:

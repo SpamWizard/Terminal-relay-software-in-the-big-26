@@ -159,8 +159,7 @@ class QuestionHost(QWidget):
             self.prompt.setText(question.prompt)
             self._desk.set_desk_locked(self._locked)
             self.submit_btn.hide()
-            if not self._locked:
-                QTimer.singleShot(0, self.focus_answer)
+            # Keep whatever has focus (flag field or shell) — do not steal.
             return
 
         self.clear()
