@@ -30,10 +30,11 @@ from baton_relay.ui.pty_terminal import PtyTerminalWidget
 
 @dataclass
 class DeskSessionState:
-    """Per-challenge UI bits (flag + file pick). Terminal state lives on TeamShell."""
+    """Per-challenge UI bits. Each desk keeps its own terminal scrollback."""
 
     selected_file: str | None = None
     flag_text: str = ""
+    terminal_feed: str = ""
 
 
 @dataclass
@@ -69,6 +70,8 @@ class _TerminalPane(QFrame):
         self,
         public_dir: Path,
         shell: TeamShell | None,
+        *,
+        restore: str = "",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -89,11 +92,11 @@ class _TerminalPane(QFrame):
         self.term = PtyTerminalWidget()
         self.term.setMinimumHeight(220)
         layout.addWidget(self.term, 1)
-        self.bind_shell(shell)
+        self.bind_shell(shell, restore=restore)
 
-    def bind_shell(self, shell: TeamShell | None) -> None:
+    def bind_shell(self, shell: TeamShell | None, *, restore: str = "") -> None:
         self._shell = shell
-        self.term.bind_shell(shell)
+        self.term.bind_shell(shell, restore=restore)
 
     def focus_shell(self) -> None:
         """Put keyboard into the PTY so typing works without a click first."""
@@ -107,6 +110,9 @@ class _TerminalPane(QFrame):
         self.term.set_locked(locked)
         if was_locked and not locked:
             self.focus_shell()
+
+    def terminal_feed(self) -> str:
+        return self.term.feed_log()
 
     def detach_shell(self) -> None:
         self.term.detach_shell()
@@ -205,6 +211,7 @@ class DeskWidget(QWidget):
         self._state = state
         self._on_submit = on_submit
         self._panes: list[Any] = []
+        self._term_pane: _TerminalPane | None = None
         public = Path(question.public_dir)
         panes = list(question.panes or ["files", "terminal"])
 
@@ -219,7 +226,9 @@ class DeskWidget(QWidget):
         term: _TerminalPane | None = None
 
         if "terminal" in panes:
-            term = _TerminalPane(public, shell)
+            # Restore this challenge's scrollback before cd so gate ≠ steghide.
+            term = _TerminalPane(public, shell, restore=state.terminal_feed)
+            self._term_pane = term
             self._panes.append(term)
 
         # Bind the terminal first so the folder switch is visible, then cd.
@@ -317,13 +326,16 @@ class DeskWidget(QWidget):
             self.focus_shell()
 
     def focus_shell(self) -> None:
-        for pane in self._panes:
-            focus = getattr(pane, "focus_shell", None)
-            if focus is not None:
-                focus()
-                return
+        if self._term_pane is not None:
+            self._term_pane.focus_shell()
+
+    def persist_terminal(self) -> None:
+        """Save scrollback onto the session state before this desk is torn down."""
+        if self._term_pane is not None:
+            self._state.terminal_feed = self._term_pane.terminal_feed()
 
     def detach_shell(self) -> None:
+        self.persist_terminal()
         for pane in self._panes:
             detach = getattr(pane, "detach_shell", None)
             if detach is not None:

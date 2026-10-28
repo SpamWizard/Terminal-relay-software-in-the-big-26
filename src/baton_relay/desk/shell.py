@@ -383,6 +383,8 @@ class TeamShell:
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _cols: int = 80
     _rows: int = 24
+    # While True, PTY bytes still go to transcript but not the on-screen terminal.
+    _output_muted: bool = False
 
     def start(self) -> None:
         if self._pty is not None and self._pty.isalive():
@@ -469,7 +471,10 @@ class TeamShell:
         worker.start()
 
     def _switch_dir(self, token: int, folder: str) -> None:
-        """Stop leftover input from the previous challenge, then cd.
+        """Stop leftover input from the previous challenge, then cd quietly.
+
+        The cd still runs in the real bash so the next command is in the right
+        folder; Ctrl-C / cd / path checks stay off the on-screen terminal.
 
         Ctrl-C has to finish before the cd. This shell eats one typed
         character after an interrupt, and a Ctrl-U glued to the front of
@@ -477,13 +482,34 @@ class TeamShell:
         directory never changes. The leading space is the character that
         gets eaten instead.
         """
+        self._output_muted = True
+        ok = False
         try:
             self.write_keys("\x03", force=True)
             if self._cd_pause > 0 and not self._wait_for_prompt(token):
                 return
             if token != self._cd_token:
                 return
-            self.write_keys(f" cd '/challenges/{folder}' && pwd\r", force=True)
+            # No `pwd` — we verify via a muted marker, then show one clean prompt.
+            marker = f"__relay_cd_{token}__"
+            self.write_keys(
+                f" cd '/challenges/{folder}' && printf '%s\\n' '{marker}'\r",
+                force=True,
+            )
+            if not self._wait_for_marker(token, marker):
+                return
+            if token != self._cd_token:
+                return
+            ok = True
+        except ShellError:
+            return
+        finally:
+            self._output_muted = False
+        if not ok or token != self._cd_token:
+            return
+        # One fresh prompt on screen (correct path) without the cd echo.
+        try:
+            self.write_keys("\r", force=True)
         except ShellError:
             return
 
@@ -511,6 +537,22 @@ class TeamShell:
                 previous = current
                 stable = 0
         return token == self._cd_token
+
+    def _wait_for_marker(self, token: int, marker: str) -> bool:
+        """Wait until the muted cd printed its success marker (or time out)."""
+        if self._cd_pause <= 0:
+            # Unit tests with a mock PTY skip the real settle wait.
+            return token == self._cd_token
+        deadline = time.monotonic() + max(self._cd_pause, 0.8) + 1.5
+        while time.monotonic() < deadline:
+            if token != self._cd_token:
+                return False
+            if marker in self.transcript:
+                # Let the prompt after printf settle before unmuting.
+                time.sleep(0.05)
+                return True
+            time.sleep(0.05)
+        return marker in self.transcript
 
     def send_line(self, line: str) -> None:
         """Compatibility helper: type a full line and press Enter."""
@@ -548,6 +590,8 @@ class TeamShell:
                 continue
             text = chunk if isinstance(chunk, str) else chunk.decode("utf-8", errors="replace")
             self._append_transcript(text)
+            if self._output_muted:
+                continue
             callback = self.on_output
             if callback is None:
                 continue

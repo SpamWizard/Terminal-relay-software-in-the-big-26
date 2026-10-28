@@ -87,6 +87,8 @@ class PtyTerminalWidget(QWidget):
         self._cell_w = 8
         self._cell_h = 16
         self._pending = ""
+        # Raw bytes shown for this challenge — restored when the desk is rebuilt.
+        self._feed_log = ""
         self._anchor: tuple[int, int] | None = None
         self._caret: tuple[int, int] | None = None
         self._dragging = False
@@ -102,7 +104,13 @@ class PtyTerminalWidget(QWidget):
         self._flush_timer.setInterval(16)  # ~60fps coalesce
         self._flush_timer.timeout.connect(self._flush_pending)
 
-    def bind_shell(self, shell: TeamShell | None) -> None:
+    def feed_log(self) -> str:
+        """Everything drawn in this terminal (for per-challenge restore)."""
+        if self._pending:
+            return self._feed_log + self._pending
+        return self._feed_log
+
+    def bind_shell(self, shell: TeamShell | None, *, restore: str = "") -> None:
         self.detach_shell()
         self._shell = shell
         self._pending = ""
@@ -111,6 +119,9 @@ class PtyTerminalWidget(QWidget):
         self._dragging = False
         self._screen = pyte.HistoryScreen(self._cols, self._rows, history=5000)
         self._stream = pyte.Stream(self._screen)
+        self._feed_log = restore or ""
+        if self._feed_log:
+            self._stream.feed(self._feed_log)
         if shell is not None:
             # Cross-thread safe: reader calls emit → GUI slot.
             shell.on_output = self._emit_output
@@ -119,6 +130,9 @@ class PtyTerminalWidget(QWidget):
 
     def detach_shell(self) -> None:
         """Drop this widget's output callback without touching a newer terminal."""
+        if self._pending:
+            self._feed_log += self._pending
+            self._pending = ""
         shell = self._shell
         if shell is not None and shell.on_output == self._emit_output:
             shell.on_output = None
@@ -149,6 +163,10 @@ class PtyTerminalWidget(QWidget):
     def _flush_pending(self) -> None:
         data, self._pending = self._pending, ""
         if data:
+            self._feed_log += data
+            # Cap like TeamShell.transcript so long events stay light.
+            if len(self._feed_log) > 400_000:
+                self._feed_log = self._feed_log[-300_000:]
             self._stream.feed(data)
             if not self._dragging:
                 self._anchor = None

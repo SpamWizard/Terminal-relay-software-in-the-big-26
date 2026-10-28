@@ -368,6 +368,69 @@ def test_ctrl_v_pastes_flag_into_the_shell(qtbot):
         clip.setText(previous)
 
 
+def test_terminal_feed_restores_per_challenge(qtbot):
+    """Gate scrollback comes back when rebound; steghide stays separate."""
+    from baton_relay.ui.pty_terminal import PtyTerminalWidget
+
+    gate = PtyTerminalWidget()
+    steg = PtyTerminalWidget()
+    qtbot.addWidget(gate)
+    qtbot.addWidget(steg)
+
+    shell = TeamShell(distro="relay-test", repo_root=ROOT)
+    shell._pty = MagicMock()
+    shell._pty.isalive.return_value = True
+
+    gate.bind_shell(shell)
+    gate._queue_output("gate-hello\r\n")
+    gate._flush_pending()
+    saved_gate = gate.feed_log()
+    assert "gate-hello" in saved_gate
+    gate.detach_shell()
+
+    steg.bind_shell(shell)
+    steg._queue_output("steg-hello\r\n")
+    steg._flush_pending()
+    saved_steg = steg.feed_log()
+    assert "steg-hello" in saved_steg
+    assert "gate-hello" not in saved_steg
+    steg.detach_shell()
+
+    gate2 = PtyTerminalWidget()
+    qtbot.addWidget(gate2)
+    gate2.bind_shell(shell, restore=saved_gate)
+    assert "gate-hello" in "".join(gate2._screen.display)
+    assert "steg-hello" not in "".join(gate2._screen.display)
+
+
+def test_show_question_keeps_same_desk_terminal(qtbot):
+    from baton_relay.questions.types import Desk
+    from baton_relay.ui.question_widgets import QuestionHost
+
+    public = ROOT / "challenges" / "gate" / "public"
+    q = Desk(
+        id="gate",
+        type="desk",
+        prompt="Open the gate",
+        points=1,
+        public_dir=str(public),
+        accepted=["TR{x}"],
+        panes=["terminal"],
+    )
+    host = QuestionHost()
+    qtbot.addWidget(host)
+    host.set_locked(False)
+    host.show_question(q)
+    desk = host._desk
+    assert desk is not None
+    desk._term_pane.term._queue_output("still-here\r\n")
+    desk._term_pane.term._flush_pending()
+
+    host.show_question(q)
+    assert host._desk is desk
+    assert "still-here" in desk._term_pane.term.feed_log()
+
+
 def test_mouse_wheel_scrolls_terminal_history(qtbot):
     from PySide6.QtCore import QPoint, Qt
     from PySide6.QtGui import QWheelEvent
@@ -423,7 +486,37 @@ def test_cd_is_forced_while_locked():
     shell._cd_pause = 0
     shell.ensure_challenge("steghide", ROOT / "challenges" / "steghide" / "public")
     written = "".join(_joined_writes(shell))
-    assert "cd '/challenges/steghide' && pwd\r" in written
+    assert "cd '/challenges/steghide'" in written
+    assert "&& pwd" not in written
+
+
+def test_challenge_cd_is_hidden_from_the_terminal():
+    """Folder switches still run in bash, but muted bytes never hit the GUI."""
+    shell = TeamShell(distro="relay-test", repo_root=ROOT)
+    shell._pty = MagicMock()
+    shell._pty.isalive.return_value = True
+    shell._copied.add("steghide")
+    shell._cd_pause = 0
+    shell.ensure_challenge("steghide", ROOT / "challenges" / "steghide" / "public")
+    written = "".join(_joined_writes(shell))
+    assert "cd '/challenges/steghide'" in written
+    assert "__relay_cd_" in written
+    assert "&& pwd" not in written
+
+    shown: list[str] = []
+    shell.on_output = shown.append
+    shell._output_muted = True
+    chunks = [" cd '/challenges/steghide'\r\n__relay_cd_1__\r\n"]
+
+    def read(_size):
+        if chunks:
+            return chunks.pop(0)
+        raise EOFError
+
+    shell._pty.read.side_effect = read
+    shell._read_loop()
+    assert shown == []
+    assert "cd '/challenges/steghide'" in shell.transcript
 
 
 def test_switching_challenges_leaves_the_previous_folder():
@@ -437,12 +530,16 @@ def test_switching_challenges_leaves_the_previous_folder():
     shell.ensure_challenge("regex", ROOT / "challenges" / "regex" / "public")
     writes = _joined_writes(shell)
     assert writes[0] == "\x03"
-    assert writes[-1] == " cd '/challenges/regex' && pwd\r"
+    assert any("cd '/challenges/regex'" in w for w in writes)
+    assert all("&& pwd" not in w for w in writes)
+    # Quiet switch ends with a lone Enter so one clean prompt can paint.
+    assert writes[-1] == "\r"
 
     # A swallowed cd used to stick: opening the same challenge again does too.
     shell.ensure_challenge("regex", ROOT / "challenges" / "regex" / "public")
     again = _joined_writes(shell)
-    assert again[-1] == " cd '/challenges/regex' && pwd\r"
+    assert any("cd '/challenges/regex'" in w for w in again)
+    assert again[-1] == "\r"
 
 
 def test_load_config_files():

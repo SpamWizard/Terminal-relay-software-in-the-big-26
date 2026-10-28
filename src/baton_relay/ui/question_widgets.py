@@ -125,6 +125,7 @@ class QuestionHost(QWidget):
 
     def clear(self) -> None:
         if self._desk is not None:
+            # Snapshot this challenge's terminal before the widget is destroyed.
             self._desk.detach_shell()
         if self._scroll is not None:
             self._scroll.setParent(None)
@@ -147,16 +148,28 @@ class QuestionHost(QWidget):
         self._desk_store.clear()
 
     def show_question(self, question: Question | None) -> None:
-        prev = self._current_qid
+        # Same desk challenge still mounted (board miss-click → same tile):
+        # keep the live terminal instead of wiping and rebuilding.
+        if (
+            question is not None
+            and isinstance(question, Desk)
+            and self._desk is not None
+            and self._current_qid == question.id
+        ):
+            self.prompt.setText(question.prompt)
+            self._desk.set_desk_locked(self._locked)
+            self.submit_btn.hide()
+            if not self._locked:
+                QTimer.singleShot(0, self.focus_answer)
+            return
+
         self.clear()
         if question is None:
             self._current_qid = None
-            if prev:
-                self._desk_store.clear(prev)
             self.prompt.setText("No more questions.")
             return
-        if prev and prev != question.id:
-            self._desk_store.clear(prev)
+        # Keep per-challenge flag + terminal_feed for the whole team run so
+        # gate/steghide each restore their own scrollback when re-opened.
         self._current_qid = question.id
         self.prompt.setText(question.prompt)
 
