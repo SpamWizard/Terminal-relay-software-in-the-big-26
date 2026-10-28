@@ -82,7 +82,7 @@ Flag: `TR{spark}`
 
 ## Regex
 
-`lines.txt` is 400 lines of near misses (two digits, a digit first, a digit in the middle, letters only, uppercase). One line is letters followed by a single digit. Reading the file does not surface it.
+`lines.txt` is 400 lines of near misses (two digits, a digit first, a digit in the middle, letters only, UPPERCASE+digit). Exactly one line is lowercase letters followed by a single digit. Reading the file does not surface it.
 
 ```bash
 grep -E '^[a-z]+[0-9]$' lines.txt
