@@ -578,6 +578,40 @@ def test_switching_challenges_leaves_the_previous_folder():
     assert again[-1] == "\r"
 
 
+def test_python_repl_is_exited_before_changing_folder():
+    """Bare python3 survives Ctrl-C; cd must not be typed into the REPL."""
+    shell = TeamShell(distro="relay-test", repo_root=ROOT)
+    shell._pty = MagicMock()
+    shell._pty.isalive.return_value = True
+    shell._copied.add("xor")
+    shell._cd_pause = 0.8
+    shell.transcript = "Python 3.12.3 (main)\nType \"help\" for more information.\n>>> "
+    shell._wait_for_prompt = lambda token: token == shell._cd_token
+    shell._wait_for_marker = lambda token, marker: token == shell._cd_token
+    shell.ensure_challenge("xor", ROOT / "challenges" / "xor" / "public")
+    writes = _joined_writes(shell)
+    joined = "".join(writes)
+    assert writes[0] == "\x03"
+    assert "exit()" in joined
+    assert "cd '/challenges/xor'" in joined
+    assert joined.index("exit()") < joined.index("cd '/challenges/xor'")
+
+
+def test_shell_prompt_does_not_get_an_exit():
+    shell = TeamShell(distro="relay-test", repo_root=ROOT)
+    shell._pty = MagicMock()
+    shell._pty.isalive.return_value = True
+    shell._copied.add("xor")
+    shell._cd_pause = 0.8
+    shell.transcript = "player@relay:/challenges/xor$ "
+    shell._wait_for_prompt = lambda token: token == shell._cd_token
+    shell._wait_for_marker = lambda token, marker: token == shell._cd_token
+    shell.ensure_challenge("hangman", ROOT / "challenges" / "hangman" / "public")
+    joined = "".join(_joined_writes(shell))
+    assert "exit()" not in joined
+    assert "cd '/challenges/hangman'" in joined
+
+
 def test_load_config_files():
     from baton_relay.config import load_config
     from baton_relay.questions.loader import load_all_question_files

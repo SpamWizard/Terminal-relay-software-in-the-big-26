@@ -29,6 +29,20 @@ def _looks_like_prompt(text: str) -> bool:
     return bool(visible) and visible[-1] in "$#%"
 
 
+def _in_python_repl(text: str) -> bool:
+    """True when the latest line is a Python prompt (``>>>`` or ``...``).
+
+    A bare ``python3`` stays in the REPL. Ctrl-C only reprints ``>>>``, so a
+    later ``cd`` is typed into Python and the next challenge never opens.
+    """
+    visible = _ANSI.sub("", text)
+    lines = [line.strip() for line in visible.splitlines() if line.strip()]
+    if not lines:
+        return False
+    last = lines[-1]
+    return last in {">>>", "..."} or last.endswith(">>>") or last.endswith("...")
+
+
 def distro_name(team_name: str) -> str:
     return f"relay-{team_slug(team_name)}"
 
@@ -488,6 +502,16 @@ class TeamShell:
             self.write_keys("\x03", force=True)
             if self._cd_pause > 0 and not self._wait_for_prompt(token):
                 return
+            if token != self._cd_token:
+                return
+            # Ctrl-C does not leave ``python3``. Exit the REPL before cd, or
+            # the directory change is executed as Python and never happens.
+            for _ in range(2):
+                if token != self._cd_token or not _in_python_repl(self.transcript):
+                    break
+                self.write_keys("exit()\r", force=True)
+                if self._cd_pause > 0 and not self._wait_for_prompt(token):
+                    return
             if token != self._cd_token:
                 return
             # No `pwd` — we verify via a muted marker, then show one clean prompt.
