@@ -18,9 +18,11 @@ def _default_config_path() -> Path:
 def cmd_run(args: argparse.Namespace) -> int:
     from baton_relay.app import run_app
 
+    # Quick always uses keyboard seating; otherwise honor --fake-device / --no-fake-device.
+    fake = True if args.quick else bool(args.fake_device)
     return run_app(
         config_path=Path(args.config),
-        fake_device=args.fake_device or args.quick,
+        fake_device=fake,
         quick=args.quick,
     )
 
@@ -83,15 +85,16 @@ def build_parser() -> argparse.ArgumentParser:
     run_p = sub.add_parser("run", help="Start the relay UI")
     run_p.add_argument(
         "--fake-device",
-        action="store_true",
-        help="Simulate batons with keyboard (1-6 insert, P pull out, U unknown). "
-        "Default is RP2040 USB serial from [serial] in config.",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Keyboard baton: Ctrl+1–6 insert, Ctrl+P pull, Ctrl+U unknown (default). "
+        "Use --no-fake-device for RP2040 USB serial from [serial] in config.",
     )
     run_p.add_argument(
         "--quick",
         action="store_true",
         help="Skip the name screen and open category selection with a player already in. "
-        "Skip (F6) jumps to another category. Same as `relay quick`. Implies --fake-device.",
+        "Skip (F6) jumps to another category. Same as `relay quick`. Uses keyboard baton.",
     )
     run_p.set_defaults(func=cmd_run)
 

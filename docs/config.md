@@ -13,7 +13,6 @@ Prefer the in-app **CONFIG** screen on launch. Edits save to `config.toml` and a
 | `[serial]` | port (`auto` or `COMx` / `/dev/ttyACM0`), baud, heartbeat_timeout_ms — RP2040 USB CDC |
 | `[scoring]` | partial_credit, wrong_answer_penalty, redo_multiplier |
 | `[questions]` | files (each file = board category), warmup_count, board_slots, questions_per_pick, redo_missed_at_set_end |
-| `[controller]` | Xbox: enabled, device_name, inactivity_lock_seconds, unlock_hold_ms, unlock_buttons, `[controller.bindings]` |
 | `[organizer]` | `password_hash`, stored only; the app does not prompt for it |
 | `[questions].files` | JSON sets and/or challenge folders (`challenges/...`) |
 | `[timers].leg_runs_while_frozen` | `false` pauses the leg during a baton handoff |

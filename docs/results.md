@@ -17,7 +17,7 @@ One JSON object per line, flushed on every event. Common fields: `ts` (UTC ISO),
 
 Events include: `game_started`, `run_resumed`, `baton_accepted`, `baton_rejected`, `baton_unknown`, `frozen`, `leg_swap`, `leg_expired`, `answer`, `skip`, `set_started`, `board_opened`, `category_selected`, `game_ended`, …
 
-`source` is `fake`, `baton`, or `controller` when relevant.
+`source` is `fake` or `baton` when relevant.
 
 `game_started` includes the full `roster` (`player_number`, `name`, `person_index`, `color`).
 

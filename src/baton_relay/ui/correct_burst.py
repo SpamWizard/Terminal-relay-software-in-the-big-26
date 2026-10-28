@@ -1,4 +1,4 @@
-"""Centered toasts: answer bursts and organizer override flash."""
+"""Centered toasts: correct / wrong / partial answer bursts."""
 
 from __future__ import annotations
 
@@ -189,36 +189,6 @@ class WrongBurst(_ToastBase):
         self._play_anim(
             title,
             points_text,
-            fade_in_ms=fade_in_ms,
-            hold_ms=hold_ms,
-            fade_out_ms=fade_out_ms,
-        )
-
-
-class OverrideFlash(_ToastBase):
-    """Loud banner when organizer pad unlocks or fires an override."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(
-            parent,
-            card_name="overrideToast",
-            title_name="overrideTitle",
-            sub_name="overrideSub",
-            default_title="OVERRIDE",
-        )
-
-    def play(
-        self,
-        title: str,
-        sub: str = "",
-        *,
-        fade_in_ms: int = 90,
-        hold_ms: int = 900,
-        fade_out_ms: int = 220,
-    ) -> None:
-        self._play_anim(
-            title,
-            sub,
             fade_in_ms=fade_in_ms,
             hold_ms=hold_ms,
             fade_out_ms=fade_out_ms,

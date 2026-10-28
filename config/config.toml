@@ -60,20 +60,6 @@ warmup_count = 0
 board_slots = 8
 questions_per_pick = 1
 
-[controller]
-enabled = true
-inactivity_lock_seconds = 30
-unlock_hold_ms = 1000
-device_name = "Xbox Controller"
-unlock_buttons = ["LT", "DPadUp"]
-
-[controller.bindings]
-cancel = "B"
-confirm = "A"
-force_leg_swap = "Y"
-pause_overlay = "Start"
-skip_question = "X"
-
 [organizer]
 password_hash = "argon2$dev$change-me"
 

@@ -26,7 +26,7 @@ ReadingCallback = Callable[[BatonReading], None]
 
 
 class BatonSource(ABC):
-    """Pluggable identity sensor: fake keys, RP2040 serial, or controller override."""
+    """Pluggable identity sensor: keyboard fake keys or RP2040 serial."""
 
     @abstractmethod
     def start(self, on_reading: ReadingCallback) -> None:

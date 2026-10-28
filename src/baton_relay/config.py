@@ -16,33 +16,6 @@ VALID_BATON_PAIRS: frozenset[tuple[int, int]] = frozenset(
 # The category board never shows more than this many tiles at once.
 MAX_BOARD_SLOTS = 8
 
-XBOX_BUTTONS: tuple[str, ...] = (
-    "A",
-    "B",
-    "X",
-    "Y",
-    "LB",
-    "RB",
-    "LT",
-    "RT",
-    "Back",
-    "Start",
-    "LS",
-    "RS",
-    "DPadUp",
-    "DPadDown",
-    "DPadLeft",
-    "DPadRight",
-)
-
-DEFAULT_CONTROLLER_BINDINGS: dict[str, str] = {
-    "skip_question": "X",
-    "force_leg_swap": "Y",
-    "pause_overlay": "Start",
-    "confirm": "A",
-    "cancel": "B",
-}
-
 
 class ConfigError(Exception):
     """Raised when config is missing or invalid."""
@@ -89,16 +62,6 @@ class QuestionsConfig:
 
 
 @dataclass(frozen=True)
-class ControllerConfig:
-    enabled: bool
-    inactivity_lock_seconds: float
-    unlock_hold_ms: int
-    device_name: str
-    unlock_buttons: tuple[str, ...]
-    bindings: dict[str, str]
-
-
-@dataclass(frozen=True)
 class PathsConfig:
     results_dir: Path
     checkpoint_path: Path
@@ -140,7 +103,6 @@ class AppConfig:
     serial: SerialConfig
     scoring: ScoringConfig
     questions: QuestionsConfig
-    controller: ControllerConfig
     organizer_password_hash: str
     paths: PathsConfig
     scoreboard: ScoreboardConfig
@@ -407,53 +369,6 @@ def load_config(path: Path) -> AppConfig:
         questions_per_pick=questions_per_pick,
     )
 
-    controller_raw = raw.get("controller", {})
-    if not isinstance(controller_raw, dict):
-        raise ConfigError("[controller]: expected table")
-    unlock_raw = controller_raw.get("unlock_buttons", ["LB", "RB"])
-    if not isinstance(unlock_raw, list) or not unlock_raw:
-        raise ConfigError("[controller].unlock_buttons: expected non-empty list")
-    unlock_buttons: list[str] = []
-    for i, btn in enumerate(unlock_raw):
-        name = _as_str(btn, f"[controller].unlock_buttons[{i}]")
-        if name not in XBOX_BUTTONS:
-            raise ConfigError(
-                f"[controller].unlock_buttons[{i}]: unknown button {name!r} "
-                f"(valid: {', '.join(XBOX_BUTTONS)})"
-            )
-        unlock_buttons.append(name)
-    bindings_raw = controller_raw.get("bindings", {})
-    if bindings_raw is None:
-        bindings_raw = {}
-    if not isinstance(bindings_raw, dict):
-        raise ConfigError("[controller.bindings]: expected table")
-    bindings = dict(DEFAULT_CONTROLLER_BINDINGS)
-    for key, value in bindings_raw.items():
-        action = _as_str(key, "[controller.bindings] key")
-        button = _as_str(value, f"[controller.bindings].{action}")
-        if button not in XBOX_BUTTONS:
-            raise ConfigError(
-                f"[controller.bindings].{action}: unknown button {button!r}"
-            )
-        bindings[action] = button
-    controller = ControllerConfig(
-        enabled=_as_bool(controller_raw.get("enabled", True), "[controller].enabled"),
-        inactivity_lock_seconds=_as_float(
-            controller_raw.get("inactivity_lock_seconds", 30),
-            "[controller].inactivity_lock_seconds",
-        ),
-        unlock_hold_ms=_as_int(
-            controller_raw.get("unlock_hold_ms", 1000),
-            "[controller].unlock_hold_ms",
-        ),
-        device_name=_as_str(
-            controller_raw.get("device_name", "Xbox Controller"),
-            "[controller].device_name",
-        ),
-        unlock_buttons=tuple(unlock_buttons),
-        bindings=bindings,
-    )
-
     organizer_raw = raw.get("organizer", {})
     if not isinstance(organizer_raw, dict):
         raise ConfigError("[organizer]: expected table")
@@ -619,7 +534,6 @@ def load_config(path: Path) -> AppConfig:
         serial=serial,
         scoring=scoring,
         questions=questions,
-        controller=controller,
         organizer_password_hash=password_hash,
         paths=paths,
         scoreboard=scoreboard,
@@ -708,24 +622,6 @@ def save_config(config: AppConfig, path: Path | None = None) -> None:
             f"warmup_count = {config.questions.warmup_count}",
             f"board_slots = {config.questions.board_slots}",
             f"questions_per_pick = {config.questions.questions_per_pick}",
-            "",
-            "[controller]",
-            f"enabled = {'true' if config.controller.enabled else 'false'}",
-            f"inactivity_lock_seconds = "
-            f"{_toml_number(config.controller.inactivity_lock_seconds)}",
-            f"unlock_hold_ms = {config.controller.unlock_hold_ms}",
-            f"device_name = {_toml_str(config.controller.device_name)}",
-            "unlock_buttons = ["
-            + ", ".join(_toml_str(b) for b in config.controller.unlock_buttons)
-            + "]",
-            "",
-            "[controller.bindings]",
-        ]
-    )
-    for action, button in sorted(config.controller.bindings.items()):
-        lines.append(f"{action} = {_toml_str(button)}")
-    lines.extend(
-        [
             "",
             "[organizer]",
             f"password_hash = {_toml_str(config.organizer_password_hash)}",

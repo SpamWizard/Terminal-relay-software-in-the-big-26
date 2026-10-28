@@ -54,14 +54,11 @@ heartbeat_timeout_ms = 1500
 ```
 
 ```bash
-relay run
+relay run --no-fake-device
 ```
 
-Omit `--fake-device` so the app opens the RP2040. Status shows the port when
-heartbeats arrive; missing heartbeats → **DISCONNECTED** (use Xbox override or
-replug).
-
-Keyboard fake mode remains available: `relay run --fake-device`.
+Status shows the port when heartbeats arrive; missing heartbeats → **DISCONNECTED**
+(replug the board). Keyboard seating is the default: `relay run`.
 
 ## Heartbeat format
 

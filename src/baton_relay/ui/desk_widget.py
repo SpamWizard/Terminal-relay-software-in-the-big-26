@@ -94,12 +94,19 @@ class _TerminalPane(QFrame):
     def bind_shell(self, shell: TeamShell | None) -> None:
         self._shell = shell
         self.term.bind_shell(shell)
-        if shell is not None:
-            self.term.setFocus()
+
+    def focus_shell(self) -> None:
+        """Put keyboard into the PTY so typing works without a click first."""
+        if self._locked:
+            return
+        self.term.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def set_locked(self, locked: bool) -> None:
+        was_locked = self._locked
         self._locked = locked
         self.term.set_locked(locked)
+        if was_locked and not locked:
+            self.focus_shell()
 
     def detach_shell(self) -> None:
         self.term.detach_shell()
@@ -306,6 +313,15 @@ class DeskWidget(QWidget):
         self.submit_btn.setEnabled(not locked)
         for pane in self._panes:
             pane.set_locked(locked)
+        if not locked:
+            self.focus_shell()
+
+    def focus_shell(self) -> None:
+        for pane in self._panes:
+            focus = getattr(pane, "focus_shell", None)
+            if focus is not None:
+                focus()
+                return
 
     def detach_shell(self) -> None:
         for pane in self._panes:

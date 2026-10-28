@@ -198,6 +198,7 @@ class StarfieldOverlay(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._by_name = {n: (ra, dec, mag) for n, ra, dec, mag in _STARS}
         self._t = 0.0
         self._holes: list[QRect] = []

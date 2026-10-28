@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -102,15 +102,26 @@ class QuestionHost(QWidget):
         self._on_submit = handler
 
     def set_locked(self, locked: bool) -> None:
+        was_locked = self._locked
         self._locked = locked
         self.submit_btn.setEnabled(not locked)
         if self._desk is not None:
             self._desk.set_desk_locked(locked)
+            if was_locked and not locked:
+                # After baton seat / unlock — don't make them click the shell.
+                QTimer.singleShot(0, self.focus_answer)
             return
         if self._body is not None:
             self._body.setEnabled(not locked)
         if self._scroll is not None:
             self._scroll.setEnabled(not locked)
+
+    def focus_answer(self) -> bool:
+        """Focus the desk shell when unlocked. Returns True if focus moved there."""
+        if self._locked or self._desk is None:
+            return False
+        self._desk.focus_shell()
+        return True
 
     def clear(self) -> None:
         if self._desk is not None:
@@ -166,6 +177,8 @@ class QuestionHost(QWidget):
             self._slot.addWidget(body)
             desk.set_desk_locked(self._locked)
             self.submit_btn.hide()
+            if not self._locked:
+                QTimer.singleShot(0, self.focus_answer)
             return
 
         self.prompt.setObjectName("challengePrompt")

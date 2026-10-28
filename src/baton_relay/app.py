@@ -11,7 +11,7 @@ from baton_relay.questions.loader import QuestionLoadError, load_all_question_fi
 from baton_relay.questions.types import Desk
 
 
-def run_app(*, config_path: Path, fake_device: bool = False, quick: bool = False) -> int:
+def run_app(*, config_path: Path, fake_device: bool = True, quick: bool = False) -> int:
     try:
         config = load_config(config_path)
     except ConfigError as exc:
@@ -50,11 +50,18 @@ def run_app(*, config_path: Path, fake_device: bool = False, quick: bool = False
     app = QApplication(sys.argv)
     app.setApplicationName("Terminal Relay")
     if fake_device:
-        print("Baton input: fake-device (keyboard 1–6 / P / U)")
+        print("Baton input: keyboard (Ctrl+1–6 insert, Ctrl+P pull, Ctrl+U unknown)")
     else:
         port = config.serial.port
         print(f"Baton input: RP2040 serial (port={port!r}, baud={config.serial.baud})")
-        print("Use --fake-device if no board is connected.")
+        print("Default is keyboard; use --no-fake-device only when a board is connected.")
     window = MainWindow(config, sets, fake_device=fake_device, quick=quick)
     window.showFullScreen()
+    # Windows often leaves fullscreen apps unfocused until a click — grab input now.
+    window.raise_()
+    window.activateWindow()
+    app.setActiveWindow(window)
+    from PySide6.QtCore import QTimer
+
+    QTimer.singleShot(0, window.focus_for_input)
     return app.exec()

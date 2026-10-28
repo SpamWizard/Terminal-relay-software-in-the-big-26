@@ -274,18 +274,27 @@ class GameSession:
             return False
         return True
 
-    def _pop_eligible_from_pool(self) -> str | None:
-        """Take the next board-eligible set; leave blocked deferred sets in place."""
-        kept: list[str] = []
-        chosen: str | None = None
-        while self.progress.pool:
-            nxt = self.progress.pool.pop(0)
-            if chosen is None and self._board_eligible(nxt):
-                chosen = nxt
-            else:
-                kept.append(nxt)
-        self.progress.pool = kept
-        return chosen
+    def _rebuild_board_slots(self, *, defer_id: str | None = None) -> None:
+        """Fill the board in config-file order every time.
+
+        Top-left is always the first remaining eligible category, then the next,
+        and so on — never a scrambled pool order. ``defer_id`` (just finished a
+        pick but still has questions) stays off the board this round.
+        """
+        slots_n = min(self.config.questions.board_slots, MAX_BOARD_SLOTS)
+        held = {defer_id} if defer_id else set()
+        ordered = [
+            s.set_id
+            for s in self.sets
+            if s.set_id not in held and self._board_eligible(s.set_id)
+        ]
+        self.progress.board_slots = ordered[:slots_n]
+        on_board = set(self.progress.board_slots)
+        self.progress.pool = [
+            s.set_id
+            for s in self.sets
+            if s.set_id not in on_board and self._remaining_in_set(s.set_id) > 0
+        ]
 
     def _enter_board(self, *, initial: bool = False) -> None:
         self.progress.phase = "board"
@@ -296,40 +305,18 @@ class GameSession:
         self.progress.redo_queue = []
         self.progress.redo_index = 0
 
-        available = self._sets_with_remaining()
-        on_board = [sid for sid in self.progress.board_slots if self._board_eligible(sid)]
-        used = set(on_board)
-        # Prefer original file order for first fill; deferred always trails primary.
-        if not on_board and not self.progress.pool:
-            primary = [sid for sid in available if not self._is_deferred(sid)]
-            deferred = [sid for sid in available if self._is_deferred(sid)]
-            pool = primary + deferred
-        else:
-            pool = [sid for sid in available if sid not in used]
-            primary = [sid for sid in pool if not self._is_deferred(sid)]
-            deferred = [sid for sid in pool if self._is_deferred(sid)]
-            pool = primary + deferred
+        self._rebuild_board_slots()
 
-        slots_n = min(self.config.questions.board_slots, MAX_BOARD_SLOTS)
-        self.progress.pool = pool
-        while len(on_board) < slots_n:
-            nxt = self._pop_eligible_from_pool()
-            if nxt is None:
-                break
-            on_board.append(nxt)
-
-        self.progress.board_slots = on_board
-
-        if not on_board:
+        if not self.progress.board_slots:
             self._pause_score("All categories complete.")
             return
 
         self.state = RelayState.CHOOSING_CATEGORY
-        titles = [self._sets_by_id[sid].title for sid in on_board]
+        titles = [self._sets_by_id[sid].title for sid in self.progress.board_slots]
         self.last_message = "Choose a category."
         self._event(
             "board_opened",
-            categories=list(on_board),
+            categories=list(self.progress.board_slots),
             titles=titles,
             initial=initial,
         )
@@ -401,26 +388,7 @@ class GameSession:
         self.progress.pick_remaining = 0
         self.progress.pick_missed = []
 
-        if sid and self._remaining_in_set(sid) > 0:
-            self.progress.pool = [s for s in self.progress.pool if s != sid]
-            if self._board_eligible(sid) and sid not in self.progress.board_slots:
-                self.progress.board_slots.append(sid)
-            elif sid not in self.progress.pool:
-                self.progress.pool.append(sid)
-
-        self.progress.pool = [
-            s for s in self.progress.pool if self._remaining_in_set(s) > 0
-        ]
-        self.progress.board_slots = [
-            s for s in self.progress.board_slots if self._board_eligible(s)
-        ]
-        slots_n = min(self.config.questions.board_slots, MAX_BOARD_SLOTS)
-        while len(self.progress.board_slots) < slots_n:
-            nxt = self._pop_eligible_from_pool()
-            if nxt is None:
-                break
-            if nxt not in self.progress.board_slots:
-                self.progress.board_slots.append(nxt)
+        self._rebuild_board_slots()
 
         if not self.progress.board_slots:
             self._pause_score("All categories complete.")
@@ -440,25 +408,36 @@ class GameSession:
         return True
 
     def cycle_board(self) -> bool:
-        """Quick testing: bring waiting categories onto the board.
+        """Quick testing: page to the next slice of categories (config order).
 
-        Shown categories go to the back. Nothing is marked skipped.
-        Deferred categories stay held until every primary category is gone.
+        Nothing is marked skipped. Deferred categories stay held until every
+        primary category is gone.
         """
         if not self.bypass_baton:
             return False
         if self.state != RelayState.CHOOSING_CATEGORY or self.progress.phase != "board":
             return False
 
-        eligible_pool = [s for s in self.progress.pool if self._board_eligible(s)]
-        held = [s for s in self.progress.pool if s not in eligible_pool]
-        if not eligible_pool:
+        eligible = [s.set_id for s in self.sets if self._board_eligible(s.set_id)]
+        slots_n = min(self.config.questions.board_slots, MAX_BOARD_SLOTS)
+        if len(eligible) <= slots_n:
             return False
 
-        combined = eligible_pool + list(self.progress.board_slots)
-        slots_n = min(self.config.questions.board_slots, MAX_BOARD_SLOTS, len(combined))
-        self.progress.board_slots = combined[:slots_n]
-        self.progress.pool = combined[slots_n:] + held
+        start = 0
+        if self.progress.board_slots:
+            try:
+                start = eligible.index(self.progress.board_slots[0])
+            except ValueError:
+                start = 0
+            start = (start + slots_n) % len(eligible)
+        rotated = eligible[start:] + eligible[:start]
+        self.progress.board_slots = rotated[:slots_n]
+        on_board = set(self.progress.board_slots)
+        self.progress.pool = [
+            s.set_id
+            for s in self.sets
+            if s.set_id not in on_board and self._remaining_in_set(s.set_id) > 0
+        ]
         self.last_message = "Choose a category."
         self._ensure_testing_seat()
         self._event(
@@ -471,33 +450,17 @@ class GameSession:
 
     def _refill_and_return_to_board(self) -> None:
         finished_id = self.progress.pick_set_id
-        # If the picked set still has questions, it goes to the back of the pool
-        # only after being fully unused on board — plan says replace slot with a
-        # *different* category. Exhausted sets stay out; leftover questions stay
-        # in pool for a later refill of a different slot.
+        # Still has questions → keep it off the board this round so a different
+        # category fills its slot; it returns later in its config-file place.
+        defer = None
         if finished_id and self._remaining_in_set(finished_id) > 0:
-            if finished_id not in self.progress.pool:
-                self.progress.pool.append(finished_id)
-
-        # Drop pool entries with nothing left
-        self.progress.pool = [
-            sid for sid in self.progress.pool if self._remaining_in_set(sid) > 0
-        ]
-        self.progress.board_slots = [
-            sid for sid in self.progress.board_slots if self._board_eligible(sid)
-        ]
-
-        slots_n = min(self.config.questions.board_slots, MAX_BOARD_SLOTS)
-        while len(self.progress.board_slots) < slots_n:
-            nxt = self._pop_eligible_from_pool()
-            if nxt is None:
-                break
-            if nxt not in self.progress.board_slots:
-                self.progress.board_slots.append(nxt)
+            defer = finished_id
 
         self.progress.pick_set_id = None
         self.progress.pick_remaining = 0
         self.progress.pick_missed = []
+
+        self._rebuild_board_slots(defer_id=defer)
 
         if not self.progress.board_slots:
             self._pause_score("All categories complete.")
@@ -581,7 +544,7 @@ class GameSession:
 
         if self.state in (RelayState.WAITING_FOR_BATON, RelayState.FROZEN, RelayState.DISCONNECTED):
             # Hardware readings ignored while disconnected; reconnect path restores state first.
-            # Controller override (source != "baton") may still force a seat change.
+            # Fake/keyboard source may still force a seat change while disconnected.
             if self.state == RelayState.DISCONNECTED and source == "baton":
                 return
 
@@ -623,7 +586,7 @@ class GameSession:
             return
         self._pre_disconnect_state = self.state
         self.state = RelayState.DISCONNECTED
-        self.last_message = "Device disconnected. Use controller override or reconnect."
+        self.last_message = "Device disconnected. Reconnect the board or use keyboard seating."
         self.device_status = "disconnected"
         self._event("device_disconnected")
         self._emit()

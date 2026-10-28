@@ -143,7 +143,7 @@ Open a **PowerShell** and run this block:
 ```powershell
 cd C:\relay
 .\.venv\Scripts\Activate.ps1
-relay run --fake-device
+relay run
 ```
 
 The game opens fullscreen. Leave that PowerShell window open; closing it closes the game.
@@ -151,16 +151,18 @@ The game opens fullscreen. Leave that PowerShell window open; closing it closes 
 1. Click the game window.
 2. Type a team name and a name in the `#1`, `#2`, and `#3` boxes. All three are required.
 3. Click **START**.
-4. Press `1` to plug in player 1. The category board opens.
+4. Press `Ctrl+1` to seat player 1. The category board opens.
 5. Click a category. A desk category opens a Linux terminal. If a standby disk was warmed (`relay warm`), start is instant; otherwise the first team waits while Windows copies the golden disk.
-6. Press `P` to pull the baton. Press `2` or `3` to hand it to the next player.
+6. Press `Ctrl+P` to pull the baton. Press `Ctrl+2` or `Ctrl+3` to hand it to the next player.
 
 | Key | Action |
 |---|---|
-| `1` `2` `3` | Plug in that player |
-| `P` | Pull the baton. Space and Backspace do the same |
+| `Ctrl+1` `Ctrl+2` `Ctrl+3` | Seat that player (works even while a question or terminal is focused) |
+| `Ctrl+P` | Pull the baton. `Ctrl+Backspace` does the same |
 | `F6` | Skip, or show categories that are waiting |
 | `Esc` | Leave fullscreen. `F11` toggles it. `Alt+F4` quits |
+
+While waiting for a baton (no active question), plain `1` / `2` / `3` / `P` also work if the game window has focus.
 
 To skip the name screen, run this block in the same window. That also uses the keyboard baton.
 
@@ -178,9 +180,7 @@ relay warm
 
 ## Optional hardware
 
-**Xbox pad.** Plug it in before you start. On the launch screen click **CONFIG**, open Xbox, click **Save**. Hold **LT + D-pad up** for one second to unlock it. Button list: [docs/controller.md](docs/controller.md).
-
-**Pico baton reader.** Skip this if the keyboard is enough. Flash CircuitPython, then copy `C:\relay\firmware\boot.py` and `C:\relay\firmware\code.py` onto the `CIRCUITPY` drive. Wiring is in [docs/firmware.md](docs/firmware.md). Then run this block:
+**Pico baton reader.** Skip this — stations use the keyboard by default. Flash CircuitPython, then copy `C:\relay\firmware\boot.py` and `C:\relay\firmware\code.py` onto the `CIRCUITPY` drive. Wiring is in [docs/firmware.md](docs/firmware.md). Then run this block:
 
 ```powershell
 cd C:\relay
@@ -188,11 +188,13 @@ cd C:\relay
 relay probe
 ```
 
-`HB` lines mean the board is alive. Press `Ctrl+C`, then run this block. It has no `--fake-device`. The port setting in `config\config.toml` is `auto`.
+`HB` lines mean the board is alive. Press `Ctrl+C`, then run with the serial reader:
 
 ```powershell
-relay run
+relay run --no-fake-device
 ```
+
+The port setting in `config\config.toml` is `auto`.
 
 ## Update a station from GitHub
 
@@ -222,16 +224,16 @@ Run this block:
 ```powershell
 cd C:\relay
 .\.venv\Scripts\Activate.ps1
-relay run --fake-device
+relay run
 ```
 
-Use `relay run` when the Pico is plugged in. Between teams, with `(.venv)` on the prompt, run this block:
+Use `relay run --no-fake-device` only when a Pico baton reader is plugged in. Between teams, with `(.venv)` on the prompt, run this block:
 
 ```powershell
 relay reset
 ```
 
-That archives checkpoints and deletes team Linux disks. It leaves `images\relay-gold.vhdx` in place. Scores land in `C:\relay\results\<team>\<timestamp>\summary.json`. See [docs/results.md](docs/results.md).
+That archives checkpoints and deletes team Linux disks. It leaves `images\relay-gold.vhdx` in place. Scores land in `C:\relay\results\<team>\<timestamp>\summary.json`. See [docs/results.md](docs43/results.md).
 
 On event day, set `[scoreboard] enabled = true` with the Pi `base_url` and this station’s `machine_id` (token = Pi IP). Finished runs POST to the Scoreboard Pi only — never to saintcon.org.
 

@@ -379,6 +379,8 @@ class PtyTerminalWidget(QWidget):
             event.accept()
             return
         if self._locked or self._shell is None:
+            # Let parents (MainWindow baton shortcuts) see the key.
+            event.ignore()
             return
         seq = _key_to_seq(event)
         if seq is None:

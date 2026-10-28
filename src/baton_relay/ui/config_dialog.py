@@ -1,11 +1,10 @@
-"""In-app visual editor — flat tabs, click-to-rebind Xbox controls."""
+"""In-app visual editor for config.toml."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QKeyEvent
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
@@ -14,7 +13,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -28,10 +26,8 @@ from PySide6.QtWidgets import (
 )
 
 from baton_relay.config import (
-    XBOX_BUTTONS,
     AppConfig,
     ConfigError,
-    ControllerConfig,
     PathsConfig,
     PersonConfig,
     MAX_BOARD_SLOTS,
@@ -45,90 +41,6 @@ from baton_relay.config import (
     load_config,
     save_config,
 )
-from baton_relay.input.xbox import controller_connected, first_controller_name, poll_pressed_buttons
-
-_ACTIONS: tuple[tuple[str, str], ...] = (
-    ("skip_question", "Skip question"),
-    ("force_leg_swap", "Force leg swap"),
-    ("pause_overlay", "Pause overlay"),
-    ("confirm", "Confirm / submit"),
-    ("cancel", "Cancel"),
-)
-
-
-class BindButton(QPushButton):
-    """Click → listen for the next Xbox button press."""
-
-    def __init__(self, value: str = "A", parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._value = value if value in XBOX_BUTTONS else "A"
-        self._listening = False
-        self._poll: QTimer | None = None
-        self._baseline: set[str] = set()
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumWidth(120)
-        self._paint()
-        self.clicked.connect(self._begin_listen)
-
-    @property
-    def value(self) -> str:
-        return self._value
-
-    def set_value(self, value: str) -> None:
-        self._stop_listen()
-        self._value = value if value in XBOX_BUTTONS else "A"
-        self._paint()
-
-    def _paint(self) -> None:
-        if self._listening:
-            self.setText("Press a button…")
-            self.setObjectName("bindListening")
-        else:
-            self.setText(self._value)
-            self.setObjectName("bindButton")
-        self.style().unpolish(self)
-        self.style().polish(self)
-
-    def _begin_listen(self) -> None:
-        if self._listening:
-            self._stop_listen()
-            return
-        self._listening = True
-        self._baseline = set(poll_pressed_buttons())
-        self._paint()
-        self._poll = QTimer(self)
-        self._poll.setInterval(40)
-        self._poll.timeout.connect(self._poll_pad)
-        self._poll.start()
-        self.setFocus(Qt.FocusReason.OtherFocusReason)
-
-    def _stop_listen(self) -> None:
-        self._listening = False
-        if self._poll is not None:
-            self._poll.stop()
-            self._poll = None
-        self._paint()
-
-    def _poll_pad(self) -> None:
-        if not self._listening:
-            return
-        now = poll_pressed_buttons()
-        fresh = now - self._baseline
-        # Ignore still-held baseline; wait for a new press
-        if not fresh:
-            # Allow releasing then pressing same button
-            if not now:
-                self._baseline = set()
-            return
-        choice = sorted(fresh, key=lambda b: XBOX_BUTTONS.index(b) if b in XBOX_BUTTONS else 99)[0]
-        self._value = choice
-        self._stop_listen()
-
-    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
-        if self._listening and event.key() == Qt.Key.Key_Escape:
-            self._stop_listen()
-            return
-        super().keyPressEvent(event)
 
 
 class ConfigDialog(QDialog):
@@ -153,7 +65,6 @@ class ConfigDialog(QDialog):
 
         self._build_team_tab()
         self._build_timers_tab()
-        self._build_controller_tab()
         self._build_scoring_tab()
         self._build_questions_tab()
         self._build_theme_tab()
@@ -268,89 +179,6 @@ class ConfigDialog(QDialog):
         form.addRow("Debounce", self.debounce_ms)
         self.tabs.addTab(page, "Timers")
 
-    def _build_controller_tab(self) -> None:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(8, 12, 8, 8)
-        layout.setSpacing(10)
-
-        top = QHBoxLayout()
-        self.ctrl_enabled = QPushButton("CONTROLLER  OFF")
-        self.ctrl_enabled.setObjectName("xboxToggle")
-        self.ctrl_enabled.setCheckable(True)
-        self.ctrl_enabled.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.ctrl_enabled.toggled.connect(self._on_xbox_toggled)
-        top.addWidget(self.ctrl_enabled)
-        self.pad_status = QLabel("")
-        self.pad_status.setObjectName("muted")
-        top.addStretch(1)
-        top.addWidget(self.pad_status)
-        layout.addLayout(top)
-
-        self._xbox_body = QWidget()
-        body_l = QVBoxLayout(self._xbox_body)
-        body_l.setContentsMargins(0, 0, 0, 0)
-        body_l.setSpacing(10)
-
-        form = QFormLayout()
-        self.ctrl_device = QLineEdit()
-        form.addRow("Label", self.ctrl_device)
-        self.ctrl_inactivity = QDoubleSpinBox()
-        self.ctrl_inactivity.setRange(1, 600)
-        self.ctrl_inactivity.setSuffix(" s")
-        form.addRow("Inactivity lock", self.ctrl_inactivity)
-        self.ctrl_unlock_hold = QSpinBox()
-        self.ctrl_unlock_hold.setRange(100, 10000)
-        self.ctrl_unlock_hold.setSuffix(" ms")
-        form.addRow("Unlock hold", self.ctrl_unlock_hold)
-        body_l.addLayout(form)
-
-        unlock_box = QGroupBox("Unlock chord — click to toggle")
-        unlock_grid = QGridLayout(unlock_box)
-        unlock_grid.setSpacing(6)
-        self.unlock_chips: dict[str, QPushButton] = {}
-        for i, name in enumerate(XBOX_BUTTONS):
-            chip = QPushButton(name)
-            chip.setCheckable(True)
-            chip.setObjectName("bindButton")
-            chip.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.unlock_chips[name] = chip
-            unlock_grid.addWidget(chip, i // 8, i % 8)
-        body_l.addWidget(unlock_box)
-
-        bind_box = QGroupBox("Controls — click a bind, then press a button on the pad")
-        bind_form = QFormLayout(bind_box)
-        self.bind_buttons: dict[str, BindButton] = {}
-        for key, label in _ACTIONS:
-            btn = BindButton("A")
-            self.bind_buttons[key] = btn
-            bind_form.addRow(label, btn)
-        body_l.addWidget(bind_box)
-        layout.addWidget(self._xbox_body)
-
-        hint = QLabel("Save writes controller settings to config. Esc cancels a listening bind.")
-        hint.setObjectName("muted")
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
-        layout.addStretch(1)
-        self.tabs.addTab(page, "Xbox")
-
-        self._pad_timer = QTimer(self)
-        self._pad_timer.setInterval(500)
-        self._pad_timer.timeout.connect(self._refresh_pad_status)
-        self._pad_timer.start()
-        self._refresh_pad_status()
-
-    def _on_xbox_toggled(self, enabled: bool) -> None:
-        self.ctrl_enabled.setText("CONTROLLER  ON" if enabled else "CONTROLLER  OFF")
-        self._xbox_body.setEnabled(enabled)
-
-    def _refresh_pad_status(self) -> None:
-        if controller_connected():
-            self.pad_status.setText(f"Detected: {first_controller_name()}")
-        else:
-            self.pad_status.setText("No controller detected")
-
     def _build_scoring_tab(self) -> None:
         page = QWidget()
         form = QFormLayout(page)
@@ -453,21 +281,6 @@ class ConfigDialog(QDialog):
         self.leg_while_frozen.setChecked(config.timers.leg_runs_while_frozen)
         self.debounce_ms.setValue(config.timers.debounce_ms)
 
-        c = config.controller
-        self.ctrl_enabled.blockSignals(True)
-        self.ctrl_enabled.setChecked(c.enabled)
-        self.ctrl_enabled.setText("CONTROLLER  ON" if c.enabled else "CONTROLLER  OFF")
-        self.ctrl_enabled.blockSignals(False)
-        self._xbox_body.setEnabled(c.enabled)
-        self.ctrl_device.setText(c.device_name)
-        self.ctrl_inactivity.setValue(c.inactivity_lock_seconds)
-        self.ctrl_unlock_hold.setValue(c.unlock_hold_ms)
-        unlock = set(c.unlock_buttons)
-        for name, chip in self.unlock_chips.items():
-            chip.setChecked(name in unlock)
-        for action, btn in self.bind_buttons.items():
-            btn.set_value(c.bindings.get(action, "A"))
-
         self.partial_credit.setChecked(config.scoring.partial_credit)
         self.wrong_penalty.setValue(config.scoring.wrong_answer_penalty)
         self.redo_mult.setValue(config.scoring.redo_multiplier)
@@ -538,13 +351,6 @@ class ConfigDialog(QDialog):
                 PersonConfig(id=pid, label=label, color=color, baton_pins=(pins[0], pins[1]))
             )
 
-        unlock_buttons = [n for n, chip in self.unlock_chips.items() if chip.isChecked()]
-        if not unlock_buttons:
-            raise ConfigError("Pick at least one unlock-chord button")
-        # Preserve XBOX_BUTTONS order
-        unlock_buttons = [n for n in XBOX_BUTTONS if n in set(unlock_buttons)]
-        bindings = {k: btn.value for k, btn in self.bind_buttons.items()}
-
         theme_name = self.theme_name.currentText().strip() or "deep_space"
         themes = dict(self._config.themes)
         themes[theme_name] = ThemeConfig(
@@ -601,15 +407,6 @@ class ConfigDialog(QDialog):
                 board_slots=self.board_slots.value(),
                 questions_per_pick=self.questions_per_pick.value(),
             ),
-            controller=ControllerConfig(
-                enabled=self.ctrl_enabled.isChecked(),
-                inactivity_lock_seconds=self.ctrl_inactivity.value(),
-                unlock_hold_ms=self.ctrl_unlock_hold.value(),
-                device_name=self.ctrl_device.text().strip() or "Xbox Controller",
-                unlock_buttons=tuple(unlock_buttons),
-                bindings=bindings,
-            ),
-
             paths=PathsConfig(
                 results_dir=results,
                 checkpoint_path=checkpoint,
@@ -634,7 +431,3 @@ class ConfigDialog(QDialog):
             QMessageBox.critical(self, "Config error", str(exc))
             return
         self.accept()
-
-    def closeEvent(self, event) -> None:  # noqa: N802
-        self._pad_timer.stop()
-        super().closeEvent(event)

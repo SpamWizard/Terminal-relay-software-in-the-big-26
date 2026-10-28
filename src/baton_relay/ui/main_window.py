@@ -27,7 +27,6 @@ from baton_relay.duration import format_duration
 from baton_relay.input.base import BatonReading, ReadingKind
 from baton_relay.input.fake import FakeBatonSource
 from baton_relay.input.serial_source import SerialBatonSource
-from baton_relay.input.xbox import XboxController
 from baton_relay.questions.base import QuestionSet
 from baton_relay.questions.loader import load_all_question_files
 from baton_relay.questions.types import Desk
@@ -48,7 +47,7 @@ from baton_relay.results.scoreboard import ScoreboardUploader
 from baton_relay.state.machine import GameSession, GameSnapshot, PlayerSlot, RelayState
 from baton_relay.ui.category_board import CategoryBoard
 from baton_relay.ui.config_dialog import ConfigDialog
-from baton_relay.ui.correct_burst import CorrectBurst, OverrideFlash, WrongBurst
+from baton_relay.ui.correct_burst import CorrectBurst, WrongBurst
 from baton_relay.ui.question_widgets import QuestionHost
 from baton_relay.ui.starfield import StarfieldOverlay
 from baton_relay.ui.team_name_dialog import TeamNameConflictDialog
@@ -588,6 +587,8 @@ class GameScreen(QWidget):
         super().__init__(parent)
         self.config = config
         self.setObjectName("gameScreen")
+        # So Ctrl+1–3 land here without clicking the window first.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._person_accent = config.theme.accent
         self._prev_switch_key: tuple[str, int] | None = None
         self._on_board_back: Callable[[], None] | None = None
@@ -992,20 +993,9 @@ class MainWindow(QMainWindow):
         self._stars.resize(self.size())
         self._stars.raise_()
 
-        # Above stars so override banners stay readable
-        self._override_flash = OverrideFlash(self)
-        self._override_flash.resize(self.size())
-        self._override_flash.raise_()
-
         self._timer = QTimer(self)
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._on_tick)
-
-        self._xbox = XboxController(self)
-        self._xbox.unlocked_changed.connect(self._on_xbox_unlocked)
-        self._xbox.locked_press.connect(self._on_xbox_locked_press)
-        self._xbox.start(self._on_xbox_action)
-        self._xbox.apply_config(config.controller)
 
         if fake_device:
             self._fake = FakeBatonSource(config)
@@ -1020,6 +1010,10 @@ class MainWindow(QMainWindow):
             )
             self._device_label = self._serial.status_label
 
+        # ApplicationShortcut so Ctrl+1–6 / P / U work even when a child (PTY, line
+        # edit) has focus — keyPressEvent alone was intermittent.
+        self._install_fake_shortcuts()
+
         self._pending_after_burst = False
         self._burst_advances = True
         self._ckpt_ticks = 0
@@ -1027,15 +1021,31 @@ class MainWindow(QMainWindow):
         self.game_screen.wrong_burst.finished.connect(self._after_verdict_burst)
         self.startup.reset()
         QTimer.singleShot(0, self._update_star_holes)
+        QTimer.singleShot(0, self.focus_for_input)
         if quick:
             self._quick_start()
+
+    def focus_for_input(self) -> None:
+        """Make sure keyboard reaches the app without a click first."""
+        self.raise_()
+        self.activateWindow()
+        current = self.stack.currentWidget()
+        if current is self.startup:
+            self.startup.name_edit.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        elif current is self.game_screen:
+            host = self.game_screen.question_host
+            # Prefer the desk shell when a challenge is live and unlocked.
+            if (
+                self.game_screen.right_stack.currentWidget() is host
+                and host.focus_answer()
+            ):
+                return
+            self.game_screen.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._stars.setGeometry(self.rect())
         self._stars.raise_()
-        self._override_flash.setGeometry(self.rect())
-        self._override_flash.raise_()
         self._update_star_holes()
 
     def closeEvent(self, event) -> None:  # noqa: N802
@@ -1043,7 +1053,6 @@ class MainWindow(QMainWindow):
             self._serial.stop()
         if self._fake is not None:
             self._fake.stop()
-        self._xbox.stop()
         self._scoreboard.stop()
         self._close_team_shell()
         super().closeEvent(event)
@@ -1079,10 +1088,40 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
         self.game_screen.question_host.set_team_shell(self._team_shell)
 
-    def _flash_override(self, title: str, sub: str = "") -> None:
-        self._override_flash.setGeometry(self.rect())
-        self._override_flash.raise_()
-        self._override_flash.play(title, sub)
+    def _install_fake_shortcuts(self) -> None:
+        mapping = (
+            (Qt.Key.Key_1, "1"),
+            (Qt.Key.Key_2, "2"),
+            (Qt.Key.Key_3, "3"),
+            (Qt.Key.Key_4, "4"),
+            (Qt.Key.Key_5, "5"),
+            (Qt.Key.Key_6, "6"),
+            (Qt.Key.Key_0, "0"),
+            (Qt.Key.Key_U, "U"),
+            (Qt.Key.Key_P, "P"),
+            (Qt.Key.Key_Backspace, "BACKSPACE"),
+        )
+        self._fake_shortcuts: list[QShortcut] = []
+        for key, token in mapping:
+            sc = QShortcut(QKeySequence(Qt.KeyboardModifier.ControlModifier | key), self)
+            sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            sc.activated.connect(lambda t=token: self._on_fake_shortcut(t))
+            self._fake_shortcuts.append(sc)
+        self._sync_fake_shortcuts()
+
+    def _sync_fake_shortcuts(self) -> None:
+        enabled = bool(self._fake) and not (self.session and self.session.bypass_baton)
+        for sc in self._fake_shortcuts:
+            sc.setEnabled(enabled)
+
+    def _on_fake_shortcut(self, token: str) -> None:
+        if not self._fake:
+            return
+        if self.stack.currentWidget() is not self.game_screen:
+            return
+        if self.session and self.session.bypass_baton:
+            return
+        self._fake.handle_key(token)
 
     def _update_star_holes(self) -> None:
         """Stars only in the gaps — solid boxes stay clear. Quieter during play."""
@@ -1112,41 +1151,18 @@ class MainWindow(QMainWindow):
             self.showNormal()
             return
 
+        # Ctrl+1–6 / P / U / Backspace are ApplicationShortcuts (_on_fake_shortcut).
+        # Plain digits / P / Space still work here when questions are locked and
+        # focus is on the game screen (or a child that ignores the key).
         if (
             self._fake
             and self.stack.currentWidget() is self.game_screen
             and not (self.session and self.session.bypass_baton)
         ):
             locked = not self.session or self.session.questions_locked()
-            ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
             text = event.text()
-
-            if key == Qt.Key.Key_Backspace and (locked or ctrl):
+            if locked and key == Qt.Key.Key_Backspace:
                 self._fake.handle_key("BACKSPACE")
-                return
-            if ctrl and key in (
-                Qt.Key.Key_1,
-                Qt.Key.Key_2,
-                Qt.Key.Key_3,
-                Qt.Key.Key_4,
-                Qt.Key.Key_5,
-                Qt.Key.Key_6,
-                Qt.Key.Key_0,
-                Qt.Key.Key_U,
-                Qt.Key.Key_P,
-            ):
-                mapping = {
-                    Qt.Key.Key_1: "1",
-                    Qt.Key.Key_2: "2",
-                    Qt.Key.Key_3: "3",
-                    Qt.Key.Key_4: "4",
-                    Qt.Key.Key_5: "5",
-                    Qt.Key.Key_6: "6",
-                    Qt.Key.Key_0: "0",
-                    Qt.Key.Key_U: "U",
-                    Qt.Key.Key_P: "P",
-                }
-                self._fake.handle_key(mapping[key])
                 return
             if locked and text:
                 self._fake.handle_key(text)
@@ -1180,72 +1196,10 @@ class MainWindow(QMainWindow):
             self._device_label = self._serial.status_label
             if self.session is not None:
                 self.session.set_device_status(self._device_label)
-        self._xbox.apply_config(config.controller)
         self._scoreboard.update_config(config.scoreboard)
         if self.session is not None:
             self.session.config = config
         self._update_star_holes()
-
-    def _unlock_chord_text(self) -> str:
-        return "+".join(self.config.controller.unlock_buttons)
-
-    def _on_xbox_unlocked(self, unlocked: bool) -> None:
-        if not self.config.controller.enabled:
-            return
-        if unlocked:
-            self._flash_override("OVERRIDE", "Pad armed — use bound buttons")
-            if self.stack.currentWidget() is self.game_screen:
-                self.game_screen.append_activity(
-                    f"{datetime.now().strftime('%H:%M:%S')}  Pad is armed"
-                )
-        else:
-            self._flash_override(
-                "OVERRIDE OFF",
-                f"Hold {self._unlock_chord_text()} to arm again",
-            )
-
-    def _on_xbox_locked_press(self) -> None:
-        if not self.config.controller.enabled:
-            return
-        self._flash_override(
-            "HOLD TO OVERRIDE",
-            f"Hold {self._unlock_chord_text()}, then press the action",
-        )
-
-    def _on_xbox_action(self, action: str) -> None:
-        if not self.config.controller.enabled:
-            return
-        ts = datetime.now().strftime("%H:%M:%S")
-        if action == "skip_question" and self.session:
-            self.session.skip_question(organizer=True)
-            self._flash_override("OVERRIDE · SKIP", "Question skipped")
-            self.game_screen.append_activity(f"{ts}  Override skipped the question")
-            self._render(force_question=True)
-        elif action == "force_leg_swap" and self.session:
-            if self.session.state != RelayState.PAUSED_SCORE:
-                self.session.advance_rotation()
-                self._flash_override("OVERRIDE · SWAP", "Forced leg change")
-                self.game_screen.append_activity(f"{ts}  Override forced a leg change")
-                self._render()
-        elif action == "confirm":
-            if (
-                self.session
-                and self.session.state == RelayState.ACTIVE
-                and not self.session.questions_locked()
-            ):
-                self._flash_override("OVERRIDE · CONFIRM", "Submit")
-                self.game_screen.question_host._submit()
-        elif action == "cancel":
-            # Reserved bind — clears wrong-baton flash / soft nudge only for now
-            if self.session:
-                self.session.wrong_baton = False
-                self._render()
-            self._flash_override("OVERRIDE · CANCEL", "Cleared")
-        elif action == "pause_overlay" and self.session:
-            self.session.last_message = "Organizer ping — keep playing."
-            self._flash_override("OVERRIDE · PING", "Attention")
-            self.game_screen.append_activity(f"{ts}  Override ping")
-            self._render()
 
     def _on_reading(self, reading: BatonReading) -> None:
         if not self.session:
@@ -1300,6 +1254,7 @@ class MainWindow(QMainWindow):
             self._device_label = "waiting"
         self.session.set_device_status(self._device_label)
         self._last_qid = None
+        self._sync_fake_shortcuts()
 
     def _quick_start(self) -> None:
         """Skip the name screen and open category selection with a player seated."""
@@ -1313,7 +1268,8 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.game_screen)
         self._timer.start()
         self._render(force_question=True)
-        self.game_screen.setFocus()
+        self.focus_for_input()
+        QTimer.singleShot(0, self.focus_for_input)
 
     def _start_game(self, team_name: str, player_names: list) -> None:
         results_dir = self.config.paths.results_dir

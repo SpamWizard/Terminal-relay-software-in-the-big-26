@@ -244,10 +244,17 @@ def test_cli_parser_has_probe():
 
 def test_cli_defaults_to_run():
     with patch("baton_relay.app.run_app", return_value=42) as run_app:
-        assert main(["--fake-device"]) == 42
+        assert main([]) == 42
         run_app.assert_called_once()
         assert run_app.call_args.kwargs["quick"] is False
         assert run_app.call_args.kwargs["fake_device"] is True
+
+
+def test_cli_no_fake_device():
+    with patch("baton_relay.app.run_app", return_value=0) as run_app:
+        assert main(["run", "--no-fake-device"]) == 0
+        assert run_app.call_args.kwargs["fake_device"] is False
+        assert run_app.call_args.kwargs["quick"] is False
 
 
 def test_cli_quick_skips_setup():

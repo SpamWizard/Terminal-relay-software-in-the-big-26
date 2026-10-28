@@ -88,6 +88,23 @@ def test_quick_bypass_opens_category_selection(config):
     assert session.questions_locked() is False
 
 
+def test_board_keeps_config_file_order(config):
+    cfg = _with_warmup(config, 0, questions_per_pick=1, board_slots=3)
+    sets = tiny_sets(5, 1)
+    session = GameSession(cfg, sets, team_name="Order", bypass_baton=True)
+    expected = [s.set_id for s in sets[:3]]
+    assert session.progress.board_slots == expected
+
+    # Finish the middle tile — board should refill in file order, not scramble.
+    assert session.select_category(expected[1]) is True
+    session.submit_answer(1)
+    assert session.progress.board_slots == [
+        sets[0].set_id,
+        sets[2].set_id,
+        sets[3].set_id,
+    ]
+
+
 def test_quick_skip_and_board_cycle(config):
     cfg = _with_warmup(config, 0, questions_per_pick=1, board_slots=1)
     sets = tiny_sets(3, 2)
@@ -123,9 +140,6 @@ def test_load_config(config):
     assert config.timers.leg_runs_while_frozen is False
     assert config.timers.resume_bonus_seconds == 10
     assert config.theme.name == "deep_space"
-    assert config.controller.unlock_buttons  # organizer-configurable chord
-    assert all(b for b in config.controller.unlock_buttons)
-    assert config.controller.bindings["confirm"] == "A"
     assert config.questions.warmup_count == 0
     assert config.questions.board_slots >= 1
     assert config.questions.questions_per_pick == 1
@@ -572,8 +586,6 @@ def test_missing_config(tmp_path):
 
 
 def test_save_config_roundtrip(config, tmp_path):
-    from dataclasses import replace
-
     from baton_relay.config import save_config
 
     dest = tmp_path / "config.toml"
@@ -581,14 +593,8 @@ def test_save_config_roundtrip(config, tmp_path):
     reloaded = load_config(dest)
     assert reloaded.team_size == config.team_size
     assert reloaded.timers.resume_bonus_seconds == config.timers.resume_bonus_seconds
-    assert reloaded.controller.bindings == config.controller.bindings
     assert reloaded.theme.name == config.theme.name
-
-    disabled = config.with_updates(
-        controller=replace(config.controller, enabled=False)
-    )
-    save_config(disabled, dest)
-    assert load_config(dest).controller.enabled is False
+    assert reloaded.questions.questions_per_pick == config.questions.questions_per_pick
 
 
 def test_team_name_collision_and_resume(config, sets, tmp_path):

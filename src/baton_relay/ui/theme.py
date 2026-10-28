@@ -437,33 +437,6 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         font-size: 15px;
         padding: 10px 18px;
     }}
-    QPushButton#bindButton {{
-        background-color: {input_bg};
-        border: 1px solid {panel_border};
-        color: {fg};
-        padding: 8px 14px;
-        font-size: 15px;
-        font-weight: 700;
-        min-width: 64px;
-    }}
-    QPushButton#bindButton:hover {{
-        border-color: {ac};
-        color: {ac};
-        background-color: {hover};
-    }}
-    QPushButton#bindButton:checked {{
-        background-color: {ac};
-        border-color: {ac};
-        color: {bg};
-    }}
-    QPushButton#bindListening {{
-        background-color: {mix(bg, ac, 0.35)};
-        border: 2px solid {ac};
-        color: {fg};
-        padding: 8px 14px;
-        font-size: 14px;
-        font-weight: 700;
-    }}
     QTabWidget::pane {{
         border: 1px solid {panel_border};
         background: {panel};
@@ -630,24 +603,6 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
     QCheckBox::indicator:unchecked:hover, QRadioButton::indicator:unchecked:hover {{
         background-color: {hover};
     }}
-    QPushButton#xboxToggle {{
-        background-color: {input_bg};
-        border: 2px solid {panel_border};
-        color: {muted};
-        padding: 12px 20px;
-        font-size: 18px;
-        font-weight: 800;
-        letter-spacing: 1px;
-        min-width: 220px;
-    }}
-    QPushButton#xboxToggle:checked {{
-        background-color: {ac};
-        border-color: {ac};
-        color: {bg};
-    }}
-    QPushButton#xboxToggle:hover {{
-        border-color: {ac};
-    }}
     QProgressBar {{
         border: 1px solid {panel_border};
         background: {input_bg};
@@ -719,27 +674,6 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         background: transparent;
         font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
         font-size: 20px;
-        font-weight: 600;
-    }}
-    QFrame#overrideToast {{
-        background-color: rgba(40, 18, 8, 0.96);
-        border: 3px solid #ff9f1a;
-        border-radius: 8px;
-        min-width: 420px;
-    }}
-    QLabel#overrideTitle {{
-        color: #ff9f1a;
-        background: transparent;
-        font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
-        font-size: 44px;
-        font-weight: 800;
-        letter-spacing: 4px;
-    }}
-    QLabel#overrideSub {{
-        color: #ffe0b0;
-        background: transparent;
-        font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
-        font-size: 18px;
         font-weight: 600;
     }}
     QListWidget#orderList {{
