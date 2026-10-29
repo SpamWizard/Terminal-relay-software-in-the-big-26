@@ -202,6 +202,53 @@ def test_deferred_category_waits_until_primaries_gone(config):
     assert session.progress.board_slots == ["bonus"]
 
 
+def test_last_category_stays_until_every_question_is_done(config):
+    """A multi-question category that is alone on the board must not end the game early.
+
+    Fake Logos is deferred until every desk category is gone, and a pick is one
+    question. Finishing Google used to set the category aside, empty the board,
+    and end the run before Nintendo and the rest could be played.
+    """
+    cfg = _with_warmup(config, 0, questions_per_pick=1, board_slots=8)
+    primary = tiny_sets(1, 1)
+    logos = QuestionSet(
+        set_id="fake_logos",
+        title="Fake Logos",
+        deferred=True,
+        questions=[
+            MultipleChoice(
+                id=f"logo_{name}",
+                type="multiple_choice",
+                prompt=name,
+                points=1,
+                choices=["A", "B", "C", "D", "E"],
+                answer=0,
+            )
+            for name in ("google", "nintendo", "cisco")
+        ],
+    )
+    session = GameSession(
+        cfg, primary + [logos], team_name="Logos", bypass_baton=True
+    )
+    assert session.select_category(primary[0].set_id) is True
+    session.submit_answer(1)
+    assert session.state == RelayState.CHOOSING_CATEGORY
+    assert session.progress.board_slots == ["fake_logos"]
+
+    seen: list[str] = []
+    for _ in range(3):
+        assert session.state == RelayState.CHOOSING_CATEGORY
+        assert session.select_category("fake_logos") is True
+        q = session.current_question()
+        assert q is not None
+        seen.append(q.id)
+        session.submit_answer(0)
+
+    assert seen == ["logo_google", "logo_nintendo", "logo_cisco"]
+    assert session.state == RelayState.PAUSED_SCORE
+    assert session.progress.finished is True
+
+
 def test_bad_question_file(tmp_path):
     bad = tmp_path / "bad.json"
     bad.write_text('{"set_id": "x", "title": "t", "questions": []}', encoding="utf-8")

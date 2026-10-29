@@ -452,6 +452,9 @@ class GameSession:
         finished_id = self.progress.pick_set_id
         # Still has questions → keep it off the board this round so a different
         # category fills its slot; it returns later in its config-file place.
+        # If it is the only category left, putting it aside would empty the
+        # board and end the game with questions still waiting (Fake Logos
+        # after Google).
         defer = None
         if finished_id and self._remaining_in_set(finished_id) > 0:
             defer = finished_id
@@ -461,6 +464,8 @@ class GameSession:
         self.progress.pick_missed = []
 
         self._rebuild_board_slots(defer_id=defer)
+        if not self.progress.board_slots and defer is not None:
+            self._rebuild_board_slots(defer_id=None)
 
         if not self.progress.board_slots:
             self._pause_score("All categories complete.")
