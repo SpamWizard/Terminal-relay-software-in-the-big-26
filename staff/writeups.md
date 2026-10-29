@@ -2,7 +2,7 @@
 
 Solutions for the board. The game does not load this file, and nothing here is copied into a team shell.
 
-Flags are `TR{...}`. Desk challenges are 100 points. Fake Logos questions are 1 point.
+Flags are `TR{...}`. Desk challenges are 100 points.
 
 ## Binary
 
@@ -129,24 +129,3 @@ john --show --format=raw-sha1 hash.txt
 The password is `compass`.
 
 Flag: `TR{compass}`
-
-## Fake Logos
-
-Each question is five logos in a row, labeled A through E. One of them never happened. The answer index in `questions/fake_logos.json` is 0-based.
-
-The real marks are in historical order, and not every historical mark is included. Sources: [1000 Logos](https://1000logos.net/), [Logos World](https://logos-world.net/), [Logopedia](https://logos.fandom.com/wiki/Logopedia).
-
-| Question | Points | Answer |
-|----------|--------|--------|
-| Google | 1 | D |
-| Nintendo | 1 | C |
-| Cisco | 1 | C |
-| Dropbox | 1 | A |
-| IBM | 1 | C |
-| Micron | 1 | C |
-| Microsoft | 1 | D |
-| RadioShack | 1 | C |
-| AT&T | 1 | D |
-| AOL | 1 | C |
-| Dell | 1 | C |
-| ICQ | 1 | B |

@@ -74,8 +74,6 @@ def test_gallery_rows_cover_one_through_eight():
 def test_repo_text_sets_have_no_images():
     root = Path(__file__).resolve().parents[1] / "questions"
     for path in sorted(root.glob("*.json")):
-        if path.name == "fake_logos.json":
-            continue
         for question in load_question_file(path).questions:
             assert question.images is None
 

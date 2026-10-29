@@ -456,11 +456,11 @@ def test_show_question_keeps_same_desk_terminal(qtbot):
     from baton_relay.questions.types import Desk
     from baton_relay.ui.question_widgets import QuestionHost
 
-    public = ROOT / "challenges" / "gate" / "public"
+    public = ROOT / "challenges" / "binary" / "public"
     q = Desk(
-        id="gate",
+        id="binary",
         type="desk",
-        prompt="Open the gate",
+        prompt="Open the bits",
         points=1,
         public_dir=str(public),
         accepted=["TR{x}"],
@@ -485,11 +485,11 @@ def test_flag_field_keeps_focus_across_lock_refresh(qtbot):
     from baton_relay.questions.types import Desk
     from baton_relay.ui.question_widgets import QuestionHost
 
-    public = ROOT / "challenges" / "gate" / "public"
+    public = ROOT / "challenges" / "binary" / "public"
     q = Desk(
-        id="gate",
+        id="binary",
         type="desk",
-        prompt="Open the gate",
+        prompt="Open the bits",
         points=1,
         public_dir=str(public),
         accepted=["TR{x}"],
@@ -668,16 +668,13 @@ def test_load_config_files():
     cfg = load_config(ROOT / "config" / "config.toml")
     sets = load_all_question_files(cfg.questions.files)
     types = {q.type for s in sets for q in s.questions}
-    assert "desk" in types
-    assert "multiple_choice" in types
+    assert types == {"desk"}
     ids = {s.set_id for s in sets}
     assert "binary" in ids
     assert "steghide" not in ids
-    assert "fake_logos" in ids or any("logo" in s.title.casefold() for s in sets)
+    assert "fake_logos" not in ids
     desks = [q for s in sets for q in s.questions if q.type == "desk"]
     assert all(q.points == 100 for q in desks)
-    logos = next(s for s in sets if "logo" in s.set_id or "logo" in s.title.casefold())
-    assert all(q.points == 1 for q in logos.questions)
 
 
 def test_claim_standby_moves_disk(tmp_path: Path):

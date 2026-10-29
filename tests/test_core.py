@@ -159,17 +159,13 @@ def test_load_questions(sets):
     assert len(sets) >= 2
     ids = {s.set_id for s in sets}
     assert "binary" in ids
-    assert "fake_logos" in ids
+    assert "fake_logos" not in ids
     assert "steghide" not in ids
     types = {q.type for s in sets for q in s.questions}
-    assert "desk" in types
-    assert "multiple_choice" in types
+    assert types == {"desk"}
     desks = [q for s in sets for q in s.questions if q.type == "desk"]
     assert desks
     assert all(q.points == 100 for q in desks)
-    logos = next(s for s in sets if s.set_id == "fake_logos")
-    assert logos.deferred is True
-    assert all(q.points == 1 for q in logos.questions)
 
 
 def test_deferred_category_waits_until_primaries_gone(config):

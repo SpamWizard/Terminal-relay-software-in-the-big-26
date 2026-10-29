@@ -1,6 +1,6 @@
 # Terminal Relay — fresh Windows install
 
-Timed team game for one Windows PC. Players pass a baton (or use the keyboard as a stand-in), pick a category, and answer a picture question or a real Linux shell challenge.
+Timed team game for one Windows PC. Players pass a baton (or use the keyboard as a stand-in), pick a category, and work a real Linux shell challenge.
 
 Do these steps on a PC that just finished a clean Windows setup. Steps 1–3 only install tools. The game files stay put until step 4, because downloading them asks for a GitHub password.
 

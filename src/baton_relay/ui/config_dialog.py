@@ -199,7 +199,7 @@ class ConfigDialog(QDialog):
         form = QFormLayout(page)
         form.setContentsMargins(8, 16, 8, 8)
         self.question_files = QLineEdit()
-        self.question_files.setPlaceholderText("challenges/binary, questions/fake_logos.json")
+        self.question_files.setPlaceholderText("challenges/binary, challenges/morse")
         form.addRow("Category files", self.question_files)
         hint = QLabel("Each entry is one board category: a JSON file or a challenge folder.")
         hint.setObjectName("muted")

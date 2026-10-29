@@ -4,10 +4,10 @@ Question sets are JSON files or challenge folders listed in `[questions].files`.
 
 ```json
 {
-  "set_id": "fake_logos",
-  "title": "Fake Logos",
+  "set_id": "trivia",
+  "title": "Trivia",
   "deferred": true,
-  "questions": [ { "id": "g1", "type": "multiple_choice", "prompt": "...", "images": [...], "points": 1, ... } ]
+  "questions": [ { "id": "q1", "type": "multiple_choice", "prompt": "...", "points": 1, ... } ]
 }
 ```
 
@@ -28,7 +28,7 @@ After a pick, that slot is refilled from unused categories. Timers freeze on the
 
 | type | Key fields |
 |------|------------|
-| `multiple_choice` | `choices[]`, `answer` (index); optional `images` for picture rounds (Fake Logos) |
+| `multiple_choice` | `choices[]`, `answer` (index); optional `images` for picture rounds |
 | `desk` | Folder challenge: `accepted[]`, `panes` (`files` / `terminal` / `page`), optional `page_file`. Loaded from a challenge directory. Terminal is a real WSL bash for the team — see [wsl-desk.md](wsl-desk.md). |
 
 Pictures: `images` is an array of **1 to 8** picture files. Paths are relative to the question JSON file. Formats: `png`, `jpg`, `jpeg`, `gif`, `webp`, `bmp`.

@@ -23,6 +23,10 @@ IMPORT_NAMES = {
 INSTALL_COMMAND = 'pip install -e ".[dev]"'
 
 
+class DependencyError(RuntimeError):
+    """Project Python packages could not be installed."""
+
+
 def dist_name(spec: str) -> str:
     """Package name from a requirement like ``PySide6>=6.6``."""
     name = spec.strip()
@@ -81,14 +85,14 @@ def ensure_dependencies() -> None:
         check=False,
     )
     if proc.returncode != 0:
-        raise SystemExit(
+        raise DependencyError(
             f"Could not install project dependencies (pip exit {proc.returncode}).\n"
             f"From the project folder, run: {INSTALL_COMMAND}"
         )
     importlib.invalidate_caches()
     still = missing_distributions(specs)
     if still:
-        raise SystemExit(
+        raise DependencyError(
             "Still missing after install: "
             + ", ".join(still)
             + f"\nFrom the project folder, run: {INSTALL_COMMAND}"

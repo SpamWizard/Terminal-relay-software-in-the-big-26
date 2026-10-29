@@ -50,7 +50,6 @@ files = [
     "challenges/log_hunt",
     "challenges/patch_it",
     "challenges/identify",
-    "questions/fake_logos.json",
 ]
 redo_missed_at_set_end = false
 warmup_count = 0
