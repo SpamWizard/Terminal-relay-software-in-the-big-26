@@ -1,0 +1,10 @@
+{
+  "id": "identify",
+  "type": "desk",
+  "title": "Identify",
+  "set_id": "identify",
+  "prompt": "hash.txt is one hash. wordlist.txt is short. Work out what kind of hash it is, then crack it. The flag is TR{the password}. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{compass}"],
+  "panes": ["files", "terminal"]
+}

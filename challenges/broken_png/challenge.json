@@ -1,0 +1,10 @@
+{
+  "id": "broken_png",
+  "type": "desk",
+  "title": "Broken PNG",
+  "set_id": "broken_png",
+  "prompt": "broken.png should be a PNG. The first 8 bytes are zeros. Replace them with the PNG signature, 89 50 4E 47 0D 0A 1A 0A, then read the Comment. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{magic_bytes}"],
+  "panes": ["files", "terminal"]
+}

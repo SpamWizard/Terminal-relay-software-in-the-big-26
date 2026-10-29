@@ -1,2 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Trailing spaces/tabs and zero-width characters are the puzzle. Keep LF.
+challenges/whitespace/public/letter.txt text eol=lf
+challenges/zero_width/public/memo.txt text eol=lf
+challenges/lsb/public/postcard.png binary
+challenges/broken_png/public/broken.png binary

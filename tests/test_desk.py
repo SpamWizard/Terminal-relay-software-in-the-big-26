@@ -54,26 +54,17 @@ def test_locked_shell_drops_keys():
 
 
 def test_short_desk_challenges_solve_clean():
-    """Each short challenge accepts its flag, and public/ does not contain it."""
-    import base64
-    import codecs
-    import hashlib
-    import re
-    import zipfile
-
+    """Each desk challenge is 100 points, accepts its flag, and public/ does not contain it."""
     expected = {
-        "steghide": "TR{hidden_in_the_jpeg}",
-        "photo_note": "TR{comment_section}",
-        "anthem": "TR{not_an_mp3}",
-        "unwrap": "TR{three_layers}",
-        "wordlist": "TR{lantern}",
-        "hashcat": "TR{spark}",
-        "regex": "TR{kite4}",
-        "crackme": "TR{rockme}",
-        "gate": "TR{pass the baton}",
-        "telenet": "TR{virtual_circuit}",
-        "xor": "TR{just_xor}",
-        "hangman": "TR{hyszwrs}",
+        "binary": "TR{eight_bits}",
+        "morse": "TR{clear_signal}",
+        "whitespace": "TR{trailing_off}",
+        "zero_width": "TR{thin_space}",
+        "lsb": "TR{low_bits}",
+        "broken_png": "TR{magic_bytes}",
+        "log_hunt": "TR{marigold}",
+        "patch_it": "TR{flip_the_check}",
+        "identify": "TR{compass}",
     }
     for folder, flag in expected.items():
         qset = load_challenge_dir(ROOT / "challenges" / folder)
@@ -81,121 +72,179 @@ def test_short_desk_challenges_solve_clean():
         assert isinstance(q, Desk)
         assert q.id == folder
         assert qset.set_id == folder
+        assert q.points == 100
         assert q.score(flag, SCORING).correct
         assert not q.score("TR{nope}", SCORING).correct
         pub = Path(q.public_dir)
         for path in pub.rglob("*"):
             if path.is_file() and flag.encode() in path.read_bytes():
-                # Gate's puzzle is finding the flag in the xxd dump.
-                if folder == "gate":
-                    continue
                 raise AssertionError(f"{path} contains the flag")
 
-    photo = (ROOT / "challenges" / "photo_note" / "public" / "photo.jpg").read_bytes()
-    start = photo.find(b"\xff\xfe")
-    assert start == 2
-    length = int.from_bytes(photo[start + 2 : start + 4], "big")
-    comment = photo[start + 4 : start + 2 + length]
-    assert base64.b64decode(comment) == b"TR{comment_section}"
-    exif_at = photo.find(b"\xff\xe1")
-    assert exif_at > start
-    exif_len = int.from_bytes(photo[exif_at + 2 : exif_at + 4], "big")
-    exif_segment = photo[exif_at + 4 : exif_at + 2 + exif_len]
-    assert exif_segment.startswith(b"Exif\x00\x00")
-    assert comment in exif_segment
 
-    secret = (ROOT / "challenges" / "unwrap" / "public" / "secret.txt").read_text(encoding="utf-8").strip()
-    layer = base64.b64decode(secret)
-    layer = bytes.fromhex(layer.decode("ascii"))
-    assert codecs.decode(layer.decode("ascii"), "rot13") == "TR{three_layers}"
-
-    word = "lantern"
-    digest = hashlib.md5(word.encode()).hexdigest()
-    assert (ROOT / "challenges" / "wordlist" / "public" / "hash.txt").read_text(encoding="utf-8").strip() == digest
-    words = (ROOT / "challenges" / "wordlist" / "public" / "wordlist.txt").read_text(encoding="utf-8").split()
-    assert word in words
-
-    spark = "spark"
-    spark_digest = hashlib.md5(spark.encode()).hexdigest()
-    spark_words = (ROOT / "challenges" / "hashcat" / "public" / "wordlist.txt").read_text(encoding="utf-8").split()
-    assert (ROOT / "challenges" / "hashcat" / "public" / "hash.txt").read_text(encoding="utf-8").strip() == spark_digest
-    assert spark in spark_words
-    assert len(spark_words) <= 12
-
-    regex_lines = (ROOT / "challenges" / "regex" / "public" / "lines.txt").read_text(encoding="utf-8").split()
-    assert len(regex_lines) >= 200
-    assert [line for line in regex_lines if re.fullmatch(r"[a-z]+[0-9]", line)] == ["kite4"]
-
-    with zipfile.ZipFile(ROOT / "challenges" / "anthem" / "public" / "anthem.mp3") as zf:
-        assert zf.read("flag.txt", pwd=b"anthem") == b"TR{not_an_mp3}\n"
-
-    source = (ROOT / "challenges" / "crackme" / "public" / "crackme.py").read_text(encoding="utf-8")
-    assert 'pw[::-1] == "emkcor"' in source
-
-    import re
-
-    gate = (ROOT / "challenges" / "gate" / "public" / "bin" / "gate").read_bytes()
-    assert gate.startswith(b"\x7fELF")
-    assert gate.count(b"TR{pass the baton}") == 1
-    assert set(re.findall(rb"[A-Za-z]{4,}", gate)) == {b"pass", b"baton"}
-
-    telenet = (ROOT / "challenges" / "telenet" / "public" / "telenet.py").read_text(encoding="utf-8")
-    assert 'count == str(len(text))' in telenet
-    assert 'print("REJECTED")' in telenet
-    assert "usage" not in telenet
-
-    cipher = bytes.fromhex((ROOT / "challenges" / "xor" / "public" / "cipher.hex").read_text(encoding="utf-8"))
-    hits = [key for key in range(256) if bytes(byte ^ key for byte in cipher).startswith(b"TR{")]
-    assert hits == [0x37]
-    assert not (ROOT / "challenges" / "xor" / "public" / "key.txt").exists()
-
+def test_added_challenges_round_trip(tmp_path: Path):
+    """The eight new tiles decode to their flags."""
+    import hashlib
+    import struct
     import subprocess
     import sys
+    import zlib
 
-    public = ROOT / "challenges" / "xor" / "public"
-    bare = subprocess.run(
-        [sys.executable, "xor.py"],
-        cwd=public,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert bare.returncode != 0
-    assert "TR{just_xor}" not in bare.stdout
-    solved = subprocess.run(
-        [sys.executable, "xor.py", "37"],
-        cwd=public,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    assert solved.stdout.strip() == "TR{just_xor}"
+    binary = (ROOT / "challenges" / "binary" / "public" / "bits.txt").read_text(encoding="ascii").strip()
+    assert set(binary) <= {"0", "1"}
+    assert len(binary) % 8 == 0
+    assert "".join(chr(int(binary[i : i + 8], 2)) for i in range(0, len(binary), 8)) == "TR{eight_bits}"
 
-    hangman = (ROOT / "challenges" / "hangman" / "public" / "hangman.py").read_text(encoding="utf-8")
-    phrase = "have you seen zodiak with real shoes"
-    assert phrase not in hangman
-    assert "hyszwrs" not in hangman
-    won = subprocess.run(
-        [sys.executable, "hangman.py"],
-        cwd=ROOT / "challenges" / "hangman" / "public",
-        input="\n".join(list("haveyousnzdikwtrl")) + "\n",
+    signal = (ROOT / "challenges" / "morse" / "public" / "signal.txt").read_text(encoding="ascii").strip()
+    assert signal == "-.-. .-.. . .- .-. / ... .. --. -. .- .-.."
+    morse = {
+        ".-": "a", "-...": "b", "-.-.": "c", "-..": "d", ".": "e", "..-.": "f",
+        "--.": "g", "....": "h", "..": "i", ".---": "j", "-.-": "k", ".-..": "l",
+        "--": "m", "-.": "n", "---": "o", ".--.": "p", "--.-": "q", ".-.": "r",
+        "...": "s", "-": "t", "..-": "u", "...-": "v", ".--": "w", "-..-": "x",
+        "-.--": "y", "--..": "z",
+    }
+    words = []
+    for group in signal.split(" / "):
+        words.append("".join(morse[token] for token in group.split()))
+    assert "TR{" + "_".join(words) + "}" == "TR{clear_signal}"
+
+    letter = (ROOT / "challenges" / "whitespace" / "public" / "letter.txt").read_bytes()
+    assert b"\r" not in letter
+    rows = letter.split(b"\n")
+    if rows[-1] == b"":
+        rows.pop()
+    hidden_chars = []
+    for row in rows:
+        tail = row[-8:]
+        assert set(tail) <= {0x20, 0x09}
+        assert row[-9] not in (0x20, 0x09)
+        value = 0
+        for byte in tail:
+            value = (value << 1) | (byte == 0x09)
+        hidden_chars.append(chr(value))
+    assert "".join(hidden_chars) == "TR{trailing_off}"
+
+    memo = (ROOT / "challenges" / "zero_width" / "public" / "memo.txt").read_text(encoding="utf-8")
+    assert "\r" not in memo
+    bits = []
+    for ch in memo:
+        if ch == "\u200b":
+            bits.append("0")
+        elif ch == "\u200c":
+            bits.append("1")
+        else:
+            assert ch == "\n" or ord(ch) < 128
+    stream = "".join(bits)
+    assert len(stream) % 8 == 0
+    assert "".join(chr(int(stream[i : i + 8], 2)) for i in range(0, len(stream), 8)) == "TR{thin_space}"
+
+    png = (ROOT / "challenges" / "lsb" / "public" / "postcard.png").read_bytes()
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+    assert b"TR{low_bits}" not in png
+    pos = 8
+    width = height = 0
+    idat = b""
+    while pos + 12 <= len(png):
+        length = int.from_bytes(png[pos : pos + 4], "big")
+        tag = png[pos + 4 : pos + 8]
+        chunk = png[pos + 8 : pos + 8 + length]
+        pos += 12 + length
+        if tag == b"IHDR":
+            width, height, depth, color, comp, filt, interlace = struct.unpack(">IIBBBBB", chunk)
+            assert (depth, color, comp, filt, interlace) == (8, 2, 0, 0, 0)
+        elif tag == b"IDAT":
+            idat += chunk
+        elif tag == b"IEND":
+            break
+    raw = zlib.decompress(idat)
+    stride = width * 3
+    row_len = stride + 1
+    assert len(raw) == row_len * height
+    rgb = bytearray()
+    for y in range(height):
+        assert raw[y * row_len] == 0
+        rgb.extend(raw[y * row_len + 1 : (y + 1) * row_len])
+    acc = n = 0
+    found = []
+    for byte in rgb:
+        acc = ((acc << 1) | (byte & 1)) & 0xFF
+        n += 1
+        if n == 8:
+            if acc == 0:
+                break
+            found.append(chr(acc))
+            acc = n = 0
+    assert "".join(found) == "TR{low_bits}"
+
+    broken = (ROOT / "challenges" / "broken_png" / "public" / "broken.png").read_bytes()
+    assert broken[:8] == b"\x00" * 8
+    assert b"TR{magic_bytes}" not in broken
+    fixed = b"\x89PNG\r\n\x1a\n" + broken[8:]
+    pos = 8
+    comment = b""
+    while pos + 12 <= len(fixed):
+        length = int.from_bytes(fixed[pos : pos + 4], "big")
+        tag = fixed[pos + 4 : pos + 8]
+        chunk = fixed[pos + 8 : pos + 8 + length]
+        pos += 12 + length
+        if tag == b"zTXt":
+            keyword, payload = chunk.split(b"\x00", 1)
+            assert keyword == b"Comment"
+            assert payload[:1] == b"\x00"
+            comment = zlib.decompress(payload[1:])
+        elif tag == b"IEND":
+            break
+    assert comment == b"TR{magic_bytes}"
+
+    log_lines = (ROOT / "challenges" / "log_hunt" / "public" / "access.log").read_text(encoding="ascii").splitlines()
+    assert len(log_lines) >= 500
+    hits = [line for line in log_lines if line.split()[4:] == ["/admin", "200"]]
+    assert len(hits) == 1
+    assert hits[0].split()[1] == "marigold"
+    assert sum("marigold" in line for line in log_lines) == 1
+    assert any(line.split()[4:] == ["/administrator", "200"] for line in log_lines)
+    assert any(line.split()[4] == "/admin" and line.split()[5] != "200" for line in log_lines)
+
+    source = (ROOT / "challenges" / "patch_it" / "public" / "check.py").read_text(encoding="utf-8")
+    assert "TR{flip_the_check}" not in source
+    assert source.count("return False") == 2
+    denied = subprocess.run(
+        [sys.executable, "check.py", "2468"],
+        cwd=ROOT / "challenges" / "patch_it" / "public",
         capture_output=True,
         text=True,
         check=True,
     )
-    assert phrase in won.stdout
-    assert "TR{hyszwrs}" not in won.stdout
-    lost = subprocess.run(
-        [sys.executable, "hangman.py"],
-        cwd=ROOT / "challenges" / "hangman" / "public",
-        input="\n".join(list("bcfgj")) + "\n",
+    assert denied.stdout.strip() == "denied"
+    patched = source.replace("return False", "return True", 1)
+    script = tmp_path / "check.py"
+    script.write_bytes(patched.encode("utf-8"))
+    opened = subprocess.run(
+        [sys.executable, str(script), "2468"],
         capture_output=True,
         text=True,
         check=True,
     )
-    assert "Out of guesses" in lost.stdout
-    assert phrase not in lost.stdout
-    assert "X" in lost.stdout
+    assert opened.stdout.strip() == "TR{flip_the_check}"
+    still_shut = subprocess.run(
+        [sys.executable, str(script), "0000"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert still_shut.stdout.strip() == "denied"
+
+    identify = load_challenge_dir(ROOT / "challenges" / "identify").questions[0]
+    prompt = identify.prompt.lower()
+    assert "sha" not in prompt
+    assert "md5" not in prompt
+    assert "hashcat" not in prompt
+    assert "john" not in prompt
+    digest = hashlib.sha1(b"compass").hexdigest()
+    assert len(digest) == 40
+    public = ROOT / "challenges" / "identify" / "public"
+    assert (public / "hash.txt").read_text(encoding="ascii").strip() == digest
+    assert "compass" in (public / "wordlist.txt").read_text(encoding="ascii").split()
 
 
 def test_command_output_is_not_held_until_next_key():
@@ -601,7 +650,7 @@ def test_shell_prompt_does_not_get_an_exit():
     shell = TeamShell(distro="relay-test", repo_root=ROOT)
     shell._pty = MagicMock()
     shell._pty.isalive.return_value = True
-    shell._copied.add("xor")
+    shell._copied.update({"xor", "hangman"})
     shell._cd_pause = 0.8
     shell.transcript = "player@relay:/challenges/xor$ "
     shell._wait_for_prompt = lambda token: token == shell._cd_token
@@ -622,8 +671,13 @@ def test_load_config_files():
     assert "desk" in types
     assert "multiple_choice" in types
     ids = {s.set_id for s in sets}
-    assert "steghide" in ids
+    assert "binary" in ids
+    assert "steghide" not in ids
     assert "fake_logos" in ids or any("logo" in s.title.casefold() for s in sets)
+    desks = [q for s in sets for q in s.questions if q.type == "desk"]
+    assert all(q.points == 100 for q in desks)
+    logos = next(s for s in sets if "logo" in s.set_id or "logo" in s.title.casefold())
+    assert all(q.points == 1 for q in logos.questions)
 
 
 def test_claim_standby_moves_disk(tmp_path: Path):

@@ -1,0 +1,10 @@
+{
+  "id": "patch_it",
+  "type": "desk",
+  "title": "Patch It",
+  "set_id": "patch_it",
+  "prompt": "check.py should print the flag when the pin is right, but the check never passes. Change it so the check can pass, then run it. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{flip_the_check}"],
+  "panes": ["files", "terminal"]
+}

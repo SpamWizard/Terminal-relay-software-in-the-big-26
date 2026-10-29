@@ -221,42 +221,20 @@ Get-ChildItem (Join-Path $RepoRoot "challenges") -Directory | ForEach-Object {
 wsl.exe -d $WorkDistro -u root -- bash -c "chown -R player:player /challenges"
 if ($LASTEXITCODE -ne 0) { throw "chown /challenges failed" }
 
-# Embed the steghide payload if this cover is still the plain JPEG, then
-# prove each short challenge actually solves. Clean up so the image does
-# not ship a cracked pot file or an extracted flag.
+# Prove the cracking and patch tiles still solve. Clean up so the image does
+# not ship a cracked pot file.
 $checkPath = Join-Path $WorkDir "check.sh"
 $check = @'
 set -euo pipefail
-command -v exif >/dev/null
-command -v exiftool >/dev/null
 command -v hashcat >/dev/null
+command -v john >/dev/null
 rm -rf /tmp/relay-check
 mkdir -p /tmp/relay-check
-if ! steghide extract -sf /challenges/steghide/cover.jpg -p rockme -xf /tmp/relay-check/steg.txt >/tmp/relay-check/steghide-extract.log 2>&1; then
-  printf '%s\n' 'TR{hidden_in_the_jpeg}' > /tmp/relay-check/payload.txt
-  steghide embed -cf /challenges/steghide/cover.jpg -ef /tmp/relay-check/payload.txt -p rockme -f </dev/null
-  steghide extract -sf /challenges/steghide/cover.jpg -p rockme -xf /tmp/relay-check/steg.txt </dev/null
-fi
-grep -qx 'TR{hidden_in_the_jpeg}' /tmp/relay-check/steg.txt
-python3 - <<'PY'
-import base64, codecs, pathlib
-photo = pathlib.Path("/challenges/photo_note/photo.jpg").read_bytes()
-start = photo.find(b"\xff\xfe")
-length = int.from_bytes(photo[start + 2:start + 4], "big")
-comment = photo[start + 4:start + 2 + length]
-assert base64.b64decode(comment) == b"TR{comment_section}", comment
-secret = pathlib.Path("/challenges/unwrap/secret.txt").read_text().strip()
-layer = bytes.fromhex(base64.b64decode(secret).decode())
-assert codecs.decode(layer.decode(), "rot13") == "TR{three_layers}"
-PY
-unzip -P anthem -o /challenges/anthem/anthem.mp3 -d /tmp/relay-check/anthem >/tmp/relay-check/unzip.log
-grep -qx 'TR{not_an_mp3}' /tmp/relay-check/anthem/flag.txt
-cp /challenges/wordlist/hash.txt /challenges/wordlist/wordlist.txt /tmp/relay-check/
-john --pot=/tmp/relay-check/john.pot --format=raw-md5 --wordlist=/tmp/relay-check/wordlist.txt /tmp/relay-check/hash.txt
-john --pot=/tmp/relay-check/john.pot --show --format=raw-md5 /tmp/relay-check/hash.txt | grep -q lantern
-python3 /challenges/crackme/crackme.py rockme | grep -qx correct
-grep -aqo 'TR{pass the baton}' /challenges/gate/bin/gate
-test "$(grep -aoE '[A-Za-z]{4,}' /challenges/gate/bin/gate | sort -u | paste -sd' ')" = "baton pass"
+cp /challenges/identify/hash.txt /tmp/relay-check/sha.txt
+cp /challenges/identify/wordlist.txt /tmp/relay-check/sha-words.txt
+john --pot=/tmp/relay-check/john-sha.pot --format=raw-sha1 --wordlist=/tmp/relay-check/sha-words.txt /tmp/relay-check/sha.txt
+john --pot=/tmp/relay-check/john-sha.pot --show --format=raw-sha1 /tmp/relay-check/sha.txt | grep -q compass
+python3 /challenges/patch_it/check.py 2468 | grep -qx denied
 rm -rf /tmp/relay-check /root/.john /home/player/.john
 find /challenges \( -name '*.pot' -o -name '*.rec' -o -name 'john.log' -o -name '*.john' \) -delete
 chown -R player:player /challenges
@@ -267,7 +245,6 @@ Send-WslBytes -Distro $WorkDistro -RemotePath "/tmp/check.sh" -Bytes ([System.IO
 Write-Host "Checking that each short challenge solves ..."
 wsl.exe -d $WorkDistro -u root -- bash /tmp/check.sh
 if ($LASTEXITCODE -ne 0) { throw "challenge check failed inside $WorkDistro" }
-Copy-Item -Force "\\wsl$\$WorkDistro\challenges\steghide\cover.jpg" (Join-Path $RepoRoot "challenges\steghide\public\cover.jpg")
 
 Write-Host "Exporting configured disk to $Gold ..."
 wsl.exe --shutdown

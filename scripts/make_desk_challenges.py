@@ -1,10 +1,7 @@
-"""Rebuild the binary/encoded files for the short desk challenges.
+"""Rebuild public files for the desk challenges on the board.
 
-Writes challenges/*/public artifacts. Does not run steghide — embed cover.jpg
-on a machine that has it:
-
-    steghide embed -cf challenges/steghide/public/cover.jpg \\
-        -ef challenges/steghide/private/flag.txt -p rockme -f
+Writes challenges/*/public artifacts for binary, morse, whitespace, zero_width,
+lsb, broken_png, log_hunt, patch_it, and identify.
 """
 
 from __future__ import annotations
@@ -13,8 +10,10 @@ import base64
 import codecs
 import hashlib
 import os
+import random
 import struct
 import subprocess
+import sys
 import zlib
 from pathlib import Path
 
@@ -227,27 +226,358 @@ def _write_gate() -> None:
     print("wrote", out, "phrase", phrase.decode())
 
 
+FLAG_BINARY = "TR{eight_bits}"
+FLAG_MORSE = "TR{clear_signal}"
+FLAG_SPACE = "TR{trailing_off}"
+FLAG_ZERO = "TR{thin_space}"
+FLAG_LSB = "TR{low_bits}"
+FLAG_BROKEN = "TR{magic_bytes}"
+FLAG_LOG = "TR{marigold}"
+FLAG_PATCH = "TR{flip_the_check}"
+FLAG_IDENTIFY = "TR{compass}"
+
+MORSE = {
+    "A": ".-",
+    "B": "-...",
+    "C": "-.-.",
+    "D": "-..",
+    "E": ".",
+    "F": "..-.",
+    "G": "--.",
+    "H": "....",
+    "I": "..",
+    "J": ".---",
+    "K": "-.-",
+    "L": ".-..",
+    "M": "--",
+    "N": "-.",
+    "O": "---",
+    "P": ".--.",
+    "Q": "--.-",
+    "R": ".-.",
+    "S": "...",
+    "T": "-",
+    "U": "..-",
+    "V": "...-",
+    "W": ".--",
+    "X": "-..-",
+    "Y": "-.--",
+    "Z": "--..",
+}
+
+LETTER_LINES = [
+    "Hello from the night desk.",
+    "The south gate was quiet.",
+    "I walked the fence once.",
+    "Nothing moved in the yard.",
+    "The lamp by the dock is out.",
+    "I left a note for the next shift.",
+    "Please check the lock.",
+    "The key is on the hook.",
+    "Weather is clear and cold.",
+    "Radios are charged.",
+    "No visitors after dark.",
+    "I will be back at dawn.",
+    "Thanks for covering.",
+    "See you in the morning.",
+    "Keep the log updated.",
+    "All quiet otherwise.",
+]
+
+MEMO = (
+    "Please file the dock report before the next shift starts. "
+    "The lamp on the south pier is still out, and the spare bulbs are in the top drawer. "
+    "Leave the radio on channel two. I will close the gate when I get back from the yard."
+)
+
+
+def _staff_flag(folder: str, flag: str) -> None:
+    private = CHALLENGES / folder / "private"
+    private.mkdir(parents=True, exist_ok=True)
+    (private / "flag.txt").write_bytes(flag.encode("ascii") + b"\n")
+
+
+def _public(folder: str) -> Path:
+    path = CHALLENGES / folder / "public"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _bits(text: str) -> str:
+    return "".join(f"{ord(ch):08b}" for ch in text)
+
+
+def _morse_line(message: str) -> str:
+    words = [" ".join(MORSE[ch] for ch in word) for word in message.split(" ")]
+    return " / ".join(words)
+
+
+def _png_chunk(tag: bytes, data: bytes) -> bytes:
+    crc = zlib.crc32(tag + data) & 0xFFFFFFFF
+    return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", crc)
+
+
+def _png_bytes(width: int, height: int, rgb: bytes) -> bytes:
+    stride = width * 3
+    raw = bytearray()
+    for y in range(height):
+        raw.append(0)
+        raw.extend(rgb[y * stride : (y + 1) * stride])
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", ihdr)
+        + _png_chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+        + _png_chunk(b"IEND", b"")
+    )
+
+
+def _embed_lsb(rgb: bytearray, message: bytes) -> None:
+    bits: list[int] = []
+    for byte in message + b"\x00":
+        for shift in range(7, -1, -1):
+            bits.append((byte >> shift) & 1)
+    if len(bits) > len(rgb):
+        raise SystemExit("lsb image is too small for the flag")
+    for i, bit in enumerate(bits):
+        rgb[i] = (rgb[i] & 0xFE) | bit
+    for i in range(len(bits), len(rgb)):
+        rgb[i] &= 0xFE
+
+
+def _write_broken_png() -> None:
+    """PNG with a compressed comment, then the 8-byte signature zeroed."""
+    width, height = 32, 32
+    rng = random.Random(8)
+    rgb = bytes(rng.getrandbits(8) for _ in range(width * height * 3))
+    stride = width * 3
+    raw = bytearray()
+    for y in range(height):
+        raw.append(0)
+        raw.extend(rgb[y * stride : (y + 1) * stride])
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    ztxt = b"Comment\x00\x00" + zlib.compress(FLAG_BROKEN.encode("latin-1"), 9)
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", ihdr)
+        + _png_chunk(b"zTXt", ztxt)
+        + _png_chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+        + _png_chunk(b"IEND", b"")
+    )
+    broken = b"\x00" * 8 + png[8:]
+    if FLAG_BROKEN.encode("ascii") in broken or b"TR{" in broken:
+        raise SystemExit("broken png still contains the flag")
+    if broken[:8] != b"\x00" * 8 or png[8:16] != broken[8:16]:
+        raise SystemExit("broken png header was not the only change")
+    (_public("broken_png") / "broken.png").write_bytes(broken)
+    _staff_flag("broken_png", FLAG_BROKEN)
+
+
+def _write_binary() -> None:
+    text = _bits(FLAG_BINARY) + "\n"
+    (_public("binary") / "bits.txt").write_bytes(text.encode("ascii"))
+    _staff_flag("binary", FLAG_BINARY)
+
+
+def _write_morse() -> None:
+    message = FLAG_MORSE[3:-1].replace("_", " ").upper()
+    line = _morse_line(message)
+    if line != "-.-. .-.. . .- .-. / ... .. --. -. .- .-..":
+        raise SystemExit(f"morse table drifted: {line}")
+    (_public("morse") / "signal.txt").write_bytes(line.encode("ascii") + b"\n")
+    _staff_flag("morse", FLAG_MORSE)
+
+
+def _write_whitespace() -> None:
+    if len(LETTER_LINES) != len(FLAG_SPACE):
+        raise SystemExit("whitespace letter needs one line per flag character")
+    out: list[str] = []
+    for visible, ch in zip(LETTER_LINES, FLAG_SPACE):
+        if not visible or visible[-1] in " \t":
+            raise SystemExit(f"visible line ends with whitespace: {visible!r}")
+        hidden = "".join("\t" if bit == "1" else " " for bit in f"{ord(ch):08b}")
+        out.append(visible + hidden)
+    (_public("whitespace") / "letter.txt").write_bytes(("\n".join(out) + "\n").encode("ascii"))
+    _staff_flag("whitespace", FLAG_SPACE)
+
+
+def _write_zero_width() -> None:
+    bits = _bits(FLAG_ZERO)
+    if len(MEMO) < len(bits):
+        raise SystemExit("memo is shorter than the zero-width bit stream")
+    zw = {"0": "\u200b", "1": "\u200c"}
+    chars: list[str] = []
+    for i, ch in enumerate(MEMO):
+        chars.append(ch)
+        if i < len(bits):
+            chars.append(zw[bits[i]])
+    (_public("zero_width") / "memo.txt").write_bytes(("".join(chars) + "\n").encode("utf-8"))
+    _staff_flag("zero_width", FLAG_ZERO)
+
+
+def _write_lsb() -> None:
+    width, height = 160, 100
+    flag = FLAG_LSB.encode("ascii")
+    png = b""
+    for seed in range(2026, 2066):
+        rng = random.Random(seed)
+        rgb = bytearray(rng.getrandbits(8) for _ in range(width * height * 3))
+        _embed_lsb(rgb, flag)
+        png = _png_bytes(width, height, bytes(rgb))
+        if flag not in png and b"TR{" not in png:
+            break
+    else:
+        raise SystemExit("could not build an lsb png that hides the flag bytes")
+    (_public("lsb") / "postcard.png").write_bytes(png)
+    _staff_flag("lsb", FLAG_LSB)
+
+
+def _write_log() -> None:
+    rng = random.Random(26)
+    users = [
+        "alice", "bob", "carol", "dave", "erin", "frank", "grace", "hector",
+        "iris", "jules", "ken", "lena", "marco", "nora", "omar", "priya",
+        "quinn", "rosa", "sam", "tina", "ulrich", "vera", "wes", "xena", "yuri", "zoe",
+    ]
+    paths = [
+        "/index", "/health", "/static/app.js", "/login", "/home",
+        "/api/status", "/logout", "/search", "/about", "/favicon.ico",
+    ]
+    statuses = [200, 200, 200, 204, 301, 302, 404]
+    seconds = 8 * 3600
+    lines: list[str] = []
+    for _ in range(1600):
+        seconds += rng.randint(8, 35)
+        day, rem = divmod(seconds, 86400)
+        hh, rem = divmod(rem, 3600)
+        mm, ss = divmod(rem, 60)
+        stamp = f"2026-04-{11 + day:02d}T{hh:02d}:{mm:02d}:{ss:02d}Z"
+        ip = f"10.{rng.randint(0, 31)}.{rng.randint(0, 31)}.{rng.randint(1, 254)}"
+        lines.append(
+            f"{stamp} {rng.choice(users)} {ip} GET {rng.choice(paths)} {rng.choice(statuses)}"
+        )
+
+    def rewrite(index: int, user: str, ip: str, path: str, status: int) -> None:
+        stamp = lines[index].split()[0]
+        lines[index] = f"{stamp} {user} {ip} GET {path} {status}"
+
+    success_at = 1042
+    for index in range(80, 1560, 37):
+        if index == success_at:
+            continue
+        rewrite(index, rng.choice(users), "10.8.8.8", "/admin", (401, 403, 404, 302)[index % 4])
+    for index in (220, 450, 770, 1100, 1360):
+        rewrite(index, rng.choice(users), "10.8.8.9", "/admin/", 403)
+    for index in (640, 980, 1410):
+        rewrite(index, rng.choice(users), "10.8.8.10", "/administrator", 200)
+    rewrite(success_at, "marigold", "10.4.4.19", "/admin", 200)
+
+    exact = [line for line in lines if line.split()[4:] == ["/admin", "200"]]
+    if exact != [lines[success_at]] or lines[success_at].split()[1] != "marigold":
+        raise SystemExit("log hunt does not have exactly one /admin 200")
+    if sum("marigold" in line for line in lines) != 1:
+        raise SystemExit("marigold appears more than once")
+    (_public("log_hunt") / "access.log").write_bytes(("\n".join(lines) + "\n").encode("ascii"))
+    _staff_flag("log_hunt", FLAG_LOG)
+
+
+def _write_patch() -> None:
+    raw = [ord(ch) ^ 88 for ch in FLAG_PATCH]
+    if "".join(chr(n ^ 88) for n in raw) != FLAG_PATCH:
+        raise SystemExit("patch xor round-trip failed")
+    body = [
+        "#!/usr/bin/env python3",
+        '"""Pin check. The flag prints when the pin is accepted."""',
+        "import sys",
+        "",
+        "",
+        "def allowed(pin: str) -> bool:",
+        '    if pin == "2468":',
+        "        return False",
+        "    return False",
+        "",
+        "",
+        "def reveal() -> str:",
+        "    raw = [",
+        "        " + ", ".join(str(n) for n in raw),
+        "    ]",
+        "    return \"\".join(chr(n ^ 88) for n in raw)",
+        "",
+        "",
+        "def main() -> None:",
+        "    if len(sys.argv) != 2:",
+        '        print("usage: python3 check.py <pin>")',
+        "        return",
+        "    if allowed(sys.argv[1]):",
+        "        print(reveal())",
+        "    else:",
+        '        print("denied")',
+        "",
+        "",
+        'if __name__ == "__main__":',
+        "    main()",
+        "",
+    ]
+    text = "\n".join(body)
+    if FLAG_PATCH.encode("ascii") in text.encode("ascii"):
+        raise SystemExit("patch source contains the flag")
+    (_public("patch_it") / "check.py").write_bytes(text.encode("ascii"))
+    _staff_flag("patch_it", FLAG_PATCH)
+
+
+def _write_identify() -> None:
+    password = FLAG_IDENTIFY[3:-1]
+    words = [
+        "birch",
+        "cobalt",
+        "fiddle",
+        "granite",
+        "juniper",
+        "compass",
+        "mosaic",
+        "nutmeg",
+        "prairie",
+        "ripple",
+        "thimble",
+        "willow",
+    ]
+    if password not in words or words.count(password) != 1:
+        raise SystemExit("identify wordlist is missing the password")
+    digest = hashlib.sha1(password.encode("ascii")).hexdigest()
+    if len(digest) != 40:
+        raise SystemExit("identify hash is not SHA-1 length")
+    public = _public("identify")
+    (public / "hash.txt").write_bytes(digest.encode("ascii") + b"\n")
+    (public / "wordlist.txt").write_bytes(("\n".join(words) + "\n").encode("ascii"))
+    _staff_flag("identify", FLAG_IDENTIFY)
+
+
+def write_extra_challenges() -> None:
+    _write_binary()
+    _write_morse()
+    _write_whitespace()
+    _write_zero_width()
+    _write_lsb()
+    _write_broken_png()
+    _write_log()
+    _write_patch()
+    _write_identify()
+    print(
+        "wrote extra challenges:",
+        FLAG_BINARY,
+        FLAG_MORSE,
+        FLAG_SPACE,
+        FLAG_ZERO,
+        FLAG_LSB,
+        FLAG_BROKEN,
+        FLAG_LOG,
+        FLAG_PATCH,
+        FLAG_IDENTIFY,
+    )
+
+
 def main() -> None:
-    secret = base64.b64encode(codecs.encode(FLAG_UNWRAP, "rot13").encode().hex().encode())
-    unwrap = CHALLENGES / "unwrap" / "public" / "secret.txt"
-    unwrap.parent.mkdir(parents=True, exist_ok=True)
-    unwrap.write_bytes(secret + b"\n")
-    digest = hashlib.md5(WORD).hexdigest()
-    hash_path = CHALLENGES / "wordlist" / "public" / "hash.txt"
-    hash_path.parent.mkdir(parents=True, exist_ok=True)
-    hash_path.write_text(digest + "\n", encoding="utf-8")
-
-    cover = CHALLENGES / "steghide" / "public" / "cover.jpg"
-    photo = CHALLENGES / "photo_note" / "public" / "photo.jpg"
-    _noise_jpeg(cover, 26, 640, 480)
-    _noise_jpeg(photo, 90, 480, 320)
-    note = base64.b64encode(FLAG_PHOTO).decode("ascii")
-    _insert_jpeg_comment(photo, note)
-
-    anthem = CHALLENGES / "anthem" / "public" / "anthem.mp3"
-    _write_encrypted_zip(anthem, "flag.txt", FLAG_ANTHEM, b"anthem")
-    _write_gate()
-    print("wrote", secret.decode(), digest)
+    write_extra_challenges()
 
 
 if __name__ == "__main__":

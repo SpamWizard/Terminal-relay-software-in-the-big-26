@@ -1,0 +1,10 @@
+{
+  "id": "binary",
+  "type": "desk",
+  "title": "Binary",
+  "set_id": "binary",
+  "prompt": "bits.txt is the flag written as 0s and 1s, with nothing between the bits. Take them eight at a time. The left bit is the high bit. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{eight_bits}"],
+  "panes": ["files", "terminal"]
+}

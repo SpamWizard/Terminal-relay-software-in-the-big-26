@@ -38,7 +38,7 @@ All files are validated at startup; the app refuses to start on errors.
 ## Challenge folders
 
 ```
-challenges/steghide/
+challenges/binary/
   challenge.json
   public/          # copied into the team's WSL disk on first open
   private/         # staff only — never copied into the distro
@@ -50,6 +50,6 @@ Staff solutions for every board category are in [staff/writeups.md](../staff/wri
 
 The desk UI is a narrow **file-name rail**, a dominant **real TTY terminal** (nano/vim/less work), an optional **page**, and a flag box. Baton lock stops keyboard input; the shell stays up. Players can talk through the handoff.
 
-Opening a desk challenge runs `cd /challenges/<question id>` in that shell. The question `id` matches the challenge folder name. A fresh golden image already has each `public/` tree at that path, and the tools those challenges use (steghide, exiftool, john, hashcat, zip, xxd, binutils).
+Opening a desk challenge runs `cd /challenges/<question id>` in that shell. The question `id` matches the challenge folder name. A fresh golden image already has each `public/` tree at that path, and the tools those challenges use (john, hashcat, xxd, python3).
 
 Do not put the accepted `TR{...}` string in `public/` unless the puzzle is meant to be a straight `cat`.

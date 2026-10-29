@@ -1,0 +1,53 @@
+Your set covers file forensics, stego, hash cracking, encodings, XOR, and small reverse-engineering and scripting tasks. These ideas follow the same shape: one file, one tool, one clear way to get the flag.
+
+## Forensics and file handling
+- **Zipped Up.** `archive.zip` is password-protected, and the hint says the password is a common one. Use `fcrackzip` or `zip2john` with `john` to crack it. The flag is in the inner `flag.txt`.
+- **Wrong Name.** `report.pdf` is really a PNG with the flag drawn on it. Use `file` and rename the extension to find the image. The flag is the text in the image.
+- **Trailer.** `pic.png` has a ZIP appended after the PNG's `IEND` chunk. Use `binwalk` or `unzip` to carve it out. The flag is in the extracted file.
+- **Metadata Trail.** `doc.docx` is a ZIP. The flag is in `docProps/core.xml` (the author or description field). Unzip it and read the XML.
+- **Deleted.** `disk.img` is a tiny FAT image with a deleted file. Recover it with `photorec`, `testdisk`, or `strings`.
+- **Packets.** `capture.pcap` has an HTTP request with a login in plaintext. Use Wireshark or `tshark -Y http`. The flag is TR{the password}.
+- **Git History.** `repo/` has a commit that added a secret and a later commit that removed it. Use `git log -p` to find it.
+
+## Stego
+- **LSB.** `pixel.png` hides text in the least significant bits. Use `zsteg` or a simple Python script.
+- **Spectrogram.** `sound.wav` shows the flag as text when opened in Audacity's spectrogram view.
+- **Whitespace.** `poem.txt` hides a message in trailing spaces and tabs. Use `cat -A` or `stegsnow`.
+- **Morse Audio.** `beeps.wav` encodes the flag in Morse. Decode it by ear or with a script.
+
+## Crypto and encoding
+- **Caesar Brute.** A single line is shifted by an unknown amount. Try all 26 shifts. This is a gentler version of Unwrap.
+- **Vigenère.** The key is a word given in the prompt. Use `cyberchef` or a short script.
+- **Rail Fence.** `fence.txt` is a rail fence cipher with 3 rails.
+- **ROT47 and Base32.** Stack different encodings than Unwrap: base32, then ROT47, then URL encoding.
+- **Small RSA.** `rsa.txt` gives `n`, `e`, and `c`, with `n` small enough to factor using `factordb` or `sympy`.
+- **JWT.** `token.txt` is a JWT with `alg: none` or a weak secret like `secret`. Decode the payload. The flag is in a claim.
+- **Hash Types.** Like Hashcat and Wordlist, but with SHA1 or a salted hash, so the player has to pick the right mode.
+
+## Reversing and binaries
+- **Strings Only.** `bin/hello` is a compiled program, and `strings | grep TR{` finds the flag.
+- **Ltrace.** The binary compares your input to the password with `strcmp`. Use `ltrace` to see the comparison.
+- **Patch It.** `check.py` has an `if` that always fails. Edit or bypass it to get the flag.
+- **Pyc.** `lock.pyc` is compiled Python. Decompile it with `uncompyle6` or `pycdc` to read the check.
+- **Obfuscated JS.** `page.js` builds the flag with `String.fromCharCode`. Run it in Node or the browser console.
+
+## Scripting and logic
+- **Log Hunt.** `access.log` has 10,000 lines. One IP made a request to `/admin` with a 200 response. Use `grep` and `awk`. The flag is TR{that IP with dots replaced by dashes}.
+- **Count It.** `words.txt` has one word that appears exactly once, and every other word appears twice. Use `sort | uniq -c`.
+- **Sudoku Check.** `server.py` prints the flag only if you pass a valid 4x4 Latin square.
+- **Math Gate.** `quiz.py` asks 5 arithmetic questions and has a time limit, so the player has to script the answers.
+- **Port Knock.** `knock.py` only prints the flag after you call it with three specific arguments in order, and the order is in a hint file.
+- **CSV Sum.** `sales.csv` is large. The flag is TR{the total of one column}. Use `awk`, `cut`, or `pandas`.
+
+## Web and network (if you want a local server)
+- **Robots.** A tiny Flask app has `/robots.txt` listing a hidden path that holds the flag.
+- **Cookie Monster.** The flag appears only when the cookie `admin=true`. Use `curl -b`.
+- **Header Check.** The flag is returned only with a specific `User-Agent` or custom header.
+- **View Source.** The flag is in an HTML comment.
+
+## Tips for keeping the set consistent
+- Say which tool to use in the prompt, as your current ones do.
+- Make each file's flag unique, and use `TR{...}` unless the challenge is like Gate where the answer is a phrase.
+- Mix the difficulty. Your current set is mostly easy. Add 2–3 two-step challenges, like Zipped Up whose inner file is base64, to make a medium tier.
+
+I can build any of these with working files and a solution script. Tell me which ones and what flags you want.

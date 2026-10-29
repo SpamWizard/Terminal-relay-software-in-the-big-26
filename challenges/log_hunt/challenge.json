@@ -1,0 +1,10 @@
+{
+  "id": "log_hunt",
+  "type": "desk",
+  "title": "Log Hunt",
+  "set_id": "log_hunt",
+  "prompt": "access.log is a long request log. Exactly one line has the path /admin and status 200. The flag is TR{the username on that line}. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{marigold}"],
+  "panes": ["files", "terminal"]
+}

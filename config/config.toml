@@ -41,18 +41,15 @@ redo_multiplier = 0.5
 
 [questions]
 files = [
-    "challenges/steghide",
-    "challenges/photo_note",
-    "challenges/anthem",
-    "challenges/unwrap",
-    "challenges/wordlist",
-    "challenges/hashcat",
-    "challenges/regex",
-    "challenges/crackme",
-    "challenges/gate",
-    "challenges/telenet",
-    "challenges/xor",
-    "challenges/hangman",
+    "challenges/binary",
+    "challenges/morse",
+    "challenges/whitespace",
+    "challenges/zero_width",
+    "challenges/lsb",
+    "challenges/broken_png",
+    "challenges/log_hunt",
+    "challenges/patch_it",
+    "challenges/identify",
     "questions/fake_logos.json",
 ]
 redo_missed_at_set_end = false

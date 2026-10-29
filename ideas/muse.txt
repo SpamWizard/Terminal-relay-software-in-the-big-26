@@ -1,0 +1,89 @@
+Here are new ones in the same style as yours — one concept each, tiny setup, flag is derivable not guessable. Organized by the gaps in your current set (you have no audio, network, git, web, or database ones yet):
+
+## Audio
+
+**Spectro.** `song.wav` sounds like modem noise/static. Opened in Audacity's spectrogram view, the flag is drawn as text in the frequencies. Submit the flag you see.
+*Build: draw `TR{...}` as an image, convert image→audio with a spectrogram synthesizer (or `audiocraft`/`sox` tricks). One trick: View > Spectrogram.*
+
+**Rewind.** `message.wav` is garbled reversed speech. Reverse it (Audacity > Reverse, or `sox in.wav out.wav reverse`) and a voice spells out the flag letter by letter.
+*Build: TTS/record the flag, reverse it. Teaches: don't trust that audio is broken.*
+
+**Morse.** `beeps.wav` (or `signal.txt`) is just `.` and `-` sounds/characters grouped in words. Decode the Morse — the decoded text *is* the password. Flag is `TR{decoded}` with spaces removed.
+*Build: trivial with any Morse encoder. Easier than XOR, good early challenge.*
+
+## Images / Files
+
+**Layers.** `cat.png` looks normal but `zsteg` / LSB extraction pulls a text string out of the low bits. Steghide won't touch it — it's a PNG, not a JPEG.
+*Build: `zsteg -E 'b1,rgb,lsb,xy' cat.png > out` to verify; embed with a small Python LSB script. Contrasts directly with your Steghide one — same idea, wrong tool fails.*
+
+**Tailgate.** `photo.png` views fine, but there's a ZIP appended after the PNG data ends. `binwalk photo.png` (or just `unzip photo.png`) extracts a `flag.txt`.
+*Build: `cat photo.png secret.zip > photo2.png`. Teaches: files can contain more than their format shows.*
+
+**Header.** `image.png` won't open and `file` says just "data." The first 8 bytes (PNG magic) have been zeroed out. Fix them in a hex editor to `89 50 4E 47 0D 0A 1A 0A` and it opens, showing the flag.
+*Build: zero the magic with Python. Step up from Gate: xxd to inspect, now also to repair.*
+
+**Onion.** `gift.zip` contains a zip, which contains a tar, which contains a gz, ~8 layers deep, alternating formats. Peel them all to reach `flag.txt`.
+*Build: script the nesting. No password, no trick except persistence — `file` tells you each layer's type.*
+
+**QRStitch.** Four images `1.png`–`4.png` are the four quadrants of one QR code, shuffled. Reassemble them in the right order (image editor or Python/PIL) and scan it for the flag.
+*Build: generate QR, crop into 4, shuffle filenames. The flag can be a `TR{}` directly in the QR.*
+
+## Forensics
+
+**History.** A git repo where `flag.txt` was committed and then deleted in a later commit. `git log --all` / `git show <old-commit>` recovers it.
+*Build: init repo, commit flag, commit its deletion. First git challenge — no GitHub needed.*
+
+**Packets.** `capture.pcap` opened in Wireshark. Follow the HTTP stream (`Follow > TCP Stream`) — one POST body contains `flag=TR{...}` in plain text among a bunch of noise requests.
+*Build: generate with a few curl requests while tcpdump runs, or fake it with scapy/text2pcap.*
+
+**Database.** `library.db` is a SQLite database. `.tables` shows a boring `books` table and an odd one; one `SELECT` query finds the flag hidden in a row among decoys.
+*Build: `sqlite3` CLI, create 2 tables, ~20 decoy rows. Teaches `sqlite3 file.db "SELECT ..."`.*
+
+**Logjam.** `auth.log` is 500 lines of failed SSH logins and exactly one `Accepted password` line. The flag is `TR{username}` of the one who got in.
+*Build: generate fake log lines with a script, bury one success. Same "one real line among near-misses" shape as Regex, but with `grep`/`grep -v` instead.*
+
+## Crypto / Encoding (new alphabets, not repeats)
+
+**Casefile.** `letter.txt` is a normal-looking paragraph. The upper/lowercase pattern of its letters encodes bits: uppercase = 1, lowercase = 0, 8 bits per character decodes to the flag.
+*Build: encode flag bytes to bits, apply case to a cover paragraph. This is Bacon-cipher-adjacent — very different feel from base64/hex.*
+
+**Keycaps.** `note.txt` was typed with hands shifted one key right on QWERTY. Every letter must be shifted one key left to read it. The decoded text contains the flag.
+*Build: type flag text shifted right (`TR{` becomes `YE{` roughly). Give the keyboard hint in the prompt.*
+
+**Vigenère.** `cipher.txt` + the challenge description contains the keyword in plain sight (e.g. the challenge is named after it). Vigenère-decrypt with that key to get the flag.
+*Build: one step beyond Unwrap's Caesar — key isn't brute-forced, it's *found*. CyberChef handles it once you know the word.*
+
+**Token.** `token.txt` is a JWT (`eyJ...`). Decode the middle segment (base64url) — no signature check needed — the JSON payload has a `"flag"` field.
+*Build: hand-craft or use jwt.io once. Introduces "structured tokens are just encoded JSON."*
+
+**Binary.** `bits.txt` is one long line of `0`s and `1`s. Group into 8s, convert to ASCII. Flag is `TR{...}`.
+*Build: trivial encoder. Good very-first challenge, below even Crackme in difficulty.*
+
+## Interactive / Scripting
+
+**Vault.** `vault.py` checks a 4-digit PIN, but unlike crackme.py, the PIN isn't in the source — only its SHA256 hash is. Writing a loop that tries 0000–9999 against the hash (or by importing the checker) finds it. Flag is `TR{the PIN}`.
+*Build: hash a random PIN in the source. This is the natural sequel to Crackme: readable check → must brute-force instead of read.*
+
+**Acrostic.** `poem.txt` is a 20-line poem. The first letter of each line, in order, spells out the flag text.
+*Build: write/generate a poem to fit your flag, or pad with lines. Zero tools needed — pure observation. Flag is `TR{spelled-out-letters}`.*
+
+**Invisible.** `story.txt` looks like a short paragraph, but zero-width characters hidden between certain letters encode the flag (or: trailing spaces/tabs on each line are binary, space=0 tab=1).
+*Build: Python script to inject zero-width `\u200b`/`\u200c` as bits. Solvers find them by file size being suspiciously large for the visible text, or `cat -A`.*
+
+## Web (needs a tiny local Flask/HTML setup)
+
+**Robots.** A simple local web page. Nothing on the page itself, but `/robots.txt` disallows a path — visiting that path gives the flag.
+*Build: static HTML + robots.txt. First "the server tells you where not to look" lesson.*
+
+**Cookie.** A local login page sets a cookie like `user=guest` (base64). Decoding it, changing `guest` to `admin`, re-encoding, and reloading reveals the flag.
+*Build: tiny Flask app checking the decoded cookie. Introduces client-side trust.*
+
+## If I had to pick 5 to build first
+
+1. **Spectro** — audio is a total blind spot in your set and it's a "wow" moment.
+2. **History** — git recovery is a real forensic skill, 5 minutes to build.
+3. **Vault** — direct difficulty sequel to Crackme/Hashcat players already know.
+4. **Packets** — gets Wireshark open, which unlocks a whole challenge family later.
+5. **Layers** — pairs with Steghide to teach "match the tool to the format."
+
+Want me to actually build any of these — generator scripts, the files, and the one-line player-facing prompt in your existing format?

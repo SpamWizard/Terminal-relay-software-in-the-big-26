@@ -1,0 +1,10 @@
+{
+  "id": "morse",
+  "type": "desk",
+  "title": "Morse",
+  "set_id": "morse",
+  "prompt": "signal.txt is Morse code. Spaces separate letters and a slash separates words. The flag is TR{the message in lowercase}, and the space between the words is an underscore. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{clear_signal}"],
+  "panes": ["files", "terminal"]
+}

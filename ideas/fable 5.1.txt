@@ -1,0 +1,45 @@
+Here are new challenge ideas in the same style as your set — single-step, one common tool each, beginner-friendly, `TR{...}` flag. I've grouped them by skill and avoided overlap with what you already have. Each note includes how you'd build it and the flag so they drop straight into your `challenges/<id>/` + `challenge.json` pattern.
+
+## Encoding / decoding (new variants beyond Unwrap)
+- **Base32** — `secret.txt` holds one Base32 string (ends in `=` padding, all uppercase + digits 2-7). Bait is that it looks like Base64. Tool: `base32 -d`. Flag `TR{thirty_two}`.
+- **ROT47** — `note.txt` is a Caesar shift but over the full printable ASCII range, so punctuation scrambles too. Your Unwrap only does letter-shift, so this teaches the ROT47 variant. Flag `TR{rotate_fortyseven}`.
+- **URL-encoded** — `data.txt` is percent-encoded (`TR%7Bpercent...%7D`). One decode step. Flag `TR{percent_signs}`.
+- **Zero-width** — a normal-looking sentence in `message.txt` with a hidden message encoded in zero-width spaces/joiners. Tool: a decoder or `xxd` to spot `e2 80 8b` bytes. Flag `TR{invisible_ink}`.
+
+## Forensics / file type (sibling to Anthem, Photo Note)
+- **Magic** — `image.png` is actually a GIF (or a gzip) with the wrong extension. `file` reveals truth; rename and open, or `strings`. Flag `TR{trust_the_magic}`.
+- **Carve** — `blob.bin` has a second file appended after a real JPEG (classic `binwalk` / append trick). Extract the trailing file to read the flag. Tool: `binwalk -e` or `dd`. Flag `TR{carve_me_out}`.
+- **PNG chunks** — `pic.png` has the flag stored in a custom `tEXt` chunk. Tool: `exiftool`, `pngcheck`, or `strings`. Distinct from Photo Note because it's PNG, not JPEG/EXIF. Flag `TR{text_chunk}`.
+- **Broken header** — `fixme.png` has a corrupted 8-byte signature; fixing the magic bytes in a hex editor lets it open and show the flag. Tool: `xxd` + hex edit. Flag `TR{eight_nine_five_zero}`.
+
+## Reversing source (sibling to Crackme)
+- **Base checker** — `checker.py` compares `b64encode(input)` to a constant. Reverse by decoding the constant. One step, no brute force. Flag `TR{decode_the_constant}`.
+- **Math gate** — `gate.py` accepts an integer where `n*n == <bignum>` and prints `TR{n}`. Readable in source; solve with a square root. Flag is the number.
+- **ELF strings/symbols** — a tiny C binary `keycheck` where the password sits in a symbol name or a `rodata` string. Tool: `nm` or `strings`. Introduces compiled reversing without a debugger. Flag `TR{named_symbol}`.
+
+## Text processing (sibling to Regex)
+- **Grep count** — `log.txt` has thousands of lines; exactly one contains the substring `TR{`. Tool: `grep`. Teaches the simplest possible search. Flag `TR{needle_in_logs}`.
+- **Column** — `users.csv` where one field in one row is the flag, found with `cut -d, -f3` + `sort -u` or `awk`. Flag `TR{third_column}`.
+- **Frequency** — `votes.txt` lists words; the flag is `TR{the single word that appears exactly once}`. Tool: `sort | uniq -c`. Flag `TR{hapax}`.
+
+## Crypto-lite (siblings to XOR)
+- **Caesar** — `cipher.txt` is a letters-only Caesar with unknown shift; brute 25 shifts to find readable `TR{`. Simpler cousin of your XOR brute. Flag `TR{shift_thirteen}` (or any shift).
+- **Vigenère** — `cipher.txt` plus `key.txt` giving the keyword; decode with a one-liner. Introduces polyalphabetic without cracking. Flag `TR{keyed_cipher}`.
+- **XOR key (multi-byte)** — like XOR but the key is a short repeating word hinted in `note.txt`. Teaches repeating-key XOR vs single-byte. Flag `TR{repeat_the_key}`.
+
+## Password cracking (siblings to Hashcat, Wordlist)
+- **SHA-1 + rules** — `hash.txt` is SHA-1; the wordlist has the base word but the password is `word2024`, cracked with a hashcat/john rule or `--rules`. Teaches mangling rules. Flag `TR{word2024}`.
+- **Zip crack** — `secret.zip` is a real ZipCrypto zip (you already have the encryptor in `make_desk_challenges.py`); crack with `john`'s `zip2john` or `fcrackzip` against the small wordlist. Flag inside. Flag `TR{zip_cracked}`.
+- **Shadow** — a single `/etc/shadow`-style line with a weak `$1$`/`$6$` hash cracked by john. Flag `TR{shadow_line}`.
+
+## Protocol / input validation (sibling to Telenet)
+- **Checksum** — `python3 luhn.py "<number>"` accepts a number that must pass a Luhn check; a valid one prints the flag. Teaches checksum logic from readable source. Flag `TR{luhn_valid}`.
+- **Handshake** — `python3 knock.py` expects three messages in order (`SYN`, `ACK`, `GO`) or piped stdin lines; correct sequence prints the flag. Flag `TR{three_way}`.
+- **JWT** — `token.txt` is an unsigned/`alg:none` JWT; base64-decode the payload to read the flag claim. Tool: any base64 or `jwt` decode. Flag `TR{none_alg}`.
+
+## Stego / audio (siblings to Steghide, Hangman)
+- **LSB** — `cover.png` with the flag in least-significant-bit pixels; `zsteg` extracts it. Different tool than steghide. Flag `TR{least_significant}`.
+- **Morse audio** — `beeps.wav` plays Morse that spells the flag; decode by ear or with an online/CLI Morse tool. Flag `TR{dah_dit}`.
+- **Spectrogram** — `tone.wav` hides text visible in a spectrogram view (Audacity/sox). Flag `TR{look_at_sound}`.
+
+If you want, tell me which of these you like and I'll scaffold them for real — generate the artifacts (extending `make_desk_challenges.py`), write each `challenge.json` with the right `accepted` flag and prompt, and drop in the private `flag.txt`, matching your existing `gate`/`regex` layout exactly.

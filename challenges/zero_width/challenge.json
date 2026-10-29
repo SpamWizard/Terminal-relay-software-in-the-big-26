@@ -1,0 +1,10 @@
+{
+  "id": "zero_width",
+  "type": "desk",
+  "title": "Zero Width",
+  "set_id": "zero_width",
+  "prompt": "memo.txt looks like an ordinary note. Characters with no width are mixed through it, so reading the file hides them. xxd shows the extra bytes. U+200B is 0 and U+200C is 1, in the order they appear. Eight bits make one character, high bit first. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{thin_space}"],
+  "panes": ["files", "terminal"]
+}

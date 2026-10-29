@@ -2,165 +2,133 @@
 
 Solutions for the board. The game does not load this file, and nothing here is copied into a team shell.
 
-Flags are `TR{...}`.
+Flags are `TR{...}`. Desk challenges are 100 points. Fake Logos questions are 1 point.
 
-## Steghide
+## Binary
 
-`cover.jpg` has a file hidden with steghide. The passphrase is `rockme` (also in `note.txt`).
-
-```bash
-steghide extract -sf cover.jpg -p rockme
-cat payload.txt
-```
-
-Flag: `TR{hidden_in_the_jpeg}`
-
-## Photo Note
-
-`photo.jpg` stores a note in a JPEG comment and in the EXIF Image Description. The note is base64, not the flag itself.
+`bits.txt` is the flag as 8-bit groups, high bit on the left, with no separators.
 
 ```bash
-exif photo.jpg
+python3 -c "b=open('bits.txt').read().strip(); print(''.join(chr(int(b[i:i+8],2)) for i in range(0,len(b),8)))"
 ```
 
-Image Description is `VFJ7Y29tbWVudF9zZWN0aW9ufQ==`. `strings photo.jpg` and `exiftool photo.jpg` show the same text.
+Flag: `TR{eight_bits}`
+
+## Morse
+
+`signal.txt` is Morse. Spaces separate letters and ` / ` separates words. The message is `CLEAR SIGNAL`. Lowercase it and join the words with an underscore.
+
+Flag: `TR{clear_signal}`
+
+## Whitespace
+
+Each line of `letter.txt` ends with eight spaces and tabs. A space is 0, a tab is 1, left bit first. `cat -A` shows a tab as `^I` and the end of the line as `$`.
+
+Flag: `TR{trailing_off}`
+
+## Zero Width
+
+`memo.txt` has U+200B (0) and U+200C (1) mixed through the letters. In file order, eight bits are one character, high bit first.
 
 ```bash
-echo 'VFJ7Y29tbWVudF9zZWN0aW9ufQ==' | base64 -d
+python3 -c "t=open('memo.txt',encoding='utf-8').read(); b=''.join('0' if c=='\u200b' else '1' for c in t if c in '\u200b\u200c'); print(''.join(chr(int(b[i:i+8],2)) for i in range(0,len(b),8)))"
 ```
 
-Flag: `TR{comment_section}`
+Flag: `TR{thin_space}`
 
-## Anthem
+## LSB
 
-`anthem.mp3` is a zip with a misleading name. The password is `anthem`.
+`postcard.png` is a real PNG. steghide reads JPEG, BMP, and WAV, so it has nothing to do here. The flag is in the least significant bit of the red, green, and blue bytes, in that order, row by row, high bit first. A zero byte ends it. `zsteg` calls that order `b1,rgb,lsb,xy`. Install it with `sudo gem install zsteg` if the command is missing. Kali does not always ship an apt package for it.
 
 ```bash
-file anthem.mp3
-unzip -P anthem anthem.mp3
-cat flag.txt
+python3 - <<'PY'
+import struct, zlib, pathlib
+data = pathlib.Path("postcard.png").read_bytes()
+pos, idat = 8, b""
+while pos + 12 <= len(data):
+    n = int.from_bytes(data[pos:pos+4], "big")
+    tag, chunk = data[pos+4:pos+8], data[pos+8:pos+8+n]
+    pos += 12 + n
+    if tag == b"IHDR":
+        w, h = struct.unpack(">II", chunk[:8])
+    elif tag == b"IDAT":
+        idat += chunk
+    elif tag == b"IEND":
+        break
+raw = zlib.decompress(idat)
+stride = w * 3
+rgb = b"".join(raw[y*(stride+1)+1:(y+1)*(stride+1)] for y in range(h))
+acc = n = 0
+out = []
+for byte in rgb:
+    acc = (acc << 1) | (byte & 1)
+    n += 1
+    if n == 8:
+        if acc == 0:
+            break
+        out.append(chr(acc))
+        acc = n = 0
+print("".join(out))
+PY
 ```
 
-Flag: `TR{not_an_mp3}`
+Flag: `TR{low_bits}`
 
-## Unwrap
+## Broken PNG
 
-`secret.txt` is wrapped three times. Outermost is base64, then hex, then rot13. The rot13 step has to cover lowercase letters (`tr 'A-Za-z'`, not `tr 'A-Za'`).
+`broken.png` is a PNG whose first 8 bytes are zeros. The signature is `89 50 4E 47 0D 0A 1A 0A`. The flag is a compressed `Comment`, so it shows up after the header is repaired.
 
 ```bash
-base64 -d secret.txt | xxd -r -p | tr 'A-Za-z' 'N-ZA-Mn-za-m'
+python3 - <<'PY'
+from pathlib import Path
+path = Path("broken.png")
+data = bytearray(path.read_bytes())
+data[:8] = bytes.fromhex("89504e470d0a1a0a")
+path.write_bytes(data)
+PY
+exiftool broken.png
 ```
 
-That prints the flag. Intermediate text is `GE{guerr_ynlref}`.
+Flag: `TR{magic_bytes}`
 
-Flag: `TR{three_layers}`
+## Log Hunt
 
-## Wordlist
-
-`hash.txt` is one MD5. `wordlist.txt` is the dictionary.
+`access.log` has one line whose path is exactly `/admin` and whose status is `200`. `/administrator` and `/admin/` are near misses. The username on the real line is the flag.
 
 ```bash
-john --format=raw-md5 --wordlist=wordlist.txt hash.txt
-john --show --format=raw-md5 hash.txt
+awk '$5=="/admin" && $6==200 { print $2 }' access.log
 ```
 
-The password is `lantern`.
+Flag: `TR{marigold}`
 
-Flag: `TR{lantern}`
+## Patch It
 
-## Hashcat
-
-`hash.txt` is one MD5. `wordlist.txt` has eight words, so hashcat finishes immediately.
+`check.py` returns false on both branches, so no pin is accepted. Change the `return False` under `pin == "2468"` to `return True`, then run it. The flag is built in `reveal` and is not stored as text.
 
 ```bash
-hashcat -m 0 -a 0 hash.txt wordlist.txt
+python3 check.py 2468
 ```
 
-The password is `spark`.
+Flag: `TR{flip_the_check}`
 
-Flag: `TR{spark}`
+## Identify
 
-## Regex
-
-`lines.txt` is 400 lines of near misses (two digits, a digit first, a digit in the middle, letters only, UPPERCASE+digit). Exactly one line is lowercase letters followed by a single digit. Reading the file does not surface it.
+`hash.txt` is 40 hex characters, which is SHA-1. The prompt does not name the algorithm. `wordlist.txt` is short.
 
 ```bash
-grep -E '^[a-z]+[0-9]$' lines.txt
+hashcat -m 100 -a 0 hash.txt wordlist.txt
 ```
 
-The word is `kite4`.
-
-Flag: `TR{kite4}`
-
-## Crackme
-
-`crackme.py` accepts a password whose reverse is `emkcor`.
+Or:
 
 ```bash
-python3 crackme.py rockme
+john --format=raw-sha1 --wordlist=wordlist.txt hash.txt
+john --show --format=raw-sha1 hash.txt
 ```
 
-It prints `correct`.
+The password is `compass`.
 
-Flag: `TR{rockme}`
-
-## Gate
-
-`bin/gate` is mostly noise. The flag itself sits in the ASCII column of an xxd dump.
-
-```bash
-xxd bin/gate
-```
-
-Flag: `TR{pass the baton}`
-
-## Telenet
-
-`telenet.py` approves `TELENET <text> <count>`, where `count` is the number of characters in `text`. The words can be anything.
-
-```bash
-python3 telenet.py "TELENET hello 5"
-```
-
-That prints the flag. A bad message, including `TELENET hello 4`, prints only `REJECTED`.
-
-Flag: `TR{virtual_circuit}`
-
-## XOR
-
-`cipher.hex` is a single-byte XOR. The key is not in the folder. `xor.py` applies one hex byte and prints the result. The plaintext starts with `TR{`, and the key is `37`.
-
-```bash
-python3 xor.py 37
-```
-
-Or try every byte:
-
-```bash
-python3 -c "import subprocess
-for i in range(256):
-    out = subprocess.check_output(['python3','xor.py',f'{i:02x}'], text=True)
-    if out.startswith('TR{'):
-        print(out, end='')"
-```
-
-Flag: `TR{just_xor}`
-
-## Hangman
-
-`hangman.py` is a game. The scaffold is already drawn. Five wrong letters each add a body part and then you lose. A loss does not print the phrase, and the phrase is not stored as plain text.
-
-Guess letters. One path that never misses:
-
-```bash
-printf '%s\n' h a v e y o u s n z d i k w t r l | python3 hangman.py
-```
-
-The phrase is `have you seen zodiak with real shoes`.
-
-The flag is the first letter of each word, in order.
-
-Flag: `TR{hyszwrs}`
+Flag: `TR{compass}`
 
 ## Fake Logos
 
@@ -170,15 +138,15 @@ The real marks are in historical order, and not every historical mark is include
 
 | Question | Points | Answer |
 |----------|--------|--------|
-| Google | 100 | D |
-| Nintendo | 100 | C |
-| Cisco | 200 | C |
-| Dropbox | 200 | A |
-| IBM | 300 | C |
-| Micron | 300 | C |
-| Microsoft | 300 | D |
-| RadioShack | 400 | C |
-| AT&T | 400 | D |
-| AOL | 400 | C |
-| Dell | 500 | C |
-| ICQ | 500 | B |
+| Google | 1 | D |
+| Nintendo | 1 | C |
+| Cisco | 1 | C |
+| Dropbox | 1 | A |
+| IBM | 1 | C |
+| Micron | 1 | C |
+| Microsoft | 1 | D |
+| RadioShack | 1 | C |
+| AT&T | 1 | D |
+| AOL | 1 | C |
+| Dell | 1 | C |
+| ICQ | 1 | B |

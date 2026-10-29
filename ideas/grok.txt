@@ -1,0 +1,47 @@
+Your board is one short terminal skill per tile, and the flag is almost always `TR{the thing you found}`. These ideas fill skills you do not have yet. Each one still fits a `challenges/<id>/public` folder, a two-line prompt, and a one-command staff writeup.
+
+## Start with these six
+
+**Nest.** `capsule.bin` is three compressions deep. `file` names the outer layer; decompressing it names the next. The middle file is a short note telling them to keep going. The last layer is the flag. This is the archive tile that sits beside Anthem: Anthem is a renamed zip with a password, Nest is “trust `file` and peel.”
+
+**Carve.** `photo.jpg` is a normal picture with a zip glued on the end. `binwalk -e photo.jpg` pulls the zip out; inside is the flag. Steghide hides bits in the image, Photo Note uses a comment, Carve is a second file parked after the JPEG end marker.
+
+**Commit.** A tiny git repo whose working tree is only a decoy `README`. The password was added in an early commit and deleted later. `git log -p` shows it. The flag is `TR{that word}`. Nothing in the current files is the answer, so a plain `cat` fails.
+
+**Trace.** A compiled `./pin` that checks one password. The password is built at runtime, so `strings` and `xxd` miss it. `ltrace ./pin` shows the `strcmp` argument. The flag is `TR{that password}`. This is the binary tile that sits beside Crackme (readable Python) and Gate (plain ASCII in the bytes).
+
+**Query.** `locker.db` is SQLite with two tables, one of them full of junk rows. `.tables`, then one `SELECT` on the row whose `ok` column is set. The flag is `TR{that name}`.
+
+**Once.** A few hundred words, every word repeated except one. `sort lines.txt | uniq -u` prints it. The flag is `TR{that word}`. Regex asks for a shape; this one asks for a count.
+
+## Same weight as the current tiles
+
+**Dots.** `morse.txt` is groups of `.` and `-` split by spaces and `/`. Decoding the groups gives a short word. The flag is `TR{that word}`. No audio player, so it stays inside the terminal.
+
+**Code.** `badge.png` is a QR code. `zbarimg badge.png` prints a base64 blob; decoding that blob prints the flag. Same “image is not a picture” idea as Photo Note, different container.
+
+**Snow.** A normal-looking paragraph whose trailing spaces and tabs are the hidden bits. `stegsnow -C message.txt` extracts a short file, or `cat -A` shows the pattern so they can do it by hand. The passphrase can live in a one-line `note.txt`, the same way Steghide does.
+
+**Kind.** `hash.txt` is one raw hash and `wordlist.txt` is a handful of words, but the prompt never says MD5. `hashid` reports SHA-1, then `hashcat -m 100` or `john --format=raw-sha1` finishes it. The flag is `TR{the password}`. Hashcat and Wordlist already teach the crack; this one teaches naming the algorithm first.
+
+**Header.** `vault.py` listens on `127.0.0.1` only. They start it, `curl` the root, and each response carries `X-Next` with the following path. The third response prints the flag. Telenet checks an argument string; this one is a tiny client.
+
+**Crib.** `cipher.hex` was XORed with a repeating three-byte key, and the plaintext starts with `TR{`. A few lines of Python, trying keys until the output starts with that prefix, prints the flag. XOR is the one-byte version of this.
+
+## Slightly sharper, still one sitting
+
+**Dis.** Only `check.pyc` is in the folder. The password is a tuple of character codes inside the code object, so `strings` shows numbers. `dis.dis` on the code object lists those constants; `chr` joins them into the word. The flag is `TR{that word}`.
+
+**Keys.** `typed.txt` is one word entered with both hands shifted one key to the right (`u;;e` is `pass` on a US keyboard — pick a cleaner word). They correct it by hand. The flag is `TR{the real word}`. No tool past the file itself.
+
+**Modes.** Several files in a directory, contents empty. `stat -c '%n %a' *` shows permission bits; those octal bytes are the flag characters. Reading the files does nothing. This is metadata, in the same family as Photo Note’s EXIF.
+
+**Column.** `log.csv` is a login list. `awk` (or `csvtool`) keeps the rows with status `OK` and prints the latest username. The flag is `TR{that user}`.
+
+**Wide.** A sentence that looks ordinary and contains zero-width characters (`U+200B` and `U+200C` as bits). A short Python loop prints the hidden word. The flag is `TR{that word}`. Snow is visible with `cat -A`; this one looks empty until they inspect code points.
+
+## What I would skip
+
+Another MD5-plus-wordlist tile, a second JPEG comment, a second “password reversed in Python,” and anything that needs a GUI (Audacity spectrograms, Wireshark clicks, Ghidra). Kali already has `binwalk`, `tshark`, `zbarimg`, `sqlite3`, `jq`, `stegsnow`, and `ltrace` available through apt when the gold image does not include them.
+
+If you want a full extra board, Nest, Carve, Commit, Trace, Query, Once, Dots, and Kind give you eight tiles with eight different commands.

@@ -1,0 +1,10 @@
+{
+  "id": "lsb",
+  "type": "desk",
+  "title": "LSB",
+  "set_id": "lsb",
+  "prompt": "postcard.png is a PNG. steghide reads JPEG, BMP, and WAV. The flag is in the least significant bits: red, then green, then blue, row by row, high bit first. A zero byte ends the text. zsteg reports that order as b1,rgb,lsb,xy. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{low_bits}"],
+  "panes": ["files", "terminal"]
+}
