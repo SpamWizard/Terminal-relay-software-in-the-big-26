@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from baton_relay.deps import INSTALL_COMMAND
 from baton_relay.results.log import team_slug
 
 
@@ -408,7 +409,7 @@ class TeamShell:
         except ImportError as exc:
             raise ShellError(
                 "pywinpty is required for the interactive desk terminal.\n"
-                "Install with: pip install pywinpty"
+                f"Install all project dependencies with: {INSTALL_COMMAND}"
             ) from exc
 
         # Real TTY so nano/less/apt behave like a normal Linux box.

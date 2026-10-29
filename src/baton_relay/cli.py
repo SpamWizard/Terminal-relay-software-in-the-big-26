@@ -131,6 +131,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from baton_relay.deps import ensure_dependencies
+
+    try:
+        ensure_dependencies()
+    except SystemExit as exc:
+        code = exc.code
+        return 1 if code in (None, "") else int(code)
+
     raw = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
     if not raw or raw[0] not in ("run", "probe", "reset", "quick", "warm"):

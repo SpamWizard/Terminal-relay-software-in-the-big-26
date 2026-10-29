@@ -7,6 +7,10 @@ from pathlib import Path
 
 import pytest
 
+from baton_relay.deps import ensure_dependencies
+
+ensure_dependencies()
+
 from baton_relay.config import load_config
 from baton_relay.questions.base import QuestionSet
 from baton_relay.questions.loader import load_all_question_files
