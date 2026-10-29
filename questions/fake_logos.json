@@ -2,112 +2,113 @@
   "set_id": "fake_logos",
   "title": "Fake Logos",
   "deferred": true,
+  "miss_floor": 1,
   "questions": [
     {
       "id": "logo_google",
       "type": "multiple_choice",
-      "prompt": "These Google logos are in chronological order — except one never happened. Which is the fake?",
+      "prompt": "These Google logos are in chronological order — except one never happened. Which is the fake? Points go down each time you guess wrong.",
       "images": ["images/logos/google.png"],
-      "points": 1,
+      "points": 10,
       "choices": ["A", "B", "C", "D", "E"],
       "answer": 3
     },
     {
       "id": "logo_nintendo",
       "type": "multiple_choice",
-      "prompt": "These Nintendo logos are in chronological order — except one never happened. Which is the fake?",
+      "prompt": "These Nintendo logos are in chronological order — except one never happened. Which is the fake? Points go down each time you guess wrong.",
       "images": ["images/logos/nintendo.png"],
-      "points": 1,
+      "points": 10,
       "choices": ["A", "B", "C", "D", "E"],
       "answer": 2
     },
     {
       "id": "logo_cisco",
       "type": "multiple_choice",
-      "prompt": "These Cisco logos are in chronological order — except one never happened. Which is the fake?",
+      "prompt": "These Cisco logos are in chronological order — except one never happened. Which is the fake? Points go down each time you guess wrong.",
       "images": ["images/logos/cisco.png"],
-      "points": 1,
+      "points": 10,
       "choices": ["A", "B", "C", "D", "E"],
       "answer": 2
     },
     {
       "id": "logo_dropbox",
       "type": "multiple_choice",
-      "prompt": "These Dropbox logos are in chronological order — except one never happened. Which is the fake?",
+      "prompt": "These Dropbox logos are in chronological order — except one never happened. Which is the fake? Points go down each time you guess wrong.",
       "images": ["images/logos/dropbox.png"],
-      "points": 1,
+      "points": 10,
       "choices": ["A", "B", "C", "D", "E"],
       "answer": 0
     },
     {
       "id": "logo_ibm",
       "type": "multiple_choice",
-      "prompt": "These IBM logos are in chronological order — except one never happened. Which is the fake?",
+      "prompt": "These IBM logos are in chronological order — except one never happened. Which is the fake? Points go down each time you guess wrong.",
       "images": ["images/logos/ibm.png"],
-      "points": 1,
+      "points": 10,
       "choices": ["A", "B", "C", "D", "E"],
       "answer": 2
     },
     {
       "id": "logo_micron",
       "type": "multiple_choice",
-      "prompt": "These Micron logos are in chronological order — except one never happened. Which is the fake?",
+      "prompt": "These Micron logos are in chronological order — except one never happened. Which is the fake? Points go down each time you guess wrong.",
       "images": ["images/logos/micron.png"],
-      "points": 1,
+      "points": 10,
       "choices": ["A", "B", "C", "D", "E"],
       "answer": 2
     },
     {
       "id": "logo_microsoft",
       "type": "multiple_choice",
-      "prompt": "These Microsoft logos are in chronological order — except one never happened. Which is the fake?",
+      "prompt": "These Microsoft logos are in chronological order — except one never happened. Which is the fake? Points go down each time you guess wrong.",
       "images": ["images/logos/microsoft.png"],
-      "points": 1,
+      "points": 10,
       "choices": ["A", "B", "C", "D", "E"],
       "answer": 3
     },
     {
       "id": "logo_radioshack",
       "type": "multiple_choice",
-      "prompt": "These RadioShack logos are in chronological order — except one never happened. Which is the fake?",
+      "prompt": "These RadioShack logos are in chronological order — except one never happened. Which is the fake? Points go down each time you guess wrong.",
       "images": ["images/logos/radioshack.png"],
-      "points": 1,
+      "points": 10,
       "choices": ["A", "B", "C", "D", "E"],
       "answer": 2
     },
     {
       "id": "logo_att",
       "type": "multiple_choice",
-      "prompt": "These AT&T logos are in chronological order — except one never happened. Which is the fake?",
+      "prompt": "These AT&T logos are in chronological order — except one never happened. Which is the fake? Points go down each time you guess wrong.",
       "images": ["images/logos/att.png"],
-      "points": 1,
+      "points": 10,
       "choices": ["A", "B", "C", "D", "E"],
       "answer": 3
     },
     {
       "id": "logo_aol",
       "type": "multiple_choice",
-      "prompt": "These AOL logos are in chronological order — except one never happened. Which is the fake?",
+      "prompt": "These AOL logos are in chronological order — except one never happened. Which is the fake? Points go down each time you guess wrong.",
       "images": ["images/logos/aol.png"],
-      "points": 1,
+      "points": 10,
       "choices": ["A", "B", "C", "D", "E"],
       "answer": 2
     },
     {
       "id": "logo_dell",
       "type": "multiple_choice",
-      "prompt": "These Dell logos are in chronological order — except one never happened. Which is the fake?",
+      "prompt": "These Dell logos are in chronological order — except one never happened. Which is the fake? Points go down each time you guess wrong.",
       "images": ["images/logos/dell.png"],
-      "points": 1,
+      "points": 10,
       "choices": ["A", "B", "C", "D", "E"],
       "answer": 2
     },
     {
       "id": "logo_icq",
       "type": "multiple_choice",
-      "prompt": "These ICQ logos are in chronological order — except one never happened. Which is the fake?",
+      "prompt": "These ICQ logos are in chronological order — except one never happened. Which is the fake? Points go down each time you guess wrong.",
       "images": ["images/logos/icq.png"],
-      "points": 1,
+      "points": 10,
       "choices": ["A", "B", "C", "D", "E"],
       "answer": 1
     }

@@ -12,6 +12,7 @@ from baton_relay.input.decode import decode_pins
 from baton_relay.input.base import ReadingKind
 from baton_relay.questions.base import QuestionSet
 from baton_relay.questions.loader import QuestionLoadError, load_all_question_files
+from baton_relay.results.checkpoint import apply_checkpoint, session_to_dict
 from baton_relay.questions.registry import ensure_builtin_types_loaded
 from baton_relay.questions.types import Desk, MultipleChoice
 from baton_relay.state.machine import GameSession, RelayState
@@ -165,7 +166,7 @@ def test_load_questions(sets):
     assert "multiple_choice" in types
     logos = next(s for s in sets if s.set_id == "fake_logos")
     assert logos.deferred is True
-    assert all(q.points == 1 for q in logos.questions)
+    assert all(q.points == 10 for q in logos.questions)
 
 
 def test_deferred_category_waits_until_primaries_gone(config):
@@ -247,6 +248,87 @@ def test_last_category_stays_until_every_question_is_done(config):
     assert seen == ["logo_google", "logo_nintendo", "logo_cisco"]
     assert session.state == RelayState.PAUSED_SCORE
     assert session.progress.finished is True
+
+
+def _logo_session(config, *, questions: int = 1) -> GameSession:
+    cfg = _with_warmup(config, 0, questions_per_pick=1, board_slots=1)
+    qs = [
+        MultipleChoice(
+            id=f"logo_{i}",
+            type="multiple_choice",
+            prompt="Which is the fake? Points go down each time you guess wrong.",
+            points=10,
+            choices=["A", "B", "C", "D", "E"],
+            answer=3,
+            miss_floor=1,
+        )
+        for i in range(questions)
+    ]
+    session = GameSession(
+        cfg,
+        [QuestionSet(set_id="fake_logos", title="Fake Logos", questions=qs)],
+        team_name="Logos",
+        bypass_baton=True,
+    )
+    assert session.select_category("fake_logos") is True
+    return session
+
+
+def test_wrong_logo_guesses_lower_the_award(config):
+    session = _logo_session(config)
+    assert session.submit_answer(3).points == pytest.approx(10)
+    assert session.progress.total_score == pytest.approx(10)
+
+    session = _logo_session(config)
+    first = session.submit_answer(0)
+    assert first is not None
+    assert first.points == 0
+    assert "worth 8" in first.feedback
+    assert session.progress.total_score == 0
+    again = session.submit_answer(0)
+    assert again is not None
+    assert again.feedback.startswith("Already")
+    assert session.progress.spent_choices["logo_0"] == [0]
+    assert session.submit_answer(1).points == 0
+    got = session.submit_answer(3)
+    assert got is not None and got.correct
+    assert got.points == pytest.approx(6)
+    assert session.progress.total_score == pytest.approx(6)
+
+
+def test_logo_award_bottoms_out_at_one(config):
+    session = _logo_session(config)
+    for choice in (0, 1, 2, 4):
+        session.submit_answer(choice)
+    got = session.submit_answer(3)
+    assert got is not None and got.correct
+    assert got.points == 1
+    assert session.progress.total_score == 1
+
+
+def test_miss_cost_survives_checkpoint(config):
+    session = _logo_session(config)
+    session.submit_answer(0)
+    apply_checkpoint(session, session_to_dict(session), session.config)
+    got = session.submit_answer(3)
+    assert got is not None
+    assert got.points == pytest.approx(8)
+    assert session.progress.total_score == pytest.approx(8)
+
+
+def test_plain_multiple_choice_keeps_full_points_after_a_miss(config):
+    cfg = _with_warmup(config, 0, questions_per_pick=1, board_slots=1)
+    session = GameSession(
+        cfg,
+        tiny_sets(1, 1),
+        team_name="Plain",
+        bypass_baton=True,
+    )
+    assert session.select_category(session.progress.board_slots[0])
+    assert session.submit_answer(0).points == 0
+    got = session.submit_answer(1)
+    assert got is not None and got.points == 5
+    assert session.progress.total_score == 5
 
 
 def test_bad_question_file(tmp_path):

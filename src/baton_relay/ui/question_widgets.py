@@ -71,6 +71,8 @@ class QuestionHost(QWidget):
         self._on_submit: Callable[[Any], None] | None = None
         self._locked = True
         self._current_qid: str | None = None
+        self._choice_buttons: dict[int, QPushButton] = {}
+        self._choice_group: QButtonGroup | None = None
 
         self._layout.setSpacing(10)
 
@@ -140,6 +142,8 @@ class QuestionHost(QWidget):
             self._gallery = None
         self._desk = None
         self._collect = None
+        self._choice_buttons = {}
+        self._choice_group = None
         self.prompt.setText("")
         self.feedback.setText("")
         self.submit_btn.show()
@@ -200,6 +204,8 @@ class QuestionHost(QWidget):
         body.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._body = body
         self._collect = collect
+        self._choice_buttons = dict(getattr(body, "choice_buttons", {}))
+        self._choice_group = getattr(body, "choice_group", None)
         pictures = pictures_for(question.images)
         if pictures:
             gallery = ImageGallery(pictures)
@@ -231,6 +237,35 @@ class QuestionHost(QWidget):
     def show_feedback(self, text: str) -> None:
         self.feedback.setText(text)
 
+    def show_worth(self, question: Question, misses: int) -> None:
+        """Keep the shrinking award next to the rule on a miss-cost question."""
+        if not isinstance(question, MultipleChoice) or not question.shrinks_when_wrong():
+            return
+        left = question.value_after_misses(misses)
+        word = "point" if left == 1 else "points"
+        text = f"{question.prompt} Worth {left:g} {word}."
+        if self.prompt.text() != text:
+            self.prompt.setText(text)
+
+    def retire_choices(self, indexes: list[int]) -> None:
+        """A wrong letter stays down so it cannot be spent twice."""
+        pending = [
+            i
+            for i in indexes
+            if (btn := self._choice_buttons.get(i)) is not None and btn.isEnabled()
+        ]
+        if not pending:
+            return
+        group = self._choice_group
+        if group is not None:
+            group.setExclusive(False)
+        for i in pending:
+            btn = self._choice_buttons[i]
+            btn.setChecked(False)
+            btn.setEnabled(False)
+        if group is not None:
+            group.setExclusive(True)
+
 
 def build_answer_widget(question: Question) -> tuple[QWidget, Callable[[], Any]]:
     if isinstance(question, MultipleChoice):
@@ -245,6 +280,7 @@ def _mc(q: MultipleChoice) -> tuple[QWidget, Callable[[], Any]]:
     layout.setSpacing(10)
     group = QButtonGroup(root)
     group.setExclusive(True)
+    buttons: dict[int, QPushButton] = {}
     for i, choice in enumerate(q.choices or []):
         btn = QPushButton(f"{chr(65 + i)}.  {choice}")
         btn.setObjectName("choice")
@@ -252,7 +288,10 @@ def _mc(q: MultipleChoice) -> tuple[QWidget, Callable[[], Any]]:
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setMinimumHeight(48)
         group.addButton(btn, i)
+        buttons[i] = btn
         layout.addWidget(btn)
+    root.choice_buttons = buttons
+    root.choice_group = group
 
     def collect() -> int:
         id_ = group.checkedId()

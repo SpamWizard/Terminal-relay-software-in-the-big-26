@@ -163,6 +163,7 @@ def test_progress_roundtrip_board_fields():
         pick_remaining=0,
         pick_missed=["x"],
         total_score=12.5,
+        spent_choices={"logo_google": [0, 2]},
     )
     back = progress_from_dict(progress_to_dict(p))
     assert back.phase == "board"
@@ -172,6 +173,7 @@ def test_progress_roundtrip_board_fields():
     assert back.pool == ["c"]
     assert back.pick_missed == ["x"]
     assert back.total_score == 12.5
+    assert back.spent_choices == {"logo_google": [0, 2]}
 
 
 def test_apply_checkpoint_paused_becomes_waiting(config):

@@ -12,6 +12,7 @@ import pytest
 from baton_relay.config import ScoringConfig, ThemeConfig
 from baton_relay.questions.images import gallery_rows
 from baton_relay.questions.loader import QuestionLoadError, load_question_file
+from baton_relay.questions.types import MultipleChoice
 from baton_relay.ui.theme import build_stylesheet
 
 SCORING = ScoringConfig(partial_credit=True, wrong_answer_penalty=0, redo_multiplier=0.5)
@@ -213,6 +214,27 @@ def _host(qtbot, question):
     qtbot.wait(30)
     QApplication.processEvents()
     return host
+
+
+def test_miss_cost_prompt_shows_worth_and_retires_a_wrong_letter(qtbot):
+    question = MultipleChoice(
+        id="logo_google",
+        type="multiple_choice",
+        prompt="Which is the fake? Points go down each time you guess wrong.",
+        points=10,
+        choices=["A", "B", "C", "D", "E"],
+        answer=3,
+        miss_floor=1,
+    )
+    host = _host(qtbot, question)
+    host.show_worth(question, 0)
+    assert "Points go down each time you guess wrong." in host.prompt.text()
+    assert host.prompt.text().endswith("Worth 10 points.")
+    host.show_worth(question, 4)
+    assert host.prompt.text().endswith("Worth 1 point.")
+    host.retire_choices([0])
+    assert host._choice_buttons[0].isEnabled() is False
+    assert host._choice_buttons[1].isEnabled() is True
 
 
 def test_text_only_question_has_no_gallery(qtbot, tmp_path: Path):

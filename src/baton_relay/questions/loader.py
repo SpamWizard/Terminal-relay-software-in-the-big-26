@@ -15,6 +15,25 @@ class QuestionLoadError(Exception):
     """Raised when a question file is invalid."""
 
 
+def _optional_number(value: Any, where: str, key: str) -> float | None:
+    """Set-level default copied onto each question that omits ``key``."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise QuestionLoadError(f"{where}: '{key}' must be a number")
+    if value < 0:
+        raise QuestionLoadError(f"{where}: '{key}' must be zero or more")
+    return float(value)
+
+
+def _with_number(qdata: Any, key: str, value: float | None) -> Any:
+    if value is None or not isinstance(qdata, dict) or key in qdata:
+        return qdata
+    merged = dict(qdata)
+    merged[key] = value
+    return merged
+
+
 def _require(data: dict[str, Any], key: str, where: str) -> Any:
     if key not in data:
         raise QuestionLoadError(f"{where}: missing required field '{key}'")
@@ -93,6 +112,8 @@ def load_question_file(path: Path) -> QuestionSet:
     set_id = str(_require(data, "set_id", where))
     title = str(_require(data, "title", where))
     deferred = bool(data.get("deferred", False))
+    miss_cost = _optional_number(data.get("miss_cost", None), where, "miss_cost")
+    miss_floor = _optional_number(data.get("miss_floor", None), where, "miss_floor")
     questions_raw = _require(data, "questions", where)
     if not isinstance(questions_raw, list) or not questions_raw:
         raise QuestionLoadError(f"{where}: 'questions' must be a non-empty array")
@@ -101,7 +122,11 @@ def load_question_file(path: Path) -> QuestionSet:
     seen_ids: set[str] = set()
     for i, qdata in enumerate(questions_raw):
         qwhere = f"{where}: questions[{i}]"
-        q = _build_question(qdata, where=qwhere, base_dir=path.parent)
+        q = _build_question(
+            _with_number(_with_number(qdata, "miss_cost", miss_cost), "miss_floor", miss_floor),
+            where=qwhere,
+            base_dir=path.parent,
+        )
         if q.id in seen_ids:
             raise QuestionLoadError(f"{qwhere}: duplicate question id '{q.id}'")
         seen_ids.add(q.id)

@@ -43,6 +43,9 @@ def progress_to_dict(progress: Progress) -> dict[str, Any]:
         "pick_set_id": progress.pick_set_id,
         "pick_remaining": progress.pick_remaining,
         "pick_missed": list(progress.pick_missed),
+        "spent_choices": {
+            qid: list(choices) for qid, choices in progress.spent_choices.items()
+        },
     }
 
 
@@ -63,6 +66,18 @@ def progress_from_dict(raw: dict[str, Any]) -> Progress:
         str(k): int(v) for k, v in cursors_raw.items() if isinstance(v, (int, float))
     }
     pick_set = raw.get("pick_set_id")
+    spent_choices: dict[str, list[int]] = {}
+    spent_raw = raw.get("spent_choices") or {}
+    if isinstance(spent_raw, dict):
+        for qid, choices in spent_raw.items():
+            if not isinstance(choices, list):
+                continue
+            indexes: list[int] = []
+            for choice in choices:
+                if isinstance(choice, bool) or not isinstance(choice, (int, float)):
+                    continue
+                indexes.append(int(choice))
+            spent_choices[str(qid)] = indexes
     return Progress(
         set_index=int(raw.get("set_index", 0)),
         question_index=int(raw.get("question_index", 0)),
@@ -81,6 +96,7 @@ def progress_from_dict(raw: dict[str, Any]) -> Progress:
         pick_set_id=str(pick_set) if pick_set else None,
         pick_remaining=int(raw.get("pick_remaining", 0)),
         pick_missed=[str(s) for s in (raw.get("pick_missed") or [])],
+        spent_choices=spent_choices,
     )
 
 

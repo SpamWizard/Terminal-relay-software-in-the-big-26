@@ -29,7 +29,7 @@ from baton_relay.input.fake import FakeBatonSource
 from baton_relay.input.serial_source import SerialBatonSource
 from baton_relay.questions.base import QuestionSet
 from baton_relay.questions.loader import load_all_question_files
-from baton_relay.questions.types import Desk
+from baton_relay.questions.types import Desk, MultipleChoice
 from baton_relay.results.checkpoint import (
     checkpoint_path_for,
     load_checkpoint,
@@ -872,6 +872,10 @@ class GameScreen(QWidget):
             self.question_host.set_locked(locked)
             if question_changed:
                 self.question_host.show_question(question)
+            if question is not None:
+                spent = list(snap.progress.spent_choices.get(question.id, []))
+                self.question_host.show_worth(question, len(spent))
+                self.question_host.retire_choices(spent)
 
         person_label = _player_label(expected)
         if snap.bypass_baton:
@@ -1507,6 +1511,18 @@ class MainWindow(QMainWindow):
         self._pending_after_burst = True
         self._burst_advances = result.correct
         caption = _points_caption(result.points)
+        q = self.session.current_question()
+        if (
+            not result.correct
+            and q is not None
+            and isinstance(q, MultipleChoice)
+            and q.shrinks_when_wrong()
+        ):
+            if result.feedback.startswith("Already"):
+                caption = "Already tried"
+            else:
+                misses = len(self.session.progress.spent_choices.get(q.id, []))
+                caption = f"{q.value_after_misses(misses):g} left"
         if result.correct:
             self.game_screen.play_correct(caption)
         else:

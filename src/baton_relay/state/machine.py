@@ -10,6 +10,7 @@ from typing import Any, Callable
 from baton_relay.config import MAX_BOARD_SLOTS, AppConfig, PersonConfig
 from baton_relay.duration import format_duration
 from baton_relay.questions.base import Question, QuestionSet, ScoreResult
+from baton_relay.questions.types import MultipleChoice
 from baton_relay.questions.describe import format_expected, format_submitted
 
 
@@ -43,6 +44,8 @@ class Progress:
     pick_set_id: str | None = None
     pick_remaining: int = 0
     pick_missed: list[str] = field(default_factory=list)
+    # Question id -> choice indexes already guessed wrong. Each one lowers miss_cost awards.
+    spent_choices: dict[str, list[int]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -858,6 +861,7 @@ class GameSession:
 
         is_redo = self.progress.in_redo
         result = question.score(answer, self.config.scoring)
+        result = self._adjust_miss_cost(question, answer, result)
         if is_redo:
             result = ScoreResult(
                 points=result.points * self.config.scoring.redo_multiplier,
@@ -906,6 +910,40 @@ class GameSession:
             self.last_message = (result.feedback or "Incorrect") + " — try again."
         self._emit()
         return result
+
+    def _adjust_miss_cost(self, question: Question, answer: Any, result: ScoreResult) -> ScoreResult:
+        """Shrink a multiple-choice award once per distinct wrong guess.
+
+        The team score stays put until the right letter. That guess pays whatever
+        is left. Guessing the same wrong letter again does not take another slice.
+        """
+        if not isinstance(question, MultipleChoice) or not question.shrinks_when_wrong():
+            return result
+        if result.feedback == "Invalid choice" or isinstance(answer, bool):
+            return result
+        try:
+            choice = int(answer)
+        except (TypeError, ValueError):
+            return result
+        choices = question.choices or []
+        if choice < 0 or choice >= len(choices):
+            return result
+
+        spent = self.progress.spent_choices.setdefault(question.id, [])
+        if result.correct:
+            award = question.value_after_misses(len(spent))
+            return ScoreResult(
+                award,
+                question.points,
+                True,
+                "Correct",
+                partial=award < question.points,
+            )
+        if choice in spent:
+            return ScoreResult(0, question.points, False, "Already tried that one")
+        spent.append(choice)
+        left = question.value_after_misses(len(spent))
+        return ScoreResult(0, question.points, False, f"Incorrect — worth {left:g} now")
 
     def skip_question(self, *, organizer: bool = False) -> None:
         question = self.current_question()

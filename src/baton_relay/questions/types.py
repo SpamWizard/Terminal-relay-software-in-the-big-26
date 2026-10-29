@@ -46,6 +46,38 @@ def _score_accepted(
 class MultipleChoice(Question):
     choices: list[str] | None = None
     answer: int = 0
+    # Taken off the award for each distinct wrong guess. 0 leaves the step to miss_floor.
+    miss_cost: float = 0.0
+    # Lowest award after every wrong letter has been tried. 0 means the award can hit zero.
+    miss_floor: float = 0.0
+
+    def shrinks_when_wrong(self) -> bool:
+        return self.miss_cost > 0 or (0 < self.miss_floor < self.points)
+
+    def value_after_misses(self, misses: int) -> float:
+        """Points still on offer after this many wrong guesses."""
+        if misses <= 0 or not self.shrinks_when_wrong():
+            return self.points
+        if self.miss_cost > 0:
+            return max(self.miss_floor, round(self.points - self.miss_cost * misses, 4))
+        # Spread (points - floor) across the wrong letters. Integer awards shed
+        # the remainder on the last steps, so 10 with a floor of 1 and four
+        # wrong letters goes 10, 8, 6, 4, 1.
+        slots = max(1, len(self.choices or []) - 1)
+        taken = min(misses, slots)
+        span = self.points - self.miss_floor
+        if (
+            float(span).is_integer()
+            and float(self.points).is_integer()
+            and float(self.miss_floor).is_integer()
+        ):
+            span_i = int(span)
+            base, extra = divmod(span_i, slots)
+            dropped = 0
+            for step in range(taken):
+                dropped += base + (1 if step >= slots - extra else 0)
+            return float(int(self.points) - dropped)
+        return max(self.miss_floor, round(self.points - span * taken / slots, 4))
 
     def score(self, answer: Any, scoring: ScoringConfig) -> ScoreResult:
         try:
@@ -92,11 +124,24 @@ def _common(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _nonneg(data: dict[str, Any], key: str) -> float:
+    if key not in data or data[key] is None:
+        return 0.0
+    value = data[key]
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{key} must be a number")
+    if value < 0:
+        raise ValueError(f"{key} must be zero or more")
+    return float(value)
+
+
 def _build_multiple_choice(data: dict[str, Any]) -> Question:
     return MultipleChoice(
         **_common(data),
         choices=list(data["choices"]),
         answer=int(data["answer"]),
+        miss_cost=_nonneg(data, "miss_cost"),
+        miss_floor=_nonneg(data, "miss_floor"),
     )
 
 

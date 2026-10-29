@@ -22,6 +22,72 @@ SCORING = ScoringConfig(partial_credit=True, wrong_answer_penalty=0, redo_multip
 SCORING_PENALTY = ScoringConfig(partial_credit=True, wrong_answer_penalty=2, redo_multiplier=0.5)
 
 
+def test_fake_logos_warn_that_misses_cost():
+    root = Path(__file__).resolve().parents[1]
+    logos = load_question_file(root / "questions" / "fake_logos.json")
+    assert logos.questions
+    for question in logos.questions:
+        assert isinstance(question, MultipleChoice)
+        assert "Points go down each time you guess wrong." in question.prompt
+        assert question.points == 10
+        assert question.miss_floor == 1
+        assert [question.value_after_misses(n) for n in range(5)] == [10, 8, 6, 4, 1]
+
+
+def test_question_miss_cost_overrides_the_set(tmp_path: Path):
+    path = tmp_path / "set.json"
+    path.write_text(
+        json.dumps(
+            {
+                "set_id": "pics",
+                "title": "Pics",
+                "miss_cost": 0.25,
+                "questions": [
+                    {
+                        "id": "q",
+                        "type": "multiple_choice",
+                        "prompt": "p",
+                        "points": 1,
+                        "choices": ["A", "B"],
+                        "answer": 1,
+                        "miss_cost": 0.5,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    question = load_question_file(path).questions[0]
+    assert isinstance(question, MultipleChoice)
+    assert question.miss_cost == pytest.approx(0.5)
+
+
+def test_negative_miss_cost_rejected(tmp_path: Path):
+    path = tmp_path / "set.json"
+    path.write_text(
+        json.dumps(
+            {
+                "set_id": "pics",
+                "title": "Pics",
+                "miss_cost": -1,
+                "questions": [
+                    {
+                        "id": "q",
+                        "type": "multiple_choice",
+                        "prompt": "p",
+                        "points": 1,
+                        "choices": ["A", "B"],
+                        "answer": 1,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(QuestionLoadError, match="miss_cost"):
+        load_question_file(path)
+
+
 def test_mc_penalty():
     q = MultipleChoice(id="a", type="multiple_choice", prompt="p", points=10, choices=["a", "b"], answer=1)
     bad = q.score(0, SCORING_PENALTY)
