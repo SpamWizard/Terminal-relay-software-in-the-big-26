@@ -127,7 +127,12 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 # Kali already ships a full toolbox; keep apt working for anything extra.
 apt-get update
-apt-get install -y sudo ca-certificates steghide exif libimage-exiftool-perl john hashcat zip unzip xxd binutils file openssl python3
+apt-get install -y sudo ca-certificates steghide exif libimage-exiftool-perl john hashcat zip unzip xxd binutils file openssl python3 ruby ruby-dev build-essential zlib1g-dev
+gem install zsteg --no-document
+if [ ! -x /usr/local/bin/zsteg ]; then
+  bindir=$(ruby -e 'print Gem.bindir')
+  ln -sfn "$bindir/zsteg" /usr/local/bin/zsteg
+fi
 id -u player >/dev/null 2>&1 || useradd -m -s /bin/bash player
 # john often lands in /usr/sbin, which a player login shell may not search.
 if [ -x /usr/sbin/john ] && [ ! -x /usr/local/bin/john ]; then
@@ -228,6 +233,7 @@ $check = @'
 set -euo pipefail
 command -v hashcat >/dev/null
 command -v john >/dev/null
+command -v zsteg >/dev/null
 rm -rf /tmp/relay-check
 mkdir -p /tmp/relay-check
 cp /challenges/identify/hash.txt /tmp/relay-check/sha.txt

@@ -4,6 +4,55 @@ Solutions for the board. The game does not load this file, and nothing here is c
 
 Flags are `TR{...}`. Desk challenges are 100 points.
 
+## Backwards
+
+`note.txt` is one long line, reversed last character first. It is too long to read backwards by eye. `rev` restores the line. The flag is the `TR{...}` in that line.
+
+```bash
+rev note.txt
+```
+
+Flag: `TR{too_long_to_read}`
+
+## Dot
+
+`ls` shows nothing. `ls -a` shows the folder `.local`. The flag is in `.local/note.txt`. The file rail hides that path too.
+
+```bash
+ls -a
+cat .local/note.txt
+```
+
+Flag: `TR{look_deeper}`
+
+## Acrostic
+
+`poem.txt` has a title, two stanzas, and a signature. Skip the title and the signature. The first letter of each remaining line spells one word per stanza: `QUIET` and `MARGIN`. The space between those words is an underscore.
+
+Flag: `TR{quiet_margin}`
+
+## Telnet
+
+`telnet.py` is a pretend telnet client. It answers the RFC 854 command table: SE, NOP, DM, BRK, IP, AO, AYT, EC, EL, GA, SB, WILL, WONT, DO, DONT, and IAC. Are You There is the one that replies with the flag.
+
+```bash
+python3 telnet.py AYT
+```
+
+`python3 telnet.py "Are you there?"` and byte `246` are the same command. `help` prints the table.
+
+Flag: `TR{are_you_there}`
+
+## Plus One
+
+`shift.txt` is the flag with every letter moved one step forward. `a` becomes `b`, and `z` wraps to `a`. Braces stay put. The word inside is long enough that shifting by hand is the slow way.
+
+```bash
+tr 'b-zaB-ZA' 'a-zA-Z' < shift.txt
+```
+
+Flag: `TR{onomatopoeia}`
+
 ## Binary
 
 `bits.txt` is the flag as 8-bit groups, high bit on the left, with no separators.
@@ -14,31 +63,39 @@ python3 -c "b=open('bits.txt').read().strip(); print(''.join(chr(int(b[i:i+8],2)
 
 Flag: `TR{eight_bits}`
 
-## Morse
+## Railroad
 
-`signal.txt` is Morse. Spaces separate letters and ` / ` separates words. The message is `CLEAR SIGNAL`. Lowercase it and join the words with an underscore.
+`fence.txt` is three rails. A dot is an empty spot. Each column has one letter. Read those letters from left to right.
 
-Flag: `TR{clear_signal}`
+```bash
+python3 -c "lines=open('fence.txt').read().splitlines(); print(''.join(next(ch for ch in col if ch!='.') for col in zip(*lines)))"
+```
+
+Flag: `TR{three_rails}`
 
 ## Whitespace
 
-Each line of `letter.txt` ends with eight spaces and tabs. A space is 0, a tab is 1, left bit first. `cat -A` shows a tab as `^I` and the end of the line as `$`.
+Each line of `letter.txt` ends with four spaces and then one character of the flag. `cat -A` shows the end of the line as `$`. The character just before each `$`, in order, is the flag.
+
+```bash
+cat -A letter.txt
+```
 
 Flag: `TR{trailing_off}`
 
 ## Zero Width
 
-`memo.txt` has U+200B (0) and U+200C (1) mixed through the letters. In file order, eight bits are one character, high bit first.
+`memo.txt` reads as a normal note. A zero-width space (U+200B, bytes `e2 80 8b`) sits immediately before each flag character. Read the character after every mark.
 
 ```bash
-python3 -c "t=open('memo.txt',encoding='utf-8').read(); b=''.join('0' if c=='\u200b' else '1' for c in t if c in '\u200b\u200c'); print(''.join(chr(int(b[i:i+8],2)) for i in range(0,len(b),8)))"
+python3 -c "t=open('memo.txt',encoding='utf-8').read(); print(''.join(t[i+1] for i,c in enumerate(t) if c=='\u200b'))"
 ```
 
 Flag: `TR{thin_space}`
 
 ## LSB
 
-`postcard.png` is a real PNG. steghide reads JPEG, BMP, and WAV, so it has nothing to do here. The flag is in the least significant bit of the red, green, and blue bytes, in that order, row by row, high bit first. A zero byte ends it. `zsteg` calls that order `b1,rgb,lsb,xy`. Install it with `sudo gem install zsteg` if the command is missing. Kali does not always ship an apt package for it.
+`postcard.png` is a real PNG. steghide reads JPEG, BMP, and WAV, so it has nothing to do here. The flag is in the least significant bit of the red, green, and blue bytes, in that order, row by row, high bit first. A zero byte ends it. `zsteg` is installed on the desk image. It calls that order `b1,rgb,lsb,xy`.
 
 ```bash
 python3 - <<'PY'

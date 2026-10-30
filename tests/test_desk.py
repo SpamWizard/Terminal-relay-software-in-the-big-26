@@ -25,6 +25,15 @@ def _types():
     ensure_builtin_types_loaded()
 
 
+def test_hidden_public_names():
+    from baton_relay.desk.sandbox import is_hidden_public_name
+
+    assert is_hidden_public_name(".mail/note.txt")
+    assert is_hidden_public_name("notes/.secret")
+    assert not is_hidden_public_name("readme.txt")
+    assert not is_hidden_public_name("mail/note.txt")
+
+
 def test_resolve_blocks_escape(tmp_path: Path):
     pub = tmp_path / "public"
     pub.mkdir()
@@ -56,8 +65,13 @@ def test_locked_shell_drops_keys():
 def test_short_desk_challenges_solve_clean():
     """Each desk challenge is 100 points, accepts its flag, and public/ does not contain it."""
     expected = {
+        "backwards": "TR{too_long_to_read}",
+        "dot": "TR{look_deeper}",
+        "acrostic": "TR{quiet_margin}",
+        "telnet": "TR{are_you_there}",
+        "plus_one": "TR{onomatopoeia}",
         "binary": "TR{eight_bits}",
-        "morse": "TR{clear_signal}",
+        "railroad": "TR{three_rails}",
         "whitespace": "TR{trailing_off}",
         "zero_width": "TR{thin_space}",
         "lsb": "TR{low_bits}",
@@ -77,12 +91,17 @@ def test_short_desk_challenges_solve_clean():
         assert not q.score("TR{nope}", SCORING).correct
         pub = Path(q.public_dir)
         for path in pub.rglob("*"):
-            if path.is_file() and flag.encode() in path.read_bytes():
-                raise AssertionError(f"{path} contains the flag")
+            if not path.is_file() or flag.encode() not in path.read_bytes():
+                continue
+            rel = path.relative_to(pub).as_posix()
+            hidden = any(part.startswith(".") for part in rel.split("/"))
+            if folder == "dot" and hidden:
+                continue
+            raise AssertionError(f"{path} contains the flag")
 
 
 def test_added_challenges_round_trip(tmp_path: Path):
-    """The eight new tiles decode to their flags."""
+    """The added tiles decode to their flags."""
     import hashlib
     import struct
     import subprocess
@@ -94,49 +113,44 @@ def test_added_challenges_round_trip(tmp_path: Path):
     assert len(binary) % 8 == 0
     assert "".join(chr(int(binary[i : i + 8], 2)) for i in range(0, len(binary), 8)) == "TR{eight_bits}"
 
-    signal = (ROOT / "challenges" / "morse" / "public" / "signal.txt").read_text(encoding="ascii").strip()
-    assert signal == "-.-. .-.. . .- .-. / ... .. --. -. .- .-.."
-    morse = {
-        ".-": "a", "-...": "b", "-.-.": "c", "-..": "d", ".": "e", "..-.": "f",
-        "--.": "g", "....": "h", "..": "i", ".---": "j", "-.-": "k", ".-..": "l",
-        "--": "m", "-.": "n", "---": "o", ".--.": "p", "--.-": "q", ".-.": "r",
-        "...": "s", "-": "t", "..-": "u", "...-": "v", ".--": "w", "-..-": "x",
-        "-.--": "y", "--..": "z",
-    }
-    words = []
-    for group in signal.split(" / "):
-        words.append("".join(morse[token] for token in group.split()))
-    assert "TR{" + "_".join(words) + "}" == "TR{clear_signal}"
+    fence = (ROOT / "challenges" / "railroad" / "public" / "fence.txt").read_text(encoding="ascii")
+    assert "\r" not in fence
+    assert "TR{" not in fence
+    lines = fence.splitlines()
+    assert len(lines) == 3
+    assert len({len(line) for line in lines}) == 1
+    decoded = []
+    for column in zip(*lines):
+        letters = [ch for ch in column if ch != "."]
+        assert len(letters) == 1
+        decoded.append(letters[0])
+    assert "".join(decoded) == "TR{three_rails}"
 
     letter = (ROOT / "challenges" / "whitespace" / "public" / "letter.txt").read_bytes()
     assert b"\r" not in letter
+    assert b"TR{trailing_off}" not in letter
     rows = letter.split(b"\n")
     if rows[-1] == b"":
         rows.pop()
     hidden_chars = []
     for row in rows:
-        tail = row[-8:]
-        assert set(tail) <= {0x20, 0x09}
-        assert row[-9] not in (0x20, 0x09)
-        value = 0
-        for byte in tail:
-            value = (value << 1) | (byte == 0x09)
-        hidden_chars.append(chr(value))
+        assert row.endswith(b"    ") is False
+        assert row[-5:-1] == b"    "
+        assert row[-6] not in (0x20, 0x09)
+        hidden_chars.append(chr(row[-1]))
     assert "".join(hidden_chars) == "TR{trailing_off}"
 
     memo = (ROOT / "challenges" / "zero_width" / "public" / "memo.txt").read_text(encoding="utf-8")
     assert "\r" not in memo
-    bits = []
-    for ch in memo:
+    assert "TR{thin_space}" not in memo
+    assert "\u200c" not in memo
+    marked = []
+    for index, ch in enumerate(memo):
         if ch == "\u200b":
-            bits.append("0")
-        elif ch == "\u200c":
-            bits.append("1")
+            marked.append(memo[index + 1])
         else:
             assert ch == "\n" or ord(ch) < 128
-    stream = "".join(bits)
-    assert len(stream) % 8 == 0
-    assert "".join(chr(int(stream[i : i + 8], 2)) for i in range(0, len(stream), 8)) == "TR{thin_space}"
+    assert "".join(marked) == "TR{thin_space}"
 
     png = (ROOT / "challenges" / "lsb" / "public" / "postcard.png").read_bytes()
     assert png.startswith(b"\x89PNG\r\n\x1a\n")
@@ -245,6 +259,80 @@ def test_added_challenges_round_trip(tmp_path: Path):
     public = ROOT / "challenges" / "identify" / "public"
     assert (public / "hash.txt").read_text(encoding="ascii").strip() == digest
     assert "compass" in (public / "wordlist.txt").read_text(encoding="ascii").split()
+
+    note = (ROOT / "challenges" / "backwards" / "public" / "note.txt").read_text(encoding="ascii")
+    assert "\r" not in note
+    body = note.strip()
+    restored = body[::-1]
+    assert len(body) >= 180
+    assert "TR{too_long_to_read}" in restored
+    assert "TR{too_long_to_read}" not in body
+
+    dot = ROOT / "challenges" / "dot" / "public"
+    visible = [path for path in dot.rglob("*") if path.is_file() and not any(part.startswith(".") for part in path.relative_to(dot).parts)]
+    assert visible == []
+    hidden = [path.relative_to(dot).as_posix() for path in dot.rglob("*") if path.is_file()]
+    assert hidden == [".local/note.txt"]
+    assert (dot / ".local" / "note.txt").read_text(encoding="ascii").strip() == "TR{look_deeper}"
+
+    acrostic = load_challenge_dir(ROOT / "challenges" / "acrostic").questions[0]
+    assert "Spaces are _." in acrostic.prompt
+    poem = (ROOT / "challenges" / "acrostic" / "public" / "poem.txt").read_text(encoding="ascii")
+    assert "\r" not in poem
+    chunks = [chunk for chunk in poem.strip().split("\n\n")]
+    assert chunks[0] == "Evening Post"
+    assert chunks[-1].startswith("Signed")
+    words = ["".join(line[0] for line in chunk.splitlines()) for chunk in chunks[1:-1]]
+    assert words == ["QUIET", "MARGIN"]
+    assert "TR{" + "_".join(word.lower() for word in words) + "}" == "TR{quiet_margin}"
+
+    telnet_q = load_challenge_dir(ROOT / "challenges" / "telnet").questions[0]
+    assert "are you there" in telnet_q.prompt.lower()
+    telnet_py = ROOT / "challenges" / "telnet" / "public" / "telnet.py"
+    source = telnet_py.read_text(encoding="utf-8")
+    assert "\r" not in source
+    assert "are_you_there" not in source
+    assert not (ROOT / "challenges" / "telnet" / "public" / "door.py").exists()
+
+    def _telnet(*args: str, stdin: str | None = None) -> str:
+        done = subprocess.run(
+            [sys.executable, str(telnet_py), *args],
+            input=stdin,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return done.stdout
+
+    assert _telnet("AYT").strip() == "TR{are_you_there}"
+    assert _telnet("Are you there?").strip() == "TR{are_you_there}"
+    assert _telnet("246").strip() == "TR{are_you_there}"
+    assert _telnet("NOP").strip() == "No operation."
+    assert _telnet("241").strip() == "No operation."
+    assert "TR{" not in _telnet("IP")
+    assert "Unknown" in _telnet("hello")
+    help_text = _telnet("help")
+    assert "AYT" in help_text and "246" in help_text
+    assert "TR{" not in help_text
+    interactive = _telnet(stdin="AYT\nquit\n")
+    assert "TR{are_you_there}" in interactive
+
+    shifted = (ROOT / "challenges" / "plus_one" / "public" / "shift.txt").read_text(encoding="ascii").strip()
+    assert "\r" not in shifted
+    assert "onomatopoeia" not in shifted
+
+    def _unshift(text: str) -> str:
+        out = []
+        for ch in text:
+            if "a" <= ch <= "z":
+                out.append(chr((ord(ch) - ord("a") - 1) % 26 + ord("a")))
+            elif "A" <= ch <= "Z":
+                out.append(chr((ord(ch) - ord("A") - 1) % 26 + ord("A")))
+            else:
+                out.append(ch)
+        return "".join(out)
+
+    assert _unshift(shifted) == "TR{onomatopoeia}"
 
 
 def test_command_output_is_not_held_until_next_key():

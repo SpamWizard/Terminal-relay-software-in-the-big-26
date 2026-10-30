@@ -42,3 +42,8 @@ def list_public_files(public_dir: Path) -> list[str]:
         if path.is_file():
             out.append(path.relative_to(root).as_posix())
     return out
+
+
+def is_hidden_public_name(name: str) -> bool:
+    """True when any path part starts with a dot, as a plain `ls` would skip it."""
+    return any(part.startswith(".") for part in name.split("/"))

@@ -1,0 +1,10 @@
+{
+  "id": "dot",
+  "type": "desk",
+  "title": "Dot",
+  "set_id": "dot",
+  "prompt": "This folder looks empty. A plain listing skips some names, and one of those names is a folder. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{look_deeper}"],
+  "panes": ["files", "terminal"]
+}

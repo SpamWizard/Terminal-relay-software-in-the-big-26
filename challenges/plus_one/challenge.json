@@ -1,0 +1,10 @@
+{
+  "id": "plus_one",
+  "type": "desk",
+  "title": "Plus One",
+  "set_id": "plus_one",
+  "prompt": "shift.txt is the flag with every letter moved one step forward. a becomes b, and z wraps around to a. Other characters stay put. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{onomatopoeia}"],
+  "panes": ["files", "terminal"]
+}

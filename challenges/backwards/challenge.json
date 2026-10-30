@@ -1,0 +1,10 @@
+{
+  "id": "backwards",
+  "type": "desk",
+  "title": "Backwards",
+  "set_id": "backwards",
+  "prompt": "note.txt is one long line written backwards, last character first. The flag is the TR{...} in the restored line. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{too_long_to_read}"],
+  "panes": ["files", "terminal"]
+}

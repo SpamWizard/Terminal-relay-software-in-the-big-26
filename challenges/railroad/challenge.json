@@ -1,0 +1,10 @@
+{
+  "id": "railroad",
+  "type": "desk",
+  "title": "Railroad",
+  "set_id": "railroad",
+  "prompt": "fence.txt is the flag on a rail fence with 3 rails. A dot is an empty spot. Each column has one letter. Read the columns from left to right. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{three_rails}"],
+  "panes": ["files", "terminal"]
+}

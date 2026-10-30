@@ -3,7 +3,7 @@
   "type": "desk",
   "title": "Whitespace",
   "set_id": "whitespace",
-  "prompt": "letter.txt is a short note. After the last word on each line there are eight extra spaces and tabs. cat -A shows a tab as ^I and the end of the line as $. A space is 0 and a tab is 1, left bit first. The lines in order are the flag. You are already in this challenge's directory.",
+  "prompt": "letter.txt is a short note. Each line ends with four spaces and then one character of the flag. cat -A marks the end of the line with $. Read the character just before each $. You are already in this challenge's directory.",
   "points": 100,
   "accepted": ["TR{trailing_off}"],
   "panes": ["files", "terminal"]

@@ -174,6 +174,25 @@ def test_progress_roundtrip_board_fields():
     assert back.total_score == 12.5
 
 
+def test_apply_checkpoint_drops_removed_category(config):
+    sets = tiny_sets(2, 1)
+    cfg = with_questions(config, warmup_count=99, board_slots=2)
+    session = GameSession(cfg, sets, team_name="T", player_names=["A", "B", "C"])
+    data = session_to_dict(session)
+    data["progress"]["phase"] = "in_pick"
+    data["progress"]["pick_set_id"] = "morse"
+    data["progress"]["pick_remaining"] = 1
+    data["progress"]["board_slots"] = ["cat_0"]
+    data["progress"]["pool"] = ["cat_1"]
+    data["progress"]["set_cursors"] = {"cat_0": 0, "cat_1": 0, "morse": 0}
+    apply_checkpoint(session, data, cfg)
+    assert session.progress.phase == "board"
+    assert session.progress.pick_set_id is None
+    assert "morse" not in session.progress.set_cursors
+    assert session.progress.board_slots == ["cat_0", "cat_1"]
+    assert session.progress.pool == []
+
+
 def test_apply_checkpoint_paused_becomes_waiting(config):
     sets = tiny_sets(1, 1)
     cfg = with_questions(config, warmup_count=99)

@@ -41,8 +41,13 @@ redo_multiplier = 0.5
 
 [questions]
 files = [
+    "challenges/backwards",
+    "challenges/dot",
+    "challenges/acrostic",
+    "challenges/telnet",
+    "challenges/plus_one",
     "challenges/binary",
-    "challenges/morse",
+    "challenges/railroad",
     "challenges/whitespace",
     "challenges/zero_width",
     "challenges/lsb",

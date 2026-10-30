@@ -1,0 +1,10 @@
+{
+  "id": "acrostic",
+  "type": "desk",
+  "title": "Acrostic",
+  "set_id": "acrostic",
+  "prompt": "poem.txt is a short poem under a title, with a signature at the bottom. Skip the title and the signature. The first letter of each remaining line spells two words, one word per stanza. The flag is TR{those words in lowercase}. Spaces are _. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{quiet_margin}"],
+  "panes": ["files", "terminal"]
+}

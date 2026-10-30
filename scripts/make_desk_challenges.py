@@ -1,7 +1,8 @@
 """Rebuild public files for the desk challenges on the board.
 
-Writes challenges/*/public artifacts for binary, morse, whitespace, zero_width,
-lsb, broken_png, log_hunt, patch_it, and identify.
+Writes challenges/*/public artifacts for backwards, dot, acrostic, telnet,
+plus_one, binary, railroad, whitespace, zero_width, lsb, broken_png,
+log_hunt, patch_it, and identify.
 """
 
 from __future__ import annotations
@@ -226,8 +227,13 @@ def _write_gate() -> None:
     print("wrote", out, "phrase", phrase.decode())
 
 
+FLAG_BACKWARDS = "TR{too_long_to_read}"
+FLAG_DOT = "TR{look_deeper}"
+FLAG_ACROSTIC = "TR{quiet_margin}"
+FLAG_TELNET = "TR{are_you_there}"
+FLAG_PLUS = "TR{onomatopoeia}"
 FLAG_BINARY = "TR{eight_bits}"
-FLAG_MORSE = "TR{clear_signal}"
+FLAG_RAILROAD = "TR{three_rails}"
 FLAG_SPACE = "TR{trailing_off}"
 FLAG_ZERO = "TR{thin_space}"
 FLAG_LSB = "TR{low_bits}"
@@ -235,35 +241,6 @@ FLAG_BROKEN = "TR{magic_bytes}"
 FLAG_LOG = "TR{marigold}"
 FLAG_PATCH = "TR{flip_the_check}"
 FLAG_IDENTIFY = "TR{compass}"
-
-MORSE = {
-    "A": ".-",
-    "B": "-...",
-    "C": "-.-.",
-    "D": "-..",
-    "E": ".",
-    "F": "..-.",
-    "G": "--.",
-    "H": "....",
-    "I": "..",
-    "J": ".---",
-    "K": "-.-",
-    "L": ".-..",
-    "M": "--",
-    "N": "-.",
-    "O": "---",
-    "P": ".--.",
-    "Q": "--.-",
-    "R": ".-.",
-    "S": "...",
-    "T": "-",
-    "U": "..-",
-    "V": "...-",
-    "W": ".--",
-    "X": "-..-",
-    "Y": "-.--",
-    "Z": "--..",
-}
 
 LETTER_LINES = [
     "Hello from the night desk.",
@@ -284,11 +261,7 @@ LETTER_LINES = [
     "All quiet otherwise.",
 ]
 
-MEMO = (
-    "Please file the dock report before the next shift starts. "
-    "The lamp on the south pier is still out, and the spare bulbs are in the top drawer. "
-    "Leave the radio on channel two. I will close the gate when I get back from the yard."
-)
+MEMO = "Tell Rae {the hint in _space please}."
 
 
 def _staff_flag(folder: str, flag: str) -> None:
@@ -305,11 +278,6 @@ def _public(folder: str) -> Path:
 
 def _bits(text: str) -> str:
     return "".join(f"{ord(ch):08b}" for ch in text)
-
-
-def _morse_line(message: str) -> str:
-    words = [" ".join(MORSE[ch] for ch in word) for word in message.split(" ")]
-    return " / ".join(words)
 
 
 def _png_chunk(tag: bytes, data: bytes) -> bytes:
@@ -373,19 +341,267 @@ def _write_broken_png() -> None:
     _staff_flag("broken_png", FLAG_BROKEN)
 
 
+def _shift_forward(text: str) -> str:
+    out = []
+    for ch in text:
+        if "a" <= ch <= "z":
+            out.append(chr((ord(ch) - ord("a") + 1) % 26 + ord("a")))
+        elif "A" <= ch <= "Z":
+            out.append(chr((ord(ch) - ord("A") + 1) % 26 + ord("A")))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+BACKWARDS_NOTE = (
+    "The night clerk filled the page so nobody would spell it out from the end by eye. "
+    "Turn the whole line around with a command. "
+    "The lock box flag is TR{too_long_to_read} and the spare key stays on the hook "
+    "beside the south gate until dawn."
+)
+
+
+def _write_backwards() -> None:
+    if FLAG_BACKWARDS not in BACKWARDS_NOTE:
+        raise SystemExit("backwards note is missing the flag")
+    if len(BACKWARDS_NOTE) < 180:
+        raise SystemExit("backwards note is still short enough to read by eye")
+    coded = BACKWARDS_NOTE[::-1]
+    if FLAG_BACKWARDS in coded:
+        raise SystemExit("reversed note still shows the flag")
+    (_public("backwards") / "note.txt").write_bytes((coded + "\n").encode("ascii"))
+    _staff_flag("backwards", FLAG_BACKWARDS)
+
+
+def _write_dot() -> None:
+    public = _public("dot")
+    for stale in (
+        public / "readme.txt",
+        public / "schedule.txt",
+        public / ".draft",
+        public / ".note",
+        public / ".mail" / "old.txt",
+        public / ".mail" / "note.txt",
+    ):
+        if stale.is_file():
+            stale.unlink()
+    mail = public / ".mail"
+    if mail.is_dir():
+        try:
+            mail.rmdir()
+        except OSError:
+            pass
+    hidden = public / ".local"
+    hidden.mkdir(parents=True, exist_ok=True)
+    (hidden / "note.txt").write_bytes((FLAG_DOT + "\n").encode("ascii"))
+    _staff_flag("dot", FLAG_DOT)
+
+
+def _write_acrostic() -> None:
+    poem = "\n".join(
+        [
+            "Evening Post",
+            "",
+            "Quiet roads after the rain.",
+            "Under the lamp the ink still shines.",
+            "Inside the fold, a second line.",
+            "Every reader skips the edge.",
+            "Tonight the margin keeps a word.",
+            "",
+            "Margins remember what you skip.",
+            "A letter waiting at the start.",
+            "Right where the eye begins to move.",
+            "Going down instead of across.",
+            "In order, nothing in between.",
+            "Nothing but the edge of the page.",
+            "",
+            "Signed, the night clerk",
+            "",
+        ]
+    )
+    (_public("acrostic") / "poem.txt").write_bytes(poem.encode("ascii"))
+    _staff_flag("acrostic", FLAG_ACROSTIC)
+
+
+_TELNET_SCRIPT = '''#!/usr/bin/env python3
+"""Pretend telnet. The command table is the one from RFC 854."""
+import sys
+
+# name, byte, words a player might type, reply (empty means the flag)
+ROWS = [
+    ("SE", 240, ("se", "subnegotiation end"), "End of subnegotiation."),
+    ("NOP", 241, ("nop", "no operation"), "No operation."),
+    ("DM", 242, ("dm", "data mark"), "Data mark."),
+    ("BRK", 243, ("brk", "break"), "Break."),
+    ("IP", 244, ("ip", "interrupt process"), "Interrupt process."),
+    ("AO", 245, ("ao", "abort output"), "Abort output."),
+    ("AYT", 246, ("ayt", "are you there"), ""),
+    ("EC", 247, ("ec", "erase character"), "Erase character."),
+    ("EL", 248, ("el", "erase line"), "Erase line."),
+    ("GA", 249, ("ga", "go ahead"), "Go ahead."),
+    ("SB", 250, ("sb", "subnegotiation begin"), "Begin subnegotiation."),
+    ("WILL", 251, ("will",), "This side will use an option."),
+    ("WONT", 252, ("wont", "won't"), "This side will not use an option."),
+    ("DO", 253, ("do",), "Please start using an option."),
+    ("DONT", 254, ("dont", "don't"), "Please stop using an option."),
+    ("IAC", 255, ("iac", "interpret as command"), "Interpret as command."),
+]
+
+
+def flag() -> str:
+    word = bytes((__CODES__)).decode()
+    return "TR{" + word + "}"
+
+
+def reply(row: tuple) -> str:
+    if row[0] == "AYT":
+        return flag()
+    return row[3]
+
+
+def normalize(text: str) -> str:
+    return " ".join(text.lower().replace("'", "").split()).rstrip("?")
+
+
+def lookup(text: str) -> tuple | None | str:
+    raw = text.strip()
+    if not raw:
+        return None
+    first, _, _rest = raw.partition(" ")
+    if first.isdigit():
+        number = int(first)
+        for row in ROWS:
+            if row[1] == number:
+                return row
+        return None
+    key = normalize(first)
+    phrase = normalize(raw)
+    exact = []
+    prefixed = []
+    for row in ROWS:
+        names = {row[0].lower(), *row[2]}
+        if key in names or phrase in names:
+            exact.append(row)
+        elif any(name.startswith(key) for name in names):
+            prefixed.append(row)
+    if len(exact) == 1:
+        return exact[0]
+    if len(exact) > 1:
+        return "ambiguous"
+    if len(prefixed) == 1:
+        return prefixed[0]
+    if len(prefixed) > 1:
+        return "ambiguous"
+    return None
+
+
+def help_text() -> str:
+    lines = ["Telnet commands:", "Name  Byte  Meaning"]
+    for name, number, words, answer in ROWS:
+        meaning = words[-1]
+        if meaning == name.lower():
+            meaning = answer
+        lines.append("%-5s %-5s %s" % (name, number, meaning))
+    return "\\n".join(lines)
+
+
+def handle(line: str) -> bool:
+    text = line.strip()
+    if not text:
+        return True
+    if normalize(text) in {"help", "?", "commands"}:
+        print(help_text())
+        return True
+    if normalize(text) in {"quit", "exit"}:
+        return False
+    found = lookup(text)
+    if found == "ambiguous":
+        print("?Ambiguous command. Type help.")
+        return True
+    if found is None:
+        print("?Unknown command. Type help.")
+        return True
+    print(reply(found))
+    return True
+
+
+def main() -> None:
+    if len(sys.argv) > 1:
+        handle(" ".join(sys.argv[1:]))
+        return
+    while True:
+        try:
+            line = input("telnet> ")
+        except EOFError:
+            print()
+            return
+        if not handle(line):
+            return
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+
+def _write_telnet() -> None:
+    word = FLAG_TELNET[3:-1]
+    codes = ", ".join(str(ord(ch)) for ch in word)
+    script = _TELNET_SCRIPT.replace("__CODES__", codes)
+    if FLAG_TELNET.encode("ascii") in script.encode("ascii") or "are_you_there" in script:
+        raise SystemExit("telnet source contains the flag")
+    public = _public("telnet")
+    stale = public / "door.py"
+    if stale.is_file():
+        stale.unlink()
+    (public / "telnet.py").write_bytes(script.encode("ascii"))
+    _staff_flag("telnet", FLAG_TELNET)
+
+
+def _write_plus_one() -> None:
+    shifted = _shift_forward(FLAG_PLUS)
+    if FLAG_PLUS in shifted or "onomatopoeia" in shifted:
+        raise SystemExit("plus one ciphertext still shows the flag")
+    (_public("plus_one") / "shift.txt").write_bytes((shifted + "\n").encode("ascii"))
+    _staff_flag("plus_one", FLAG_PLUS)
+
+
 def _write_binary() -> None:
     text = _bits(FLAG_BINARY) + "\n"
     (_public("binary") / "bits.txt").write_bytes(text.encode("ascii"))
     _staff_flag("binary", FLAG_BINARY)
 
 
-def _write_morse() -> None:
-    message = FLAG_MORSE[3:-1].replace("_", " ").upper()
-    line = _morse_line(message)
-    if line != "-.-. .-.. . .- .-. / ... .. --. -. .- .-..":
-        raise SystemExit(f"morse table drifted: {line}")
-    (_public("morse") / "signal.txt").write_bytes(line.encode("ascii") + b"\n")
-    _staff_flag("morse", FLAG_MORSE)
+def _rail_fence_grid(text: str, rails: int = 3) -> str:
+    """One letter per column. A dot is an empty spot on that rail."""
+    if rails < 2:
+        raise SystemExit("rail fence needs at least 2 rails")
+    grid = [["."] * len(text) for _ in range(rails)]
+    rail = 0
+    direction = 1
+    for index, ch in enumerate(text):
+        grid[rail][index] = ch
+        rail += direction
+        if rail == 0 or rail == rails - 1:
+            direction = -direction
+    return "\n".join("".join(row) for row in grid)
+
+
+def _write_railroad() -> None:
+    grid = _rail_fence_grid(FLAG_RAILROAD, 3)
+    lines = grid.split("\n")
+    if len(lines) != 3 or any(len(line) != len(FLAG_RAILROAD) for line in lines):
+        raise SystemExit("rail fence grid is the wrong shape")
+    read = []
+    for index in range(len(FLAG_RAILROAD)):
+        letters = [line[index] for line in lines if line[index] != "."]
+        if len(letters) != 1:
+            raise SystemExit(f"rail fence column {index} does not have one letter")
+        read.append(letters[0])
+    if "".join(read) != FLAG_RAILROAD or FLAG_RAILROAD in grid or "TR{" in grid:
+        raise SystemExit("rail fence grid does not read back as the flag")
+    (_public("railroad") / "fence.txt").write_bytes((grid + "\n").encode("ascii"))
+    _staff_flag("railroad", FLAG_RAILROAD)
 
 
 def _write_whitespace() -> None:
@@ -395,23 +611,29 @@ def _write_whitespace() -> None:
     for visible, ch in zip(LETTER_LINES, FLAG_SPACE):
         if not visible or visible[-1] in " \t":
             raise SystemExit(f"visible line ends with whitespace: {visible!r}")
-        hidden = "".join("\t" if bit == "1" else " " for bit in f"{ord(ch):08b}")
-        out.append(visible + hidden)
-    (_public("whitespace") / "letter.txt").write_bytes(("\n".join(out) + "\n").encode("ascii"))
+        out.append(visible + "    " + ch)
+    text = "\n".join(out) + "\n"
+    if FLAG_SPACE.encode("ascii") in text.encode("ascii"):
+        raise SystemExit("whitespace letter contains the flag in a row")
+    (_public("whitespace") / "letter.txt").write_bytes(text.encode("ascii"))
     _staff_flag("whitespace", FLAG_SPACE)
 
 
 def _write_zero_width() -> None:
-    bits = _bits(FLAG_ZERO)
-    if len(MEMO) < len(bits):
-        raise SystemExit("memo is shorter than the zero-width bit stream")
-    zw = {"0": "\u200b", "1": "\u200c"}
+    """A zero-width space marks the next character. Those characters are the flag."""
     chars: list[str] = []
-    for i, ch in enumerate(MEMO):
+    found = 0
+    for ch in MEMO:
+        if found < len(FLAG_ZERO) and ch == FLAG_ZERO[found]:
+            chars.append("\u200b")
+            found += 1
         chars.append(ch)
-        if i < len(bits):
-            chars.append(zw[bits[i]])
-    (_public("zero_width") / "memo.txt").write_bytes(("".join(chars) + "\n").encode("utf-8"))
+    if found != len(FLAG_ZERO):
+        raise SystemExit("memo does not contain the flag letters in order")
+    text = "".join(chars) + "\n"
+    if FLAG_ZERO in text:
+        raise SystemExit("memo still shows the flag as a run of letters")
+    (_public("zero_width") / "memo.txt").write_bytes(text.encode("utf-8"))
     _staff_flag("zero_width", FLAG_ZERO)
 
 
@@ -553,8 +775,13 @@ def _write_identify() -> None:
 
 
 def write_extra_challenges() -> None:
+    _write_backwards()
+    _write_dot()
+    _write_acrostic()
+    _write_telnet()
+    _write_plus_one()
     _write_binary()
-    _write_morse()
+    _write_railroad()
     _write_whitespace()
     _write_zero_width()
     _write_lsb()
@@ -564,8 +791,13 @@ def write_extra_challenges() -> None:
     _write_identify()
     print(
         "wrote extra challenges:",
+        FLAG_BACKWARDS,
+        FLAG_DOT,
+        FLAG_ACROSTIC,
+        FLAG_TELNET,
+        FLAG_PLUS,
         FLAG_BINARY,
-        FLAG_MORSE,
+        FLAG_RAILROAD,
         FLAG_SPACE,
         FLAG_ZERO,
         FLAG_LSB,

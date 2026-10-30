@@ -1,0 +1,10 @@
+{
+  "id": "telnet",
+  "type": "desk",
+  "title": "Telnet",
+  "set_id": "telnet",
+  "prompt": "telnet.py pretends to be telnet. It knows the command table. Type help inside it, or pass a command on the command line. The flag is the reply to Are You There. You are already in this challenge's directory.",
+  "points": 100,
+  "accepted": ["TR{are_you_there}"],
+  "panes": ["files", "terminal"]
+}

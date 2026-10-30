@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from baton_relay.config import AppConfig
+from baton_relay.config import MAX_BOARD_SLOTS, AppConfig
 from baton_relay.questions.base import QuestionSet, ScoreResult
 from baton_relay.state.machine import GameSession, PlayerSlot, Progress, RelayState
 
@@ -143,6 +143,30 @@ def session_to_dict(session: GameSession) -> dict[str, Any]:
     }
 
 
+def _drop_missing_categories(session: GameSession) -> None:
+    """A saved game can name a category that was removed from the board."""
+    progress = session.progress
+    known = {s.set_id for s in session.sets}
+    questions = {q.id for s in session.sets for q in s.questions}
+    progress.set_cursors = {k: v for k, v in progress.set_cursors.items() if k in known}
+    progress.board_slots = [sid for sid in progress.board_slots if sid in known]
+    progress.pool = [sid for sid in progress.pool if sid in known]
+    progress.missed_ids = [qid for qid in progress.missed_ids if qid in questions]
+    progress.redo_queue = [qid for qid in progress.redo_queue if qid in questions]
+    progress.pick_missed = [qid for qid in progress.pick_missed if qid in questions]
+    if progress.pick_set_id and progress.pick_set_id not in known:
+        progress.pick_set_id = None
+        progress.pick_remaining = 0
+        progress.pick_missed = []
+        if progress.phase == "in_pick":
+            progress.phase = "board"
+        slots_n = min(session.config.questions.board_slots, MAX_BOARD_SLOTS)
+        while len(progress.board_slots) < slots_n and progress.pool:
+            nxt = progress.pool.pop(0)
+            if nxt not in progress.board_slots:
+                progress.board_slots.append(nxt)
+
+
 def apply_checkpoint(session: GameSession, data: dict[str, Any], config: AppConfig) -> None:
     session.team_name = str(data.get("team_name") or session.team_name)
     session.roster = roster_from_list(list(data.get("roster") or []), config)
@@ -163,6 +187,7 @@ def apply_checkpoint(session: GameSession, data: dict[str, Any], config: AppConf
     session.timers_started = bool(data.get("timers_started", False))
     session.progress = progress_from_dict(dict(data.get("progress") or {}))
     session.progress.finished = False
+    _drop_missing_categories(session)
     # Ensure cursors exist for every loaded set
     for s in session.sets:
         session.progress.set_cursors.setdefault(s.set_id, 0)

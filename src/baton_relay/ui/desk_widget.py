@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from baton_relay.desk.sandbox import list_public_files, resolve_in_public
+from baton_relay.desk.sandbox import is_hidden_public_name, list_public_files, resolve_in_public
 from baton_relay.desk.shell import TeamShell
 from baton_relay.questions.types import Desk
 from baton_relay.ui.pty_terminal import PtyTerminalWidget
@@ -153,6 +153,8 @@ class _FilesPane(QFrame):
         self.list.setObjectName("deskFileList")
         self.list.setFont(_mono(11))
         for name in list_public_files(public_dir):
+            if is_hidden_public_name(name):
+                continue
             self.list.addItem(QListWidgetItem(name))
         if state.selected_file:
             matches = self.list.findItems(state.selected_file, Qt.MatchFlag.MatchExactly)
