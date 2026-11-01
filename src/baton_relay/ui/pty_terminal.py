@@ -44,6 +44,10 @@ _FG = {
 }
 _SEL = QColor(125, 211, 252, 110)
 
+# Quiet hello on a fresh desk terminal. Cyan so it reads as a greeting, not a command.
+SHELL_HELLO_TEXT = "hi from spam"
+SHELL_HELLO = f"\x1b[36m{SHELL_HELLO_TEXT}\x1b[0m\r\n"
+
 
 def shell_paste_text(raw: str) -> str:
     """Clipboard text for the shell. A trailing newline must not press Enter."""
@@ -119,9 +123,8 @@ class PtyTerminalWidget(QWidget):
         self._dragging = False
         self._screen = pyte.HistoryScreen(self._cols, self._rows, history=5000)
         self._stream = pyte.Stream(self._screen)
-        self._feed_log = restore or ""
-        if self._feed_log:
-            self._stream.feed(self._feed_log)
+        self._feed_log = restore or SHELL_HELLO
+        self._stream.feed(self._feed_log)
         if shell is not None:
             # Cross-thread safe: reader calls emit → GUI slot.
             shell.on_output = self._emit_output

@@ -543,6 +543,53 @@ def test_board_timers_frozen(config, sets):
     assert notes == []
 
 
+def test_start_and_score_credit_spam_in_the_corner(qtbot, config):
+    from dataclasses import replace
+
+    from PySide6.QtCore import Qt
+
+    from baton_relay.ui.main_window import ScoreScreen, StartupScreen
+
+    start = StartupScreen(config)
+    qtbot.addWidget(start)
+    start.resize(1280, 800)
+    start.show()
+    qtbot.waitExposed(start)
+    assert "made by" in start.credit.text()
+    assert "spam" in start.credit.text()
+    assert config.theme.accent in start.credit.text()
+    assert start.credit.objectName() == "creditMark"
+    assert start.credit.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    corner = start.credit.geometry()
+    assert corner.right() >= start.width() - 36
+    assert corner.bottom() >= start.height() - 36
+    assert corner.left() > start.width() * 0.5
+
+    tinted = config.with_updates(theme=replace(config.theme, accent="#ff00aa"))
+    start.apply_config(tinted)
+    assert "#ff00aa" in start.credit.text()
+
+    score = ScoreScreen(config.theme)
+    qtbot.addWidget(score)
+    score.resize(1280, 800)
+    score.show()
+    qtbot.waitExposed(score)
+    score.show_score(
+        "Night Owls",
+        12,
+        "All categories done",
+        (),
+        time_used="4:10",
+        finished_at="12:01:00",
+    )
+    mark = score.credit.geometry()
+    assert "spam" in score.credit.text()
+    assert mark.right() >= score.width() - 36
+    assert mark.bottom() >= score.height() - 36
+    score.apply_theme(tinted.theme)
+    assert "#ff00aa" in score.credit.text()
+
+
 def test_board_button_is_visible_only_inside_a_category(qtbot, config):
     from PySide6.QtCore import Qt
 

@@ -325,7 +325,8 @@ def test_ctrl_c_copies_selection_and_otherwise_interrupts(qtbot):
     shell._pty.isalive.return_value = True
     term.bind_shell(shell)
     term._stream.feed("TR{rockme}\r\n")
-    term._select_word_at(0, 0)
+    row = next(i for i, line in enumerate(term._screen.display) if "TR{rockme}" in line)
+    term._select_word_at(term._screen.display[row].index("T"), row)
     term.setFocus()
     qtbot.waitUntil(term.hasFocus)
     clip = QApplication.clipboard()
@@ -366,6 +367,24 @@ def test_ctrl_v_pastes_flag_into_the_shell(qtbot):
         shell._pty.write.assert_called_with("TR{rockme}")
     finally:
         clip.setText(previous)
+
+
+def test_fresh_terminal_says_hi_from_spam(qtbot):
+    from baton_relay.ui.pty_terminal import SHELL_HELLO_TEXT, PtyTerminalWidget
+
+    term = PtyTerminalWidget()
+    qtbot.addWidget(term)
+    term.resize(640, 360)
+    term.bind_shell(None)
+    shown = "\n".join(term._screen.display)
+    assert SHELL_HELLO_TEXT == "hi from spam"
+    assert "hi from spam" in shown
+    assert "\x1b" not in shown
+
+    term.bind_shell(None, restore="kept\r\n")
+    restored = "\n".join(term._screen.display)
+    assert "kept" in restored
+    assert "hi from spam" not in restored
 
 
 def test_terminal_feed_restores_per_challenge(qtbot):

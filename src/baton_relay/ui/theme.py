@@ -346,6 +346,13 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         font-size: 14px;
         background-color: transparent;
     }}
+    QLabel#creditMark {{
+        color: {muted};
+        font-size: 13px;
+        font-weight: 500;
+        background-color: transparent;
+        padding: 0px;
+    }}
     QLabel#warn {{
         color: #ff6b6b;
         font-size: 20px;

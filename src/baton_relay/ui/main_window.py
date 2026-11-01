@@ -55,6 +55,7 @@ from baton_relay.ui.theme import (
     build_stylesheet,
     display_color,
     game_screen_wash,
+    mix,
     person_window_stylesheet,
     soften,
 )
@@ -64,6 +65,43 @@ def _rect_in(widget: QWidget, target: QWidget) -> QRect:
     """Map widget geometry into target coords without requiring an ancestor link."""
     top_left = target.mapFromGlobal(widget.mapToGlobal(QPoint(0, 0)))
     return QRect(top_left, widget.size())
+
+
+def _credit_html(theme) -> str:
+    """Quiet corner signature. The name takes the theme accent; the rest stays dim."""
+    quiet = mix(theme.foreground, theme.background, 0.50)
+    return (
+        f'<span style="color:{quiet};">made by </span>'
+        f'<span style="color:{theme.accent};">spam</span>'
+    )
+
+
+def _make_credit(theme) -> QLabel:
+    label = QLabel(_credit_html(theme))
+    label.setObjectName("creditMark")
+    label.setTextFormat(Qt.TextFormat.RichText)
+    label.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+    return label
+
+
+def _place_corner_mark(host: QWidget, mark: QLabel) -> None:
+    mark.adjustSize()
+    mark.move(
+        max(0, host.width() - mark.width() - 28),
+        max(0, host.height() - mark.height() - 22),
+    )
+    mark.raise_()
+
+
+def _credit_hole(host: QWidget, mark: QLabel, target: QWidget) -> QRect | None:
+    """Keep the starfield off the signature once it is sitting in the corner."""
+    if host.width() < 200 or host.height() < 200 or not mark.isVisible():
+        return None
+    rect = _rect_in(mark, target)
+    if rect.width() < 8 or rect.height() < 8 or rect.left() < host.width() * 0.5:
+        return None
+    return rect.adjusted(-14, -8, 10, 8)
 
 
 def _fmt_time(seconds: float) -> str:
@@ -325,6 +363,10 @@ class StartupScreen(QWidget):
         root.addWidget(self.panel, alignment=Qt.AlignmentFlag.AlignCenter)
         root.addStretch(2)
 
+        self.credit = _make_credit(config.theme)
+        self.credit.setParent(self)
+        self._place_credit()
+
     def apply_config(self, config: AppConfig) -> None:
         """Update seat count/colors without wiping typed team/handles."""
         team_text = self.name_edit.text()
@@ -332,6 +374,15 @@ class StartupScreen(QWidget):
         self.config = config
         self._rebuild_player_rows(preserve_handles=handle_texts)
         self.name_edit.setText(team_text)
+        self.credit.setText(_credit_html(config.theme))
+        self._place_credit()
+
+    def _place_credit(self) -> None:
+        _place_corner_mark(self, self.credit)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._place_credit()
 
     def _rebuild_player_rows(self, preserve_handles: list[str] | None = None) -> None:
         while self.players_host.count():
@@ -412,7 +463,7 @@ class StartupScreen(QWidget):
 class ScoreScreen(QWidget):
     next_team = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, theme, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("scoreScreen")
         layout = QVBoxLayout(self)
@@ -454,6 +505,21 @@ class ScoreScreen(QWidget):
         btn.clicked.connect(self.next_team.emit)
         layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addStretch(2)
+
+        self.credit = _make_credit(theme)
+        self.credit.setParent(self)
+        self._place_credit()
+
+    def apply_theme(self, theme) -> None:
+        self.credit.setText(_credit_html(theme))
+        self._place_credit()
+
+    def _place_credit(self) -> None:
+        _place_corner_mark(self, self.credit)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._place_credit()
 
     def show_score(
         self,
@@ -984,7 +1050,7 @@ class MainWindow(QMainWindow):
         self._skip_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self._skip_shortcut.activated.connect(self._quick_skip)
         self._skip_shortcut.setEnabled(quick)
-        self.score_screen = ScoreScreen()
+        self.score_screen = ScoreScreen(config.theme)
         self.score_screen.next_team.connect(self._next_team)
 
         self.stack.addWidget(self.startup)
@@ -1133,7 +1199,11 @@ class MainWindow(QMainWindow):
         if current is self.startup:
             self._stars.set_scrolling(True)
             self._stars.set_subtle(False)
-            self._stars.set_holes([self.startup.solid_panel_rect_in(self._stars)])
+            holes = [self.startup.solid_panel_rect_in(self._stars)]
+            credit = _credit_hole(self.startup, self.startup.credit, self._stars)
+            if credit is not None:
+                holes.append(credit)
+            self._stars.set_holes(holes)
         elif current is self.game_screen:
             self._stars.set_scrolling(False)
             self._stars.set_subtle(True)
@@ -1141,7 +1211,12 @@ class MainWindow(QMainWindow):
         else:
             self._stars.set_scrolling(True)
             self._stars.set_subtle(False)
-            self._stars.set_holes([])
+            holes = []
+            if current is self.score_screen:
+                credit = _credit_hole(self.score_screen, self.score_screen.credit, self._stars)
+                if credit is not None:
+                    holes.append(credit)
+            self._stars.set_holes(holes)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         key = event.key()
@@ -1191,6 +1266,7 @@ class MainWindow(QMainWindow):
         self.game_screen.config = config
         self.game_screen.switch_overlay.theme = config.theme
         self.startup.apply_config(config)
+        self.score_screen.apply_theme(config.theme)
         self.setStyleSheet(build_stylesheet(config.theme))
         self.game_screen._person_accent = ""
         if self._fake is not None:

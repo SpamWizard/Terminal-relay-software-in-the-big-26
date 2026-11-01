@@ -37,6 +37,10 @@ def run_app(*, config_path: Path, fake_device: bool = True, quick: bool = False)
 
         warm_standby_async(repo_root)
 
+    from baton_relay.ui.pty_terminal import SHELL_HELLO_TEXT
+
+    print(SHELL_HELLO_TEXT)
+
     from PySide6.QtWidgets import QApplication
 
     from baton_relay.ui.main_window import MainWindow
