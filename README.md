@@ -1,3 +1,6 @@
+if you need help with anything @spamwizard on discord, I'll try to help you out with everything that I can
+
+
 # Terminal Relay — fresh Windows install
 
 Timed team game for one Windows PC. Players pass a baton (or use the keyboard as a stand-in), pick a category, and answer a picture question or a real Linux shell challenge.
