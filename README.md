@@ -7,7 +7,7 @@ Timed team game for one Windows PC. Players pass a baton (or use the keyboard as
 
 Do these steps on a PC that just finished a clean Windows setup. Steps 1–3 only install tools. The game files stay put until step 4, because downloading them asks for a GitHub password.
 
-You need Windows 11 or Windows 10 22H2, edition **Pro, Education, or Enterprise** (Home has no `New-VHD`, and the Linux challenges will not run), CPU virtualization turned on, an admin login, internet, and **40 GB free on C:**. The project will live at `C:\relay`. Documents is often OneDrive on a new PC, and WSL cannot mount a Linux disk that lives in a synced folder.
+You need Windows 11 or Windows 10 22H2, edition **Pro, Education, or Enterprise** (Home has no `New-VHD`, and the Linux challenges will not run), CPU virtualization turned on, an admin login, internet, and a bunch of hard drive space, id guess about 10gb. The project will live at `C:\relay`. Documents is often OneDrive on a new PC, and WSL cannot mount a Linux disk that lives in a synced folder.
 
 Check virtualization before anything else. Press `Ctrl+Shift+Esc`, click **Performance**, click **CPU**, and read **Virtualization**. It has to say **Enabled**. If it says Disabled: Start, power icon, hold Shift and click Restart, then Troubleshoot, Advanced options, UEFI Firmware Settings, Restart. Turn on **Intel Virtualization Technology**, **VT-x**, **SVM Mode**, or **AMD-V**, save, and boot back to Windows.
 
