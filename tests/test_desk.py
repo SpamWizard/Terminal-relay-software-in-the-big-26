@@ -324,8 +324,9 @@ def test_ctrl_c_copies_selection_and_otherwise_interrupts(qtbot):
     shell._pty = MagicMock()
     shell._pty.isalive.return_value = True
     term.bind_shell(shell)
+    row = term._screen.cursor.y
     term._stream.feed("TR{rockme}\r\n")
-    term._select_word_at(0, 0)
+    term._select_word_at(0, row)
     term.setFocus()
     qtbot.waitUntil(term.hasFocus)
     clip = QApplication.clipboard()
@@ -401,6 +402,26 @@ def test_terminal_feed_restores_per_challenge(qtbot):
     gate2.bind_shell(shell, restore=saved_gate)
     assert "gate-hello" in "".join(gate2._screen.display)
     assert "steg-hello" not in "".join(gate2._screen.display)
+
+
+def test_fresh_terminal_greets_locally_once(qtbot):
+    from baton_relay.ui.pty_terminal import PtyTerminalWidget
+
+    shell = TeamShell(distro="relay-test", repo_root=ROOT)
+    shell._pty = MagicMock()
+    shell._pty.isalive.return_value = True
+
+    term = PtyTerminalWidget()
+    qtbot.addWidget(term)
+    term.bind_shell(shell)
+    assert "hi from spam" in "".join(term._screen.display)
+    shell._pty.write.assert_not_called()
+
+    saved = term.feed_log()
+    again = PtyTerminalWidget()
+    qtbot.addWidget(again)
+    again.bind_shell(shell, restore=saved)
+    assert "".join(again._screen.display).count("hi from spam") == 1
 
 
 def test_show_question_keeps_same_desk_terminal(qtbot):
