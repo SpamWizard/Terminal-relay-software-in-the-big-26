@@ -256,6 +256,19 @@ def _roster_text(roster: tuple[PlayerSlot, ...], *, highlight: int | None = None
     return "   ".join(parts)
 
 
+SIGNATURE = "crafted with care by spam"
+
+
+def _add_signature(layout: QVBoxLayout) -> QLabel:
+    label = QLabel(SIGNATURE)
+    label.setObjectName("signature")
+    label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+    layout.addWidget(
+        label, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom
+    )
+    return label
+
+
 class StartupScreen(QWidget):
     started = Signal(str, list)  # team_name, handles
     open_config = Signal()
@@ -324,6 +337,7 @@ class StartupScreen(QWidget):
 
         root.addWidget(self.panel, alignment=Qt.AlignmentFlag.AlignCenter)
         root.addStretch(2)
+        self.signature = _add_signature(root)
 
     def apply_config(self, config: AppConfig) -> None:
         """Update seat count/colors without wiping typed team/handles."""
@@ -416,7 +430,7 @@ class ScoreScreen(QWidget):
         super().__init__(parent)
         self.setObjectName("scoreScreen")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(48, 48, 48, 48)
+        layout.setContentsMargins(24, 48, 24, 24)
         layout.addStretch(1)
         self.title = QLabel("SCORE")
         self.title.setObjectName("brand")
@@ -454,6 +468,7 @@ class ScoreScreen(QWidget):
         btn.clicked.connect(self.next_team.emit)
         layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addStretch(2)
+        self.signature = _add_signature(layout)
 
     def show_score(
         self,

@@ -346,6 +346,13 @@ def build_stylesheet(theme: ThemeConfig, *, accent: str | None = None) -> str:
         font-size: 14px;
         background-color: transparent;
     }}
+    QLabel#signature {{
+        color: {rgba(muted, 0.75)};
+        font-size: 12px;
+        font-style: italic;
+        letter-spacing: 2px;
+        background-color: transparent;
+    }}
     QLabel#warn {{
         color: #ff6b6b;
         font-size: 20px;

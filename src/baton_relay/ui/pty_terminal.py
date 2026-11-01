@@ -44,6 +44,9 @@ _FG = {
 }
 _SEL = QColor(125, 211, 252, 110)
 
+# Drawn locally on a fresh terminal; never typed into bash.
+GREETING = "\x1b[36mhi from spam \u2014 have fun out there\x1b[0m\r\n\r\n"
+
 
 def shell_paste_text(raw: str) -> str:
     """Clipboard text for the shell. A trailing newline must not press Enter."""
@@ -120,6 +123,8 @@ class PtyTerminalWidget(QWidget):
         self._screen = pyte.HistoryScreen(self._cols, self._rows, history=5000)
         self._stream = pyte.Stream(self._screen)
         self._feed_log = restore or ""
+        if not self._feed_log and shell is not None:
+            self._feed_log = GREETING
         if self._feed_log:
             self._stream.feed(self._feed_log)
         if shell is not None:
